@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "docx-extractor": "^1.1.5",
+    "docxtemplater": "^3.44.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "jimp": "^0.3.5",
+    "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.6.0",
+    "mongoose": "^8.13.2",
+    "morgan": "^1.10.0",
+    "officegen": "^0.6.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "scp2": "^0.5.0",
+    "ssh2-sftp-client": "^10.0.3",
+    "xml2js": "^0.6.2"
+  }
+}

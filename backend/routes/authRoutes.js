@@ -1,0 +1,52 @@
+const express = require('express');
+const { check } = require('express-validator');
+const { 
+  register, 
+  login, 
+  logout, 
+  getMe,
+  googleCallback,
+  refreshToken
+} = require('../controllers/authController');
+const passport = require('passport');
+const { protect } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Registration validation
+const registerValidation = [
+  check('fullName', 'Full name is required').not().isEmpty(),
+  check('email', 'Please include a valid email').isEmail(),
+  check('contactNumber', 'Please include a valid contact number').matches(/^\+?[0-9]{10,14}$/),
+  check('password', 'Password must be at least 6 characters').isLength({ min: 6 })
+];
+
+// Login validation
+const loginValidation = [
+  check('email', 'Please include a valid email').isEmail(),
+  check('password', 'Password is required').exists()
+];
+
+// Routes
+router.post('/register', registerValidation, register);
+router.post('/login', loginValidation, login);
+router.get('/logout', logout);
+router.get('/me', protect, getMe);
+router.post('/refresh-token', refreshToken);
+
+// Google OAuth routes
+router.get(
+  '/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { 
+    failureRedirect: '/login',
+    session: false 
+  }),
+  googleCallback
+);
+
+module.exports = router;
