@@ -4,8 +4,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import useAuth from '../hooks/useAuth';
-import { FiUser, FiLock, FiLogIn, FiGithub } from 'react-icons/fi';
-import { FcGoogle } from 'react-icons/fc';
+import { FiUser, FiLock, FiLogIn } from 'react-icons/fi';
+import GoogleSignInButton from '../components/auth/GoogleSignInButton';
 
 // Validation schema
 const LoginSchema = Yup.object().shape({
@@ -18,7 +18,7 @@ const LoginSchema = Yup.object().shape({
 });
 
 const Login = () => {
-  const { login, loginWithGoogle, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   
   // Redirect if already authenticated
@@ -130,14 +130,7 @@ const Login = () => {
                 </div>
                 
                 <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={loginWithGoogle}
-                    className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <FcGoogle className="h-5 w-5" />
-                    <span className="ml-2">Sign in with Google</span>
-                  </button>
+                  <GoogleSignInButton />
                 </div>
               </div>
             </Form>

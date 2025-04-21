@@ -5,7 +5,7 @@ const {
   login, 
   logout, 
   getMe,
-  googleCallback,
+  googleAuthGIS,
   refreshToken
 } = require('../controllers/authController');
 const passport = require('passport');
@@ -40,18 +40,19 @@ router.get('/me', protect, getMe);
 router.post('/refresh-token', refreshToken);
 
 // Google OAuth routes
-router.get(
-  '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+router.post('/google', googleAuthGIS);
+// router.get(
+//   '/google',
+//   passport.authenticate('google', { scope: ['profile', 'email'] })
+// );
 
-router.get(
-  '/google/callback',
-  passport.authenticate('google', { 
-    failureRedirect: '/login',
-    session: false 
-  }),
-  googleCallback
-);
+// router.get(
+//   '/google/callback',
+//   passport.authenticate('google', { 
+//     failureRedirect: '/login',
+//     session: false 
+//   }),
+//   googleCallback
+// );
 
 module.exports = router;

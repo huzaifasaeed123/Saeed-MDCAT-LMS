@@ -71,3 +71,22 @@ export const getUser = () => {
   const user = localStorage.getItem('user');
   return user ? JSON.parse(user) : null;
 };
+
+
+// Google Identity Services login
+export const loginWithGoogle = async (credential) => {
+  try {
+    const response = await apiClient.post('/auth/google', { credential });
+    
+    if (response.data.success) {
+      // Store access token
+      localStorage.setItem('accessToken', response.data.accessToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Google login error:', error);
+    throw error;
+  }
+};

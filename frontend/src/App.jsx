@@ -27,14 +27,15 @@ import Profile from './pages/Profile';
 import Users from './pages/admin/Users';
 import NewUser from './pages/admin/NewUser';
 import EditUser from './pages/admin/EditUser';
-import OAuthCallback from './pages/OAuthCallback';
+import GoogleOneTap from './components/auth/GoogleOneTap';  // Add this import
+
 
 function AppContent() {
   return (
     <Router>
+      <GoogleOneTap /> {/* Add One Tap component here */}
       <Routes>
         {/* Public Routes */}
-        <Route path="/oauth-callback" element={<OAuthCallback />} />
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

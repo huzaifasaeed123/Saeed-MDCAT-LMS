@@ -1,6 +1,9 @@
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');              // ← add this
+
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -97,27 +100,77 @@ exports.login = async (req, res) => {
 // @desc    Google OAuth callback
 // @route   GET /api/auth/google/callback
 // @access  Public
-exports.googleCallback = async (req, res) => {
+// exports.googleCallback = async (req, res) => {
+//   try {
+//     user=req.user
+//     // Handled by passport, this is just the callback after successful auth
+//     // await sendTokenResponse(req.user, 200, res);
+
+//     const accessToken = user.getSignedAccessToken();
+//     const refreshToken = user.getSignedRefreshToken();
+  
+//     // Save user with refresh token
+//     await user.save();
+
+  
+//     // Set cookies
+//     sendTokenCookies(accessToken, refreshToken, res);
+//     res.redirect(`${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}`);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error processing Google authentication'
+//     });
+//   }
+// };
+
+// @desc    Google Identity Services authentication
+// @route   POST /api/auth/google
+// @access  Public
+exports.googleAuthGIS = async (req, res) => {
   try {
-    user=req.user
-    // Handled by passport, this is just the callback after successful auth
-    // await sendTokenResponse(req.user, 200, res);
+    const { credential } = req.body;
 
-    const accessToken = user.getSignedAccessToken();
-    const refreshToken = user.getSignedRefreshToken();
-  
-    // Save user with refresh token
-    await user.save();
-
-  
-    // Set cookies
-    sendTokenCookies(accessToken, refreshToken, res);
-    res.redirect(`${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}`);
+    // Verify the token
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const payload = ticket.getPayload();
+    
+    const { sub: googleId, email, name, picture } = payload;
+    
+    // Find or create user
+    let user = await User.findOne({ 
+      $or: [{ googleId }, { email }] 
+    });
+    
+    if (!user) {
+      // Create new user
+      user = await User.create({
+        googleId,
+        fullName: name,
+        email,
+        contactNumber: '', // Empty for Google users
+        profilePicture: picture,
+        role: 'student'
+      });
+    } else if (!user.googleId) {
+      // Link Google ID to existing email account
+      user.googleId = googleId;
+      user.profilePicture = picture;
+      await user.save();
+    }
+    
+    // Generate tokens and send response
+    sendTokenResponse(user, 200, res);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
+    console.error('Google authentication error:', error);
+    res.status(401).json({
       success: false,
-      message: 'Error processing Google authentication'
+      message: 'Invalid Google credentials'
     });
   }
 };

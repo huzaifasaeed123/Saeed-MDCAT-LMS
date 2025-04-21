@@ -5,7 +5,7 @@ import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import useAuth from '../hooks/useAuth';
 import { FiUser, FiMail, FiPhone, FiLock, FiUserPlus } from 'react-icons/fi';
-import { FcGoogle } from 'react-icons/fc';
+import GoogleSignInButton from '../components/auth/GoogleSignInButton';
 
 // Validation schema
 const RegisterSchema = Yup.object().shape({
@@ -27,7 +27,7 @@ const RegisterSchema = Yup.object().shape({
 });
 
 const Register = () => {
-  const { register, loginWithGoogle, isAuthenticated } = useAuth();
+  const { register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   
   // Redirect if already authenticated
@@ -201,14 +201,7 @@ const Register = () => {
                 </div>
                 
                 <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={loginWithGoogle}
-                    className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                  >
-                    <FcGoogle className="h-5 w-5" />
-                    <span className="ml-2">Sign up with Google</span>
-                  </button>
+                  <GoogleSignInButton />
                 </div>
               </div>
             </Form>
