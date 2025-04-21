@@ -29,3 +29,8 @@ export const deleteUser = async (userId) => {
   const response = await apiClient.delete(`/users/${userId}`);
   return response.data;
 };
+
+export const updateProfile = async (userData) => {
+  const response = await apiClient.put('/users/profile', userData);
+  return response.data;
+};

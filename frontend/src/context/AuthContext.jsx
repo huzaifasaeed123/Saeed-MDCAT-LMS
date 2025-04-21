@@ -39,9 +39,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
   
   // Update user when they login
-  const updateUser = (userData) => {
-    setUser(userData);
-  };
+ // In your AuthContext.js
+const updateUser = (userData) => {
+  console.log('Updating user data in context:', userData);
+  setUser(userData);
+};
   
   // Clear user when they logout
   const clearUser = () => {

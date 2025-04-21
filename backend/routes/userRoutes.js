@@ -5,7 +5,8 @@ const {
   getUser,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  updateProfile
 } = require('../controllers/userController');
 
 const { protect } = require('../middleware/auth');
@@ -21,6 +22,10 @@ const userValidation = [
   check('password', 'Password must be at least 6 characters').isLength({ min: 6 }),
   check('role', 'Role must be either student, teacher, or admin').isIn(['student', 'teacher', 'admin'])
 ];
+
+
+// User can update their own profile
+router.put('/profile', protect, updateProfile);
 
 // Apply protection to all routes
 router.use(protect);

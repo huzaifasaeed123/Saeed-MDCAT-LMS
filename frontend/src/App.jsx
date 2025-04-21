@@ -1,63 +1,104 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Context Providers
 import { AuthProvider } from './context/AuthContext';
 
+// Layouts
+import DashboardLayout from './layouts/DashboardLayout';
+
 // Components
-import Navbar from './components/common/Navbar';
 import PrivateRoute from './components/common/PrivateRoute';
 import RoleBasedRoute from './components/common/RoleBasedRoute';
 import Loader from './components/common/Loader';
 
-// Pages
-import Home from './pages/Home.jsx';
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import Profile from './pages/Profile.jsx';
+// Public Pages
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
+
+// Dashboard Pages
+import Dashboard from './pages/Dashboard';
+import Profile from './pages/Profile';
 
 // Admin Pages
-import Users from './pages/admin/Users.jsx';
-import UserEdit from './pages/admin/UserEdit.jsx';
+import Users from './pages/admin/Users';
+import NewUser from './pages/admin/NewUser';
+import EditUser from './pages/admin/EditUser';
+import OAuthCallback from './pages/OAuthCallback';
 
-// CSS
-import './App.css';
+function AppContent() {
+  return (
+    <Router>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/oauth-callback" element={<OAuthCallback />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        
+        {/* Protected Routes with Dashboard Layout */}
+        <Route element={<PrivateRoute />}>
+          <Route
+            path="/dashboard"
+            element={
+              <DashboardLayout>
+                <Dashboard />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <DashboardLayout>
+                <Profile />
+              </DashboardLayout>
+            }
+          />
+          
+          {/* Admin Routes */}
+          <Route element={<RoleBasedRoute allowedRoles={['admin']} />}>
+            <Route
+              path="/admin/users"
+              element={
+                <DashboardLayout>
+                  <Users />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/admin/users/new"
+              element={
+                <DashboardLayout>
+                  <NewUser />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/admin/users/:id"
+              element={
+                <DashboardLayout>
+                  <EditUser />
+                </DashboardLayout>
+              }
+            />
+          </Route>
+        </Route>
+        
+        {/* 404 Route */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+      <ToastContainer position="top-right" autoClose={3000} />
+    </Router>
+  );
+}
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="app">
-          <Navbar />
-          <main className="main-content">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              
-              {/* Protected Routes */}
-              <Route element={<PrivateRoute />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/profile" element={<Profile />} />
-              </Route>
-              
-              {/* Admin Routes */}
-              <Route element={<RoleBasedRoute allowedRoles={['admin']} />}>
-                <Route path="/admin/users" element={<Users />} />
-                <Route path="/admin/users/:id" element={<UserEdit />} />
-              </Route>
-              
-              {/* 404 Route */}
-              <Route path="*" element={<div>Page Not Found</div>} />
-            </Routes>
-          </main>
-        </div>
-        <ToastContainer position="top-right" autoClose={3000} />
-      </Router>
+      <AppContent />
     </AuthProvider>
   );
 }

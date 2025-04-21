@@ -1,12 +1,13 @@
+// src/pages/admin/EditUser.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
-import { getUserById, updateUser, createUser } from '../../services/userService';
+import { getUserById, updateUser } from '../../services/userService';
 
-// Validation schema for creating/editing users
-const UserSchema = Yup.object().shape({
+// Validation schema for editing users
+const EditUserSchema = Yup.object().shape({
   fullName: Yup.string()
     .required('Full name is required')
     .max(50, 'Full name cannot be more than 50 characters'),
@@ -20,73 +21,53 @@ const UserSchema = Yup.object().shape({
     .required('Role is required')
     .oneOf(['student', 'teacher', 'admin'], 'Invalid role'),
   password: Yup.string()
-    .when('isNewUser', {
-      is: true,
-      then: Yup.string()
-        .required('Password is required')
-        .min(6, 'Password must be at least 6 characters'),
-      otherwise: Yup.string()
-        .min(6, 'Password must be at least 6 characters')
-        .nullable(),
-    }),
+    .min(6, 'If provided, password must be at least 6 characters')
+    .nullable(),
 });
 
-const UserEdit = () => {
+const EditUser = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isNewUser = id === 'new';
   
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(!isNewUser);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Fetch user data if editing existing user
+  // Fetch user data on component mount
   useEffect(() => {
-    if (!isNewUser) {
-      fetchUser();
-    }
-  }, [id]);
-  
-  const fetchUser = async () => {
-    try {
-      setLoading(true);
-      const response = await getUserById(id);
-      
-      if (response.success) {
-        setUser(response.data);
+    const fetchUser = async () => {
+      try {
+        setLoading(true);
+        const response = await getUserById(id);
+        
+        if (response.success) {
+          setUser(response.data);
+        } else {
+          setError('Failed to fetch user data');
+          toast.error('Failed to fetch user data');
+        }
+      } catch (error) {
+        setError(error.response?.data?.message || 'Failed to fetch user');
+        toast.error('Failed to fetch user');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      setError(error.response?.data?.message || 'Failed to fetch user');
-      toast.error('Failed to fetch user');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
+    fetchUser();
+  }, [id]);
   
   // Handle form submission
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      let response;
-      
-      if (isNewUser) {
-        response = await createUser(values);
-        toast.success('User created successfully');
-      } else {
-        // If password is empty, remove it from the request
-        if (!values.password) {
-          const { password, ...userData } = values;
-          response = await updateUser(id, userData);
-        } else {
-          response = await updateUser(id, values);
-        }
-        toast.success('User updated successfully');
-      }
+      const response = await updateUser(id, values);
       
       if (response.success) {
+        toast.success('User updated successfully');
         navigate('/admin/users');
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to save user');
+      toast.error(error.response?.data?.message || 'Failed to update user');
     } finally {
       setSubmitting(false);
     }
@@ -100,36 +81,31 @@ const UserEdit = () => {
     return <div className="error-message">{error}</div>;
   }
   
-  // Initial form values
-  const initialValues = isNewUser
-    ? {
-        fullName: '',
-        email: '',
-        contactNumber: '',
-        role: 'student',
-        password: '',
-        isNewUser: true,
-      }
-    : {
-        fullName: user?.fullName || '',
-        email: user?.email || '',
-        contactNumber: user?.contactNumber || '',
-        role: user?.role || 'student',
-        password: '',
-        isNewUser: false,
-      };
+  if (!user) {
+    return <div className="error-message">User not found</div>;
+  }
+  
+  // Initial form values from user data
+  const initialValues = {
+    fullName: user.fullName || '',
+    email: user.email || '',
+    contactNumber: user.contactNumber || '',
+    role: user.role || 'student',
+    password: '', // Empty password field for existing users
+  };
   
   return (
-    <div className="user-edit-page">
+    <div className="edit-user-page">
       <div className="page-header">
-        <h1>{isNewUser ? 'Create New User' : 'Edit User'}</h1>
+        <h1>Edit User</h1>
       </div>
       
       <div className="user-form-container">
         <Formik
           initialValues={initialValues}
-          validationSchema={UserSchema}
+          validationSchema={EditUserSchema}
           onSubmit={handleSubmit}
+          enableReinitialize
         >
           {({ isSubmitting }) => (
             <Form className="user-form">
@@ -162,16 +138,17 @@ const UserEdit = () => {
               </div>
               
               <div className="form-group">
-                <label htmlFor="password">
-                  {isNewUser ? 'Password' : 'Password (Leave empty to keep current)'}
-                </label>
+                <label htmlFor="password">Password (Leave empty to keep current)</label>
                 <Field type="password" name="password" id="password" className="form-control" />
                 <ErrorMessage name="password" component="div" className="error-text" />
+                <small className="form-text text-muted">
+                  Only enter a password if you want to change it.
+                </small>
               </div>
               
               <div className="form-buttons">
                 <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving...' : 'Save User'}
+                  {isSubmitting ? 'Updating...' : 'Update User'}
                 </button>
                 <button
                   type="button"
@@ -190,4 +167,4 @@ const UserEdit = () => {
   );
 };
 
-export default UserEdit;
+export default EditUser;

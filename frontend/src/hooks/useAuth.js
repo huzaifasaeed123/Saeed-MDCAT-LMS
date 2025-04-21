@@ -63,6 +63,7 @@ const useAuth = () => {
   
   return {
     user,
+    updateUser, 
     loading,
     error,
     login,

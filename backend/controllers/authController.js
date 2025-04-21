@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
-
+const jwt = require('jsonwebtoken');              // ← add this
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -33,7 +33,7 @@ exports.register = async (req, res) => {
       email,
       contactNumber,
       password,
-      role: role || 'student'  // Default to student if not specified
+      role: 'student'  // Default to student if not specified
     });
 
     // Generate token and send response
@@ -99,8 +99,20 @@ exports.login = async (req, res) => {
 // @access  Public
 exports.googleCallback = async (req, res) => {
   try {
+    user=req.user
     // Handled by passport, this is just the callback after successful auth
-    await sendTokenResponse(req.user, 200, res);
+    // await sendTokenResponse(req.user, 200, res);
+
+    const accessToken = user.getSignedAccessToken();
+    const refreshToken = user.getSignedRefreshToken();
+  
+    // Save user with refresh token
+    await user.save();
+
+  
+    // Set cookies
+    sendTokenCookies(accessToken, refreshToken, res);
+    res.redirect(`${process.env.FRONTEND_URL}/oauth-callback?token=${accessToken}`);
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -243,7 +255,7 @@ exports.getMe = async (req, res) => {
 const sendTokenCookies = (accessToken, refreshToken, res) => {
   // Access token cookie - short lived
   const accessOptions = {
-    expires: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+    expires: new Date(Date.now() + 5 * 60 * 1000), // 1 hour
     httpOnly: true,
      // sameSite: 'Strict',  // <== This prevents CSRF  Use only when both frontend and backend server is on same domain and port,domain can be subdomain
     //  secure: true,  //When deploy on server on same domain
@@ -290,6 +302,7 @@ const sendTokenResponse = async (user, statusCode, res) => {
       id: user._id,
       fullName: user.fullName,
       email: user.email,
+      contactNumber: user.contactNumber || "", // Make sure this is included
       role: user.role
     }
   });

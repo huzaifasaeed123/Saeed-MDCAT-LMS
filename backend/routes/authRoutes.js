@@ -17,7 +17,12 @@ const router = express.Router();
 const registerValidation = [
   check('fullName', 'Full name is required').not().isEmpty(),
   check('email', 'Please include a valid email').isEmail(),
-  check('contactNumber', 'Please include a valid contact number').matches(/^\+?[0-9]{10,14}$/),
+  check('contactNumber')
+  // ↳ skip if undefined, null, or empty string:
+  .optional({ nullable: true, checkFalsy: true })
+  // ↳ otherwise enforce your regex:
+  .matches(/^\+?[0-9]{10,14}$/)
+  .withMessage('Please include a valid contact number'),
   check('password', 'Password must be at least 6 characters').isLength({ min: 6 })
 ];
 
