@@ -1,0 +1,287 @@
+// Place this file in: components/MCQs/MCQForm.js
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import apiClient from '../../utils/apiClient';
+import RichTextEditor from '../common/RichTextEditor';
+
+const MCQForm = () => {
+  const navigate = useNavigate();
+  const { testId, mcqId } = useParams();
+  const [test, setTest] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  const [formData, setFormData] = useState({
+    questionText: '',
+    options: [
+      { optionLetter: 'A', optionText: '', isCorrect: false },
+      { optionLetter: 'B', optionText: '', isCorrect: false },
+      { optionLetter: 'C', optionText: '', isCorrect: false },
+      { optionLetter: 'D', optionText: '', isCorrect: false },
+    ],
+    explanationText: '',
+    category: '',
+    session: '',
+    subject: '',
+    unit: '',
+    topic: '',
+    subTopic: ''
+  });
+
+  useEffect(() => {
+    fetchTestDetails();
+    if (mcqId) {
+      fetchMCQ();
+    }
+  }, [testId, mcqId]);
+
+  const fetchTestDetails = async () => {
+    try {
+      const response = await apiClient.get(`/tests/${testId}`);
+      const testData = response.data.data;
+      setTest(testData);
+      
+      // Pre-fill test details
+      setFormData(prev => ({
+        ...prev,
+        session: testData.session,
+        subject: testData.subject,
+        unit: testData.unit,
+        topic: testData.topic,
+        subTopic: testData.subTopic
+      }));
+    } catch (error) {
+      console.error('Error fetching test details:', error);
+    }
+  };
+
+  const fetchMCQ = async () => {
+    try {
+      const response = await apiClient.get(`/mcqs/${mcqId}`);
+      const mcqData = response.data.data;
+      setFormData({
+        ...mcqData,
+        options: mcqData.options.map(opt => ({
+          ...opt,
+          optionLetter: opt.optionLetter || 'A'
+        }))
+      });
+    } catch (error) {
+      console.error('Error fetching MCQ:', error);
+      setError('Failed to load MCQ data');
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const submitData = {
+        ...formData,
+        testId: testId
+      };
+
+      if (mcqId) {
+        await apiClient.put(`/mcqs/${mcqId}`, submitData);
+      } else {
+        await apiClient.post('/mcqs', submitData);
+      }
+      navigate(`/tests/${testId}`);
+    } catch (error) {
+      console.error('Error saving MCQ:', error);
+      setError(error.response?.data?.message || 'Failed to save MCQ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOptionChange = (index, field, value) => {
+    const newOptions = [...formData.options];
+    newOptions[index] = { ...newOptions[index], [field]: value };
+    
+    // If setting this option as correct, unset others
+    if (field === 'isCorrect' && value === true) {
+      newOptions.forEach((option, i) => {
+        if (i !== index) option.isCorrect = false;
+      });
+    }
+    
+    setFormData({ ...formData, options: newOptions });
+  };
+
+  const addOption = () => {
+    if (formData.options.length < 5) {
+      const nextLetter = String.fromCharCode(65 + formData.options.length);
+      setFormData({
+        ...formData,
+        options: [
+          ...formData.options,
+          { optionLetter: nextLetter, optionText: '', isCorrect: false }
+        ]
+      });
+    }
+  };
+
+  const removeOption = (index) => {
+    if (formData.options.length > 2) {
+      const newOptions = formData.options.filter((_, i) => i !== index);
+      // Reorder option letters
+      newOptions.forEach((option, i) => {
+        option.optionLetter = String.fromCharCode(65 + i);
+      });
+      setFormData({ ...formData, options: newOptions });
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6">
+          {mcqId ? 'Edit Question' : 'Add Question'}
+        </h1>
+
+        {test && (
+          <div className="bg-blue-50 p-4 rounded-lg mb-6">
+            <h2 className="font-semibold">Test: {test.title}</h2>
+            <p className="text-sm text-gray-600">
+              {test.subject} - {test.unit} - {test.topic}
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6">
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Question Text
+            </label>
+            <RichTextEditor
+              value={formData.questionText}
+              onChange={(value) => setFormData({ ...formData, questionText: value })}
+              placeholder="Enter your question here..."
+            />
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Options
+            </label>
+            <div className="space-y-4">
+              {formData.options.map((option, index) => (
+                <div key={index} className="flex items-start space-x-4 p-4 border rounded-lg">
+                  <div className="flex-shrink-0">
+                    <span className="font-semibold text-lg">{option.optionLetter}.</span>
+                  </div>
+                  
+                  <div className="flex-grow">
+                    <RichTextEditor
+                      value={option.optionText}
+                      onChange={(value) => handleOptionChange(index, 'optionText', value)}
+                      placeholder={`Option ${option.optionLetter} text...`}
+                      minimal={true}
+                    />
+                  </div>
+                  
+                  <div className="flex-shrink-0 space-x-2">
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        checked={option.isCorrect}
+                        onChange={() => handleOptionChange(index, 'isCorrect', true)}
+                        className="form-radio text-green-500"
+                      />
+                      <span className="ml-2">Correct</span>
+                    </label>
+                    
+                    {formData.options.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => removeOption(index)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {formData.options.length < 5 && (
+              <button
+                type="button"
+                onClick={addOption}
+                className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg"
+              >
+                Add Option
+              </button>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Explanation (Optional)
+            </label>
+            <RichTextEditor
+              value={formData.explanationText}
+              onChange={(value) => setFormData({ ...formData, explanationText: value })}
+              placeholder="Provide an explanation for the correct answer..."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                Category
+              </label>
+              <input
+                type="text"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">
+                Sub-Topic
+              </label>
+              <input
+                type="text"
+                value={formData.subTopic}
+                onChange={(e) => setFormData({ ...formData, subTopic: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => navigate(`/tests/${testId}`)}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg mr-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+            >
+              {loading ? 'Saving...' : 'Save Question'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default MCQForm;

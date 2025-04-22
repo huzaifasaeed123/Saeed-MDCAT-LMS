@@ -16,6 +16,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const mcqRoutes = require('./routes/mcqRoutes');
 const testRoutes = require('./routes/testRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
@@ -53,6 +54,7 @@ if (process.env.NODE_ENV === 'development') {
 
 // Initialize Passport
 app.use(passport.initialize());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Mount routers
 app.use('/api/auth', authRoutes);
@@ -60,7 +62,7 @@ app.use('/api/users', userRoutes);
 // Add these routes after your other route declarations
 app.use('/api/mcqs', mcqRoutes);
 app.use('/api/tests', testRoutes);
-
+app.use('/api', uploadRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });
