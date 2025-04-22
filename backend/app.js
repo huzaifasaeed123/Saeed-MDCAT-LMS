@@ -14,6 +14,8 @@ const errorHandler = require('./utils/errorHandler');
 // Route files
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
+const mcqRoutes = require('./routes/mcqRoutes');
+const testRoutes = require('./routes/testRoutes');
 
 const app = express();
 
@@ -55,6 +57,9 @@ app.use(passport.initialize());
 // Mount routers
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+// Add these routes after your other route declarations
+app.use('/api/mcqs', mcqRoutes);
+app.use('/api/tests', testRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
