@@ -1,4 +1,3 @@
-// App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
@@ -28,20 +27,13 @@ import Profile from './pages/Profile';
 import Users from './pages/admin/Users';
 import NewUser from './pages/admin/NewUser';
 import EditUser from './pages/admin/EditUser';
-import GoogleOneTap from './components/auth/GoogleOneTap';
+import GoogleOneTap from './components/auth/GoogleOneTap';  // Add this import
 
-// Test & MCQ Pages
-import TestList from './components/Tests/TestList';
-import TestForm from './components/Tests/TestForm';
-import TestDetail from './components/Tests/TestDetail';
-import MCQForm from './components/MCQs/MCQForm';
 
 function AppContent() {
   return (
     <Router>
-      {/* Add One Tap component here */}
-      <GoogleOneTap />
-      
+      <GoogleOneTap /> {/* Add One Tap component here */}
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
@@ -50,46 +42,56 @@ function AppContent() {
         
         {/* Protected Routes with Dashboard Layout */}
         <Route element={<PrivateRoute />}>
-          <Route element={<DashboardLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-            
-            {/* Test Routes - View only for users */}
-            <Route path="/tests" element={<TestList />} />
-            <Route path="/tests/:id" element={<TestDetail />} />
-            
-            {/* Test Routes - Create, Edit, Delete for admin and teacher only */}
-            <Route element={<RoleBasedRoute roles={['admin', 'teacher']} />}>
-              <Route path="/tests/create" element={<TestForm />} />
-              <Route path="/tests/:id/edit" element={<TestForm />} />
-              <Route path="/tests/:testId/mcqs/create" element={<MCQForm />} />
-              <Route path="/tests/:testId/mcqs/:mcqId/edit" element={<MCQForm />} />
-            </Route>
-            
-            {/* Admin Routes */}
-            <Route element={<RoleBasedRoute roles={['admin']} />}>
-              <Route path="/admin/users" element={<Users />} />
-              <Route path="/admin/users/new" element={<NewUser />} />
-              <Route path="/admin/users/:id/edit" element={<EditUser />} />
-            </Route>
+          <Route
+            path="/dashboard"
+            element={
+              <DashboardLayout>
+                <Dashboard />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <DashboardLayout>
+                <Profile />
+              </DashboardLayout>
+            }
+          />
+          
+          {/* Admin Routes */}
+          <Route element={<RoleBasedRoute allowedRoles={['admin']} />}>
+            <Route
+              path="/admin/users"
+              element={
+                <DashboardLayout>
+                  <Users />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/admin/users/new"
+              element={
+                <DashboardLayout>
+                  <NewUser />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/admin/users/:id"
+              element={
+                <DashboardLayout>
+                  <EditUser />
+                </DashboardLayout>
+              }
+            />
           </Route>
         </Route>
         
         {/* 404 Route */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-      
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-      />
+      <ToastContainer position="top-right" autoClose={3000} />
     </Router>
   );
 }

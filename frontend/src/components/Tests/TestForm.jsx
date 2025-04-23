@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import apiClient from '../../utils/apiClient';
+import apiClient from '../../utils/axiosConfig';
 
 const TestForm = () => {
   const navigate = useNavigate();

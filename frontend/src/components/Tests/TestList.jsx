@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import apiClient from '../../utils/apiClient';
+import apiClient from '../../utils/axiosConfig';
 import { FaEdit, FaTrash, FaEye, FaPlus } from 'react-icons/fa';
 
 const TestList = () => {

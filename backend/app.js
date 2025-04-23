@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const passport = require('./config/passport');
 const errorHandler = require('./utils/errorHandler');
+const path = require('path');
 
 // Load env vars
 // dotenv.config();
