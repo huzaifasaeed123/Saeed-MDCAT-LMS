@@ -43,11 +43,23 @@ app.use((req, res, next) => {
 });
 
 // CORS
+// Apply CORS globally for API routes (keep this!)
 app.use(cors({
-  origin: 'http://localhost:5173', // Update with your frontend URL
+  origin: 'http://localhost:5173',
   credentials: true
 }));
 
+
+// ✅ ALSO apply CORS specifically to static image route:
+app.use(
+  '/uploads',
+  cors({ origin: 'http://localhost:5173' }),
+  express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, path) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
+  })
+);
 // Dev logging middleware
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
@@ -55,7 +67,6 @@ if (process.env.NODE_ENV === 'development') {
 
 // Initialize Passport
 app.use(passport.initialize());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Mount routers
 app.use('/api/auth', authRoutes);

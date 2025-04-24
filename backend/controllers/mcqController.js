@@ -5,10 +5,11 @@ const Test = require('../models/TestModel');
 
 // Create new MCQ
 exports.createMCQ = async (req, res) => {
+  // console.log(req.user)
   try {
     const mcqData = {
       ...req.body,
-      author: req.user.name,
+      author: req.user.fullName,
     };
 
     const mcq = await MCQ.create(mcqData);
@@ -94,7 +95,7 @@ exports.updateMCQ = async (req, res) => {
     }
     
     // Only allow author to update
-    // if (mcq.author !== req.user.name && req.user.role !== 'admin') {
+    // if (mcq.author !== req.user.fullName && req.user.role !== 'admin') {
     //   return res.status(403).json({
     //     success: false,
     //     message: 'Not authorized to update this MCQ'
@@ -135,7 +136,7 @@ exports.deleteMCQ = async (req, res) => {
     }
     
     // // Only allow author to delete
-    // if (mcq.author !== req.user.name && req.user.role !== 'admin') {
+    // if (mcq.author !== req.user.fullName && req.user.role !== 'admin') {
     //   return res.status(403).json({
     //     success: false,
     //     message: 'Not authorized to delete this MCQ'

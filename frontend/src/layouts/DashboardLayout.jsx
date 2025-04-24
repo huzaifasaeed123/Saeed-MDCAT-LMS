@@ -1,7 +1,7 @@
 // src/layouts/DashboardLayout.jsx
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2 } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare } from 'react-icons/fi';
 import useAuth from '../hooks/useAuth';
 
 const DashboardLayout = ({ children }) => {
@@ -48,9 +48,9 @@ const DashboardLayout = ({ children }) => {
     });
     
     navigationItems.push({
-      name: 'MCQs Management',
-      icon: <FiFileText className="w-5 h-5" />,
-      path: '/admin/mcqs',
+      name: 'Tests & MCQs',
+      icon: <FiCheckSquare className="w-5 h-5" />,
+      path: '/tests',
     });
     
     navigationItems.push({
@@ -69,9 +69,9 @@ const DashboardLayout = ({ children }) => {
     });
     
     navigationItems.push({
-      name: 'MCQs Management',
-      icon: <FiFileText className="w-5 h-5" />,
-      path: '/teacher/mcqs',
+      name: 'Tests & MCQs',
+      icon: <FiCheckSquare className="w-5 h-5" />,
+      path: '/tests',
     });
   }
   
@@ -144,13 +144,13 @@ const DashboardLayout = ({ children }) => {
               key={item.name}
               to={item.path}
               className={`flex items-center px-4 py-3 text-sm font-medium rounded-md group ${
-                location.pathname === item.path
+                location.pathname === item.path || location.pathname.startsWith(item.path + '/')
                   ? 'bg-primary-50 text-primary-700'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               <div className={`mr-3 ${
-                location.pathname === item.path
+                location.pathname === item.path || location.pathname.startsWith(item.path + '/')
                   ? 'text-primary-700'
                   : 'text-gray-500 group-hover:text-gray-700'
               }`}>

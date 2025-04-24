@@ -27,13 +27,18 @@ import Profile from './pages/Profile';
 import Users from './pages/admin/Users';
 import NewUser from './pages/admin/NewUser';
 import EditUser from './pages/admin/EditUser';
-import GoogleOneTap from './components/auth/GoogleOneTap';  // Add this import
+import GoogleOneTap from './components/auth/GoogleOneTap';
 
+// Test Management Components
+import TestList from './components/Tests/TestList';
+import TestForm from './components/Tests/TestForm';
+import TestDetail from './components/Tests/TestDetail';
+import MCQForm from './components/MCQs/MCQForm';
 
 function AppContent() {
   return (
     <Router>
-      <GoogleOneTap /> {/* Add One Tap component here */}
+      <GoogleOneTap />
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
@@ -82,6 +87,61 @@ function AppContent() {
               element={
                 <DashboardLayout>
                   <EditUser />
+                </DashboardLayout>
+              }
+            />
+          </Route>
+
+          {/* Test Management Routes - For Admin and Teachers */}
+          <Route element={<RoleBasedRoute allowedRoles={['admin', 'teacher']} />}>
+            {/* Test Routes */}
+            <Route
+              path="/tests"
+              element={
+                <DashboardLayout>
+                  <TestList />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/tests/create"
+              element={
+                <DashboardLayout>
+                  <TestForm />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/tests/:id"
+              element={
+                <DashboardLayout>
+                  <TestDetail />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/tests/:id/edit"
+              element={
+                <DashboardLayout>
+                  <TestForm />
+                </DashboardLayout>
+              }
+            />
+            
+            {/* MCQ Routes */}
+            <Route
+              path="/tests/:testId/mcqs/create"
+              element={
+                <DashboardLayout>
+                  <MCQForm />
+                </DashboardLayout>
+              }
+            />
+            <Route
+              path="/tests/:testId/mcqs/:mcqId/edit"
+              element={
+                <DashboardLayout>
+                  <MCQForm />
                 </DashboardLayout>
               }
             />

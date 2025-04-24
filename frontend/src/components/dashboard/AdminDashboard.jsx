@@ -6,80 +6,72 @@ const AdminDashboard = () => {
   const { user } = useAuth();
   
   return (
-    <div className="admin-dashboard">
-      <div className="dashboard-welcome">
-        <h2>Admin Dashboard</h2>
-        <p>Welcome, {user?.fullName}! Manage all aspects of the system here.</p>
+    <div className="space-y-6">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-800">Admin Dashboard</h2>
+        <p className="text-gray-600">Welcome, {user?.fullName}! Manage all aspects of the system here.</p>
       </div>
       
-      <div className="dashboard-cards">
-        <div className="dashboard-card">
-          <div className="card-icon">👥</div>
-          <div className="card-content">
-            <h3>User Management</h3>
-            <p>Manage students, teachers, and admins</p>
-            <Link to="/admin/users" className="btn btn-sm">
-              Manage Users
-            </Link>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 p-6">
+          <div className="text-3xl mb-4">👥</div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">User Management</h3>
+          <p className="text-gray-600 mb-4">Manage students, teachers, and admins</p>
+          <Link to="/admin/users" className="btn btn-primary btn-sm">
+            Manage Users
+          </Link>
         </div>
         
-        <div className="dashboard-card">
-          <div className="card-icon">📚</div>
-          <div className="card-content">
-            <h3>Course Management</h3>
-            <p>Create and manage courses and content</p>
-            <Link to="/admin/courses" className="btn btn-sm">
-              Manage Courses
-            </Link>
-          </div>
+        <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 p-6">
+          <div className="text-3xl mb-4">📚</div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">Course Management</h3>
+          <p className="text-gray-600 mb-4">Create and manage courses and content</p>
+          <Link to="/admin/courses" className="btn btn-primary btn-sm">
+            Manage Courses
+          </Link>
         </div>
         
-        <div className="dashboard-card">
-          <div className="card-icon">📝</div>
-          <div className="card-content">
-            <h3>MCQs Management</h3>
-            <p>Upload and manage MCQs for tests</p>
-            <Link to="/admin/mcqs" className="btn btn-sm">
-              Manage MCQs
-            </Link>
-          </div>
+        <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 p-6">
+          <div className="text-3xl mb-4">📝</div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">Tests & MCQs</h3>
+          <p className="text-gray-600 mb-4">Create and manage tests and questions</p>
+          <Link to="/tests" className="btn btn-primary btn-sm">
+            Manage Tests
+          </Link>
         </div>
         
-        <div className="dashboard-card">
-          <div className="card-icon">📊</div>
-          <div className="card-content">
-            <h3>System Analytics</h3>
-            <p>View platform usage statistics</p>
-            <Link to="/admin/analytics" className="btn btn-sm">
-              View Analytics
-            </Link>
-          </div>
+        <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 p-6">
+          <div className="text-3xl mb-4">📊</div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">System Analytics</h3>
+          <p className="text-gray-600 mb-4">View platform usage statistics</p>
+          <Link to="/admin/analytics" className="btn btn-primary btn-sm">
+            View Analytics
+          </Link>
         </div>
       </div>
       
-      <div className="dashboard-summary">
-        <h3>System Summary</h3>
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">System Summary</h3>
         
-        <div className="summary-stats">
-          <div className="stat-card">
-            <h4>Total Users</h4>
-            <p className="stat-number">0</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm text-gray-500 mb-1">Total Users</h4>
+            <p className="text-2xl font-bold text-primary-600">0</p>
           </div>
           
-          <div className="stat-card">
-            <h4>Active Courses</h4>
-            <p className="stat-number">0</p>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm text-gray-500 mb-1">Active Courses</h4>
+            <p className="text-2xl font-bold text-primary-600">0</p>
           </div>
           
-          <div className="stat-card">
-            <h4>Total MCQs</h4>
-            <p className="stat-number">0</p>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm text-gray-500 mb-1">Total MCQs</h4>
+            <p className="text-2xl font-bold text-primary-600">0</p>
           </div>
           
-          <div className="stat-card">
-            <h4>System Uptime</h4>
-            <p className="stat-number">100%</p>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm text-gray-500 mb-1">System Uptime</h4>
+            <p className="text-2xl font-bold text-primary-600">100%</p>
           </div>
         </div>
       </div>

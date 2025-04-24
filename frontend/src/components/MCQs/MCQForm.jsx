@@ -1,15 +1,17 @@
-// Place this file in: components/MCQs/MCQForm.js
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../utils/axiosConfig';
 import RichTextEditor from '../common/RichTextEditor';
+import useAuth from '../../hooks/useAuth';
+import { toast } from 'react-toastify';
 
 const MCQForm = () => {
   const navigate = useNavigate();
   const { testId, mcqId } = useParams();
+  const { user } = useAuth();
   const [test, setTest] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fetchingData, setFetchingData] = useState(true);
   const [error, setError] = useState('');
   
   const [formData, setFormData] = useState({
@@ -29,47 +31,98 @@ const MCQForm = () => {
     subTopic: ''
   });
 
+  // Debug output when component mounts or params change
   useEffect(() => {
-    fetchTestDetails();
-    if (mcqId) {
-      fetchMCQ();
-    }
+    console.log("Component mounted/updated with params:", { testId, mcqId });
+  }, [testId, mcqId]);
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setFetchingData(true);
+      await fetchTestDetails();
+      
+      if (mcqId) {
+        await fetchMCQ();
+      }
+      setFetchingData(false);
+    };
+    
+    loadInitialData();
   }, [testId, mcqId]);
 
   const fetchTestDetails = async () => {
     try {
       const response = await apiClient.get(`/tests/${testId}`);
       const testData = response.data.data;
+      console.log("Test data loaded:", testData);
       setTest(testData);
       
       // Pre-fill test details
       setFormData(prev => ({
         ...prev,
-        session: testData.session,
-        subject: testData.subject,
-        unit: testData.unit,
-        topic: testData.topic,
-        subTopic: testData.subTopic
+        session: testData.session || prev.session,
+        subject: testData.subject || prev.subject,
+        unit: testData.unit || prev.unit,
+        topic: testData.topic || prev.topic,
+        subTopic: testData.subTopic || prev.subTopic
       }));
     } catch (error) {
       console.error('Error fetching test details:', error);
+      toast.error('Failed to load test details');
     }
   };
 
   const fetchMCQ = async () => {
     try {
+      console.log("Fetching MCQ with ID:", mcqId);
       const response = await apiClient.get(`/mcqs/${mcqId}`);
-      const mcqData = response.data.data;
-      setFormData({
-        ...mcqData,
-        options: mcqData.options.map(opt => ({
-          ...opt,
-          optionLetter: opt.optionLetter || 'A'
-        }))
-      });
+      console.log("MCQ data response:", response.data);
+      
+      if (response.data.success && response.data.data) {
+        const mcqData = response.data.data;
+        
+        // Ensure we have options with the correct structure
+        let formattedOptions = [];
+        if (Array.isArray(mcqData.options) && mcqData.options.length > 0) {
+          formattedOptions = mcqData.options.map(opt => ({
+            _id: opt._id,
+            optionLetter: opt.optionLetter || '',
+            optionText: opt.optionText || '',
+            isCorrect: Boolean(opt.isCorrect),
+            explanationText: opt.explanationText || ''
+          }));
+        } else {
+          // Default options if none exist
+          formattedOptions = [
+            { optionLetter: 'A', optionText: '', isCorrect: false },
+            { optionLetter: 'B', optionText: '', isCorrect: false },
+            { optionLetter: 'C', optionText: '', isCorrect: false },
+            { optionLetter: 'D', optionText: '', isCorrect: false },
+          ];
+        }
+        
+        // Update form data
+        setFormData({
+          questionText: mcqData.questionText || '',
+          options: formattedOptions,
+          explanationText: mcqData.explanationText || '',
+          category: mcqData.category || '',
+          session: mcqData.session || '',
+          subject: mcqData.subject || '',
+          unit: mcqData.unit || '',
+          topic: mcqData.topic || '',
+          subTopic: mcqData.subTopic || ''
+        });
+
+        console.log("Form data set for editing:", formData);
+      } else {
+        setError('Failed to load MCQ data - Invalid response format');
+        console.error('Invalid MCQ data format:', response.data);
+      }
     } catch (error) {
       console.error('Error fetching MCQ:', error);
-      setError('Failed to load MCQ data');
+      setError(error.response?.data?.message || 'Failed to load MCQ data');
+      toast.error('Failed to load MCQ data');
     }
   };
 
@@ -81,18 +134,24 @@ const MCQForm = () => {
     try {
       const submitData = {
         ...formData,
-        testId: testId
+        testId: testId,
       };
+
+      console.log("Submitting MCQ data:", submitData);
 
       if (mcqId) {
         await apiClient.put(`/mcqs/${mcqId}`, submitData);
+        toast.success('MCQ updated successfully');
       } else {
         await apiClient.post('/mcqs', submitData);
+        toast.success('MCQ created successfully');
       }
       navigate(`/tests/${testId}`);
     } catch (error) {
       console.error('Error saving MCQ:', error);
+      console.error('Full error response:', error.response?.data);
       setError(error.response?.data?.message || 'Failed to save MCQ');
+      toast.error(error.response?.data?.message || 'Failed to save MCQ');
     } finally {
       setLoading(false);
     }
@@ -135,6 +194,15 @@ const MCQForm = () => {
       setFormData({ ...formData, options: newOptions });
     }
   };
+
+  if (fetchingData) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+        <span className="ml-3 text-gray-600">Loading MCQ data...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -246,7 +314,7 @@ const MCQForm = () => {
                 type="text"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
             <div>
@@ -257,7 +325,7 @@ const MCQForm = () => {
                 type="text"
                 value={formData.subTopic}
                 onChange={(e) => setFormData({ ...formData, subTopic: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -273,9 +341,9 @@ const MCQForm = () => {
             <button
               type="submit"
               disabled={loading}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg"
             >
-              {loading ? 'Saving...' : 'Save Question'}
+              {loading ? 'Saving...' : mcqId ? 'Update Question' : 'Save Question'}
             </button>
           </div>
         </form>

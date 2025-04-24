@@ -1,93 +1,39 @@
-// // Place this file in: components/common/RichTextEditor.js
-
-// import React, { useEffect, useRef } from 'react';
-// import { 
-//   BlockEditorProvider, 
-//   BlockCanvas, 
-//   WritingFlow, 
-//   ObserveTyping,
-//   BlockTools
-// } from '@wordpress/block-editor';
-// import { 
-//   getDefaultBlockName, 
-//   createBlock, 
-//   serialize, 
-//   parse 
-// } from '@wordpress/blocks';
-// import '@wordpress/block-library/build-style/style.css';
-// import '@wordpress/components/build-style/style.css';
-// import axios from 'axios';
-
-// const RichTextEditor = ({ value, onChange, placeholder, minimal = false }) => {
-//   const blocks = value ? parse(value) : [createBlock(getDefaultBlockName())];
-//   const ref = useRef(null);
-
-//   const settings = {
-//     mediaUpload: async ({ filesList, onFileChange }) => {
-//       try {
-//         const formData = new FormData();
-//         formData.append('image', filesList[0]);
-        
-//         // Use axios directly for image upload to send proper multipart/form-data
-//         const response = await axios.post(`${import.meta.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/upload-image`, formData, {
-//           headers: {
-//             'Content-Type': 'multipart/form-data',
-//             'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-//           }
-//         });
-        
-//         onFileChange([{
-//           id: response.data.id,
-//           url: response.data.url
-//         }]);
-//       } catch (error) {
-//         console.error('Error uploading image:', error);
-//       }
-//     }
-//   };
-
-//   const handleChange = (newBlocks) => {
-//     const html = serialize(newBlocks);
-//     onChange(html);
-//   };
-
-//   return (
-//     <div 
-//       className={`editor-wrapper border rounded-lg p-4 ${
-//         minimal ? 'min-h-[100px]' : 'min-h-[200px]'
-//       }`}
-//       ref={ref}
-//     >
-//       <BlockEditorProvider
-//         value={blocks}
-//         onInput={handleChange}
-//         onChange={handleChange}
-//         settings={settings}
-//       >
-//         <BlockTools>
-//           <WritingFlow>
-//             <ObserveTyping>
-//               <BlockCanvas height={minimal ? '100px' : '200px'} />
-//             </ObserveTyping>
-//           </WritingFlow>
-//         </BlockTools>
-//       </BlockEditorProvider>
-//     </div>
-//   );
-// };
-
-// export default RichTextEditor;
-
-
-// components/common/RichTextEditor.jsx
 import React from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
-import { FaBold, FaItalic, FaUnderline, FaListUl, FaListOl, FaImage, FaLink, FaUndo, FaRedo, FaHeading } from 'react-icons/fa';
+import Superscript from '@tiptap/extension-superscript';
+import Subscript from '@tiptap/extension-subscript';
+import { FaBold, FaItalic, FaUnderline, FaListUl, FaListOl, FaImage, FaLink, FaUndo, FaRedo, FaHeading, FaSuperscript, FaSubscript } from 'react-icons/fa';
 import apiClient from '../../utils/axiosConfig';
+
+// Helper function to get backend URL
+const getBackendUrl = () => {
+  return import.meta.env.BACKEND_URL || 'http://localhost:5000';
+};
+
+// Custom Image extension to handle relative URLs from backend
+const CustomImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      src: {
+        default: null,
+        renderHTML: attributes => {
+          // For HTML rendering, prepend the backend URL if the src is a relative path
+          if (attributes.src && attributes.src.startsWith('/')) {
+            return {
+              src: `${getBackendUrl()}${attributes.src}`
+            };
+          }
+          return { src: attributes.src };
+        },
+      },
+    };
+  },
+});
 
 const MenuBar = ({ editor }) => {
   if (!editor) {
@@ -112,6 +58,7 @@ const MenuBar = ({ editor }) => {
           });
 
           if (response.data.url) {
+            // Use the relative path returned from the backend
             editor.chain().focus().setImage({ src: response.data.url }).run();
           }
         } catch (error) {
@@ -155,6 +102,27 @@ const MenuBar = ({ editor }) => {
       >
         <FaUnderline className="w-4 h-4" />
       </button>
+      
+      {/* Add Superscript button */}
+      <button
+        onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('superscript') ? 'bg-gray-200' : ''}`}
+        type="button"
+        title="Superscript"
+      >
+        <FaSuperscript className="w-4 h-4" />
+      </button>
+      
+      {/* Add Subscript button */}
+      <button
+        onClick={() => editor.chain().focus().toggleSubscript().run()}
+        className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('subscript') ? 'bg-gray-200' : ''}`}
+        type="button"
+        title="Subscript"
+      >
+        <FaSubscript className="w-4 h-4" />
+      </button>
+      
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
       <button
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
@@ -225,7 +193,9 @@ const RichTextEditor = ({ value, onChange, placeholder, minimal = false }) => {
     extensions: [
       StarterKit,
       Underline,
-      Image.configure({
+      Superscript,
+      Subscript,
+      CustomImage.configure({
         HTMLAttributes: {
           class: 'max-w-full h-auto rounded-lg my-4',
         },
@@ -272,6 +242,7 @@ const RichTextEditor = ({ value, onChange, placeholder, minimal = false }) => {
                 });
 
                 if (response.data.url) {
+                  // Use the relative path
                   editor.chain().focus().setImage({ src: response.data.url }).run();
                 }
               } catch (error) {
