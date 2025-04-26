@@ -18,7 +18,7 @@ const userRoutes = require('./routes/userRoutes');
 const mcqRoutes = require('./routes/mcqRoutes');
 const testRoutes = require('./routes/testRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
-
+const userTestRoutes=require('./routes/userTestRoutes')
 const app = express();
 
 // Body parser
@@ -74,6 +74,7 @@ app.use('/api/users', userRoutes);
 // Add these routes after your other route declarations
 app.use('/api/mcqs', mcqRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/user-tests',userTestRoutes );
 app.use('/api', uploadRoutes);
 // Basic route
 app.get('/', (req, res) => {
