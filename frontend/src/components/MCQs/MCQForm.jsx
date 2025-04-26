@@ -3,10 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../utils/axiosConfig';
-import RichTextEditor from '../common/RichTextEditor';
 import useAuth from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
-import { FiInfo } from 'react-icons/fi';
+import MCQFormFields from './MCQFromStructure';
 
 const MCQForm = () => {
   const navigate = useNavigate();
@@ -44,6 +43,8 @@ const MCQForm = () => {
 
   // For statistics
   const [statistics, setStatistics] = useState(null);
+  // Current MCQ data (for editing)
+  const [currentMcq, setCurrentMcq] = useState(null);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -86,6 +87,7 @@ const MCQForm = () => {
       
       if (response.data.success && response.data.data) {
         const mcqData = response.data.data;
+        setCurrentMcq(mcqData);
         
         // Ensure we have options with the correct structure
         let formattedOptions = [];
@@ -208,12 +210,6 @@ const MCQForm = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  };
-
   if (fetchingData) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -239,57 +235,6 @@ const MCQForm = () => {
           </div>
         )}
 
-        {/* Revision Info for Existing MCQs */}
-        {mcqId && (
-          <div className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-200">
-            <div className="flex items-center mb-2">
-              <FiInfo className="text-blue-500 mr-2" />
-              <h3 className="font-medium">Revision Information</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Revision Count:</span> {revisionInfo.revisionCount}
-              </div>
-              <div>
-                <span className="font-medium">Last Revised:</span> {formatDate(revisionInfo.lastRevised)}
-              </div>
-              <div>
-                <span className="font-medium">Created:</span> {formatDate(formData.createdAt)}
-              </div>
-              <div>
-                <span className="font-medium">Author:</span> {formData.author || user?.fullName}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Statistics Section */}
-        {mcqId && statistics && (
-          <div className="bg-yellow-50 p-4 rounded-lg mb-6 border border-yellow-200">
-            <div className="flex items-center mb-2">
-              <FiInfo className="text-yellow-500 mr-2" />
-              <h3 className="font-medium">Student Performance Statistics</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {statistics.correctPercentage !== undefined && (
-                <div>
-                  <span className="font-medium">Correct Percentage:</span> {statistics.correctPercentage}%
-                </div>
-              )}
-              {statistics.recommendedDifficulty && (
-                <div>
-                  <span className="font-medium">Student-Based Difficulty:</span> {statistics.recommendedDifficulty}
-                </div>
-              )}
-              {statistics.lastUpdated && (
-                <div>
-                  <span className="font-medium">Statistics Last Updated:</span> {formatDate(statistics.lastUpdated)}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
             {error}
@@ -297,155 +242,18 @@ const MCQForm = () => {
         )}
 
         <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6">
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Question Text
-            </label>
-            <RichTextEditor
-              value={formData.questionText}
-              onChange={(value) => setFormData({ ...formData, questionText: value })}
-              placeholder="Enter your question here..."
-            />
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Options
-            </label>
-            <div className="space-y-4">
-              {formData.options.map((option, index) => (
-                <div key={index} className="flex items-start space-x-4 p-4 border rounded-lg">
-                  <div className="flex-shrink-0">
-                    <span className="font-semibold text-lg">{option.optionLetter}.</span>
-                  </div>
-                  
-                  <div className="flex-grow">
-                    <RichTextEditor
-                      value={option.optionText}
-                      onChange={(value) => handleOptionChange(index, 'optionText', value)}
-                      placeholder={`Option ${option.optionLetter} text...`}
-                      minimal={true}
-                    />
-                  </div>
-                  
-                  <div className="flex-shrink-0 space-x-2">
-                    <label className="inline-flex items-center">
-                      <input
-                        type="radio"
-                        checked={option.isCorrect}
-                        onChange={() => handleOptionChange(index, 'isCorrect', true)}
-                        className="form-radio text-green-500"
-                      />
-                      <span className="ml-2">Correct</span>
-                    </label>
-                    
-                    {formData.options.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => removeOption(index)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {formData.options.length < 5 && (
-              <button
-                type="button"
-                onClick={addOption}
-                className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg"
-              >
-                Add Option
-              </button>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Explanation (Optional)
-            </label>
-            <RichTextEditor
-              value={formData.explanationText}
-              onChange={(value) => setFormData({ ...formData, explanationText: value })}
-              placeholder="Provide an explanation for the correct answer..."
-            />
-          </div>
-
-          {/* New fields: Difficulty and Public/Private setting */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Difficulty Level
-              </label>
-              <select
-                value={formData.difficulty}
-                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Visibility
-              </label>
-              <div className="mt-2 space-x-4">
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    value="public"
-                    checked={formData.isPublic}
-                    onChange={() => setFormData({ ...formData, isPublic: true })}
-                    className="form-radio text-primary-500"
-                  />
-                  <span className="ml-2">Public</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    value="private"
-                    checked={!formData.isPublic}
-                    onChange={() => setFormData({ ...formData, isPublic: false })}
-                    className="form-radio text-primary-500"
-                  />
-                  <span className="ml-2">Private</span>
-                </label>
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Category
-              </label>
-              <input
-                type="text"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Sub-Topic
-              </label>
-              <input
-                type="text"
-                value={formData.subTopic}
-                onChange={(e) => setFormData({ ...formData, subTopic: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-            </div>
-          </div>
+          <MCQFormFields 
+            formData={formData}
+            setFormData={setFormData}
+            revisionInfo={revisionInfo}
+            statistics={statistics}
+            currentMcq={currentMcq}
+            user={user}
+            handleOptionChange={handleOptionChange}
+            addOption={addOption}
+            removeOption={removeOption}
+            readOnly={false}
+          />
 
           <div className="flex justify-end">
             <button

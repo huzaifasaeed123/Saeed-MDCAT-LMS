@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../utils/axiosConfig';
-import RichTextEditor from '../common/RichTextEditor';
 import useAuth from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
-import { FiInfo, FiChevronLeft, FiChevronRight, FiSave, FiX } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiSave, FiX } from 'react-icons/fi';
+import MCQFormFields from './MCQFromStructure';
 
 const SequentialMCQEditor = () => {
   const navigate = useNavigate();
@@ -24,6 +24,7 @@ const SequentialMCQEditor = () => {
   const [totalMcqs, setTotalMcqs] = useState(0);
   const [formLoaded, setFormLoaded] = useState(false);
 
+  // Default form state
   const [formData, setFormData] = useState({
     questionText: '',
     options: [
@@ -70,10 +71,8 @@ const SequentialMCQEditor = () => {
       setLoading(true);
       setFormLoaded(false);
       try {
-        await Promise.all([
-          fetchTestDetails(),
-          fetchAllMCQs()
-        ]);
+        await fetchTestDetails();
+        await fetchAllMCQs();
       } catch (error) {
         console.error('Error loading initial data:', error);
         toast.error('Failed to load test data');
@@ -81,6 +80,7 @@ const SequentialMCQEditor = () => {
     };
     
     loadInitialData();
+    // Don't return anything from this effect
   }, [testId]);
 
   // Load current MCQ data when the MCQ list or current index changes
@@ -167,7 +167,6 @@ const SequentialMCQEditor = () => {
   const loadMcqData = (mcq) => {
     if (!mcq) return;
 
-    console.log("Loading MCQ data:", mcq); // Debug log
     setCurrentMcq(mcq);
     
     // Ensure we have options with the correct structure
@@ -205,7 +204,6 @@ const SequentialMCQEditor = () => {
       isPublic: mcq.isPublic !== undefined ? mcq.isPublic : true,
     };
     
-    console.log("Setting form data:", newFormData); // Debug log
     setFormData(newFormData);
 
     // Set revision info
@@ -236,8 +234,6 @@ const SequentialMCQEditor = () => {
         ...formData,
         testId: testId,
       };
-
-      console.log("Submitting data:", submitData); // Debug log
 
       await apiClient.put(`/mcqs/${currentMcq._id}`, submitData);
       
@@ -331,12 +327,6 @@ const SequentialMCQEditor = () => {
       });
       setFormData({ ...formData, options: newOptions });
     }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
   };
 
   if (loading) {
@@ -447,228 +437,26 @@ const SequentialMCQEditor = () => {
           </div>
         )}
 
-        {/* Revision Info for Existing MCQs */}
-        {currentMcq && (
-          <div className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-200">
-            <div className="flex items-center mb-2">
-              <FiInfo className="text-blue-500 mr-2" />
-              <h3 className="font-medium">Revision Information</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Revision Count:</span> {revisionInfo.revisionCount}
-              </div>
-              <div>
-                <span className="font-medium">Last Revised:</span> {formatDate(revisionInfo.lastRevised)}
-              </div>
-              <div>
-                <span className="font-medium">Created:</span> {formatDate(currentMcq.createdAt)}
-              </div>
-              <div>
-                <span className="font-medium">Author:</span> {currentMcq.author || user?.fullName}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Statistics Section */}
-        {currentMcq && statistics && (
-          <div className="bg-yellow-50 p-4 rounded-lg mb-6 border border-yellow-200">
-            <div className="flex items-center mb-2">
-              <FiInfo className="text-yellow-500 mr-2" />
-              <h3 className="font-medium">Student Performance Statistics</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {statistics.correctPercentage !== undefined && (
-                <div>
-                  <span className="font-medium">Correct Percentage:</span> {statistics.correctPercentage}%
-                </div>
-              )}
-              {statistics.recommendedDifficulty && (
-                <div>
-                  <span className="font-medium">Student-Based Difficulty:</span> {statistics.recommendedDifficulty}
-                </div>
-              )}
-              {statistics.lastUpdated && (
-                <div>
-                  <span className="font-medium">Statistics Last Updated:</span> {formatDate(statistics.lastUpdated)}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
             {error}
           </div>
         )}
 
-        <form className="bg-white shadow-md rounded-lg p-6">
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Question Text
-            </label>
-            <RichTextEditor
-              key={`question-${currentMcq?._id}`}
-              value={formData.questionText}
-              onChange={(value) => setFormData({ ...formData, questionText: value })}
-              placeholder="Enter your question here..."
-              showTips={true}
-            />
-          </div>
-
-          {/* Improved Options section with better wrapping */}
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Options
-            </label>
-            <div className="space-y-3">
-              {formData.options.map((option, index) => (
-                <div 
-                  key={`${currentMcq?._id}-option-${index}`} 
-                  className="flex border rounded-lg overflow-hidden"
-                >
-                  {/* Option letter in a compact circle */}
-                  <div className="flex-shrink-0 w-8 h-auto flex items-center justify-center bg-gray-100 border-r">
-                    <span className="font-semibold">{option.optionLetter}</span>
-                  </div>
-                  
-                  {/* Option content with proper wrapping */}
-                  <div className="flex-grow min-w-0 relative">
-                    <RichTextEditor
-                      key={`${currentMcq?._id}-option-${index}-text`}
-                      value={option.optionText}
-                      onChange={(value) => handleOptionChange(index, 'optionText', value)}
-                      placeholder={`Option ${option.optionLetter} text...`}
-                      minimal={true}
-                      showTips={false}
-                      minHeight="60px"
-                      className="option-editor"
-                    />
-                  </div>
-                  
-                  {/* Controls in a compact vertical layout */}
-                  <div className="flex-shrink-0 flex flex-col items-center justify-center px-2 py-1 border-l bg-gray-50">
-                    <label className="inline-flex items-center whitespace-nowrap mb-1">
-                      <input
-                        type="radio"
-                        checked={option.isCorrect}
-                        onChange={() => handleOptionChange(index, 'isCorrect', true)}
-                        className="form-radio text-green-500"
-                      />
-                      <span className="ml-1 text-xs">Correct</span>
-                    </label>
-                    
-                    {formData.options.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => removeOption(index)}
-                        className="text-red-500 hover:text-red-700 text-xs"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {formData.options.length < 5 && (
-              <button
-                type="button"
-                onClick={addOption}
-                className="mt-3 bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 text-sm rounded"
-              >
-                Add Option
-              </button>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              Explanation (Optional)
-            </label>
-            <RichTextEditor
-              key={`explanation-${currentMcq?._id}`}
-              value={formData.explanationText}
-              onChange={(value) => setFormData({ ...formData, explanationText: value })}
-              placeholder="Provide an explanation for the correct answer..."
-              showTips={false}
-            />
-          </div>
-
-          {/* New fields: Difficulty and Public/Private setting */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Difficulty Level
-              </label>
-              <select
-                value={formData.difficulty}
-                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Visibility
-              </label>
-              <div className="mt-2 space-x-4">
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    value="public"
-                    checked={formData.isPublic}
-                    onChange={() => setFormData({ ...formData, isPublic: true })}
-                    className="form-radio text-primary-500"
-                  />
-                  <span className="ml-2">Public</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    value="private"
-                    checked={!formData.isPublic}
-                    onChange={() => setFormData({ ...formData, isPublic: false })}
-                    className="form-radio text-primary-500"
-                  />
-                  <span className="ml-2">Private</span>
-                </label>
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Category
-              </label>
-              <input
-                type="text"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">
-                Sub-Topic
-              </label>
-              <input
-                type="text"
-                value={formData.subTopic}
-                onChange={(e) => setFormData({ ...formData, subTopic: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-            </div>
-          </div>
+        <div className="bg-white shadow-md rounded-lg p-6">
+          {/* Use our shared MCQFormFields component */}
+          <MCQFormFields 
+            formData={formData}
+            setFormData={setFormData}
+            revisionInfo={revisionInfo}
+            statistics={statistics}
+            currentMcq={currentMcq}
+            user={user}
+            handleOptionChange={handleOptionChange}
+            addOption={addOption}
+            removeOption={removeOption}
+            readOnly={false}
+          />
 
           {/* Simplified button layout */}
           <div className="flex justify-between mt-8">
@@ -702,7 +490,7 @@ const SequentialMCQEditor = () => {
               <FiSave className="mr-2" /> {saving ? 'Saving...' : (currentIndex === totalMcqs - 1 ? 'Save & Finish' : 'Save & Next')}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
