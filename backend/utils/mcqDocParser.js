@@ -2,8 +2,9 @@
 const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
-const JSZip = require('jszip');
+const cheerio = require('cheerio');
 const { v4: uuidv4 } = require('uuid');
+const JSZip = require('jszip');
 
 /**
  * Extract and parse MCQs from a Word document
@@ -16,33 +17,35 @@ async function extractMCQsFromDoc(docxPath, imageDir = 'uploads/images') {
     // Create image directory if it doesn't exist
     ensureDirectoryExists(imageDir);
     
-    // Extract images from docx and store their mapping
-    const imageMap = await extractImages(docxPath, imageDir);
+    // Extract images from docx file
+    await extractDocImages(docxPath, imageDir);
     
     // Convert Word document to HTML with preserved formatting
     const result = await mammoth.convertToHtml({
       path: docxPath,
-      transformDocument: transformDocumentElement,
-      ignoreEmptyParagraphs: true,
       styleMap: [
         "p[style-name='Heading 1'] => h1:fresh",
         "p[style-name='Heading 2'] => h2:fresh",
         "p[style-name='Heading 3'] => h3:fresh",
         "r[style-name='Strong'] => strong",
         "r[style-name='Emphasis'] => em",
-        "r[vertAlign='superscript'] => sup",
-        "r[vertAlign='subscript'] => sub"
+        "sup => sup",
+        "sub => sub"
       ]
     });
     
     // Process the HTML content to extract MCQs
-    const htmlContent = result.value;
+    const html = result.value;
     
-    // Replace image references in HTML with actual image paths
-    const htmlWithImages = replaceImageReferences(htmlContent, imageMap);
-    
-    // Parse MCQs from the HTML content
-    const mcqs = parseMCQsFromHTML(htmlWithImages);
+    // Use cheerio to parse HTML
+    const $ = cheerio.load(html);
+    const lines = $("p")
+      .map((_, p) => $(p).html().replace(/&nbsp;/gi, " ").trim())
+      .get()
+      .filter(Boolean);
+      
+    // Parse MCQs from lines
+    const mcqs = parseMCQsFromLines(lines, imageDir);
     
     console.log(`Successfully extracted ${mcqs.length} MCQs from document.`);
     return mcqs;
@@ -53,80 +56,12 @@ async function extractMCQsFromDoc(docxPath, imageDir = 'uploads/images') {
 }
 
 /**
- * Transform document elements to preserve formatting
- */
-function transformDocumentElement(document) {
-  // Handle vertical alignment for superscript and subscript
-  const transformRun = run => {
-    if (run.verticalAlignment === 'superscript') {
-      return {
-        ...run,
-        children: [{ type: 'element', tag: 'sup', children: run.children }]
-      };
-    } else if (run.verticalAlignment === 'subscript') {
-      return {
-        ...run,
-        children: [{ type: 'element', tag: 'sub', children: run.children }]
-      };
-    }
-    return run;
-  };
-
-  // Handle bold and italic text
-  const transformParagraph = paragraph => {
-    const children = paragraph.children.map(child => {
-      if (child.type === 'run') {
-        const run = transformRun(child);
-        
-        // Handle bold text
-        if (run.isBold) {
-          return {
-            ...run,
-            children: [{ type: 'element', tag: 'strong', children: run.children }]
-          };
-        }
-        
-        // Handle italic text
-        if (run.isItalic) {
-          return {
-            ...run,
-            children: [{ type: 'element', tag: 'em', children: run.children }]
-          };
-        }
-        
-        return run;
-      }
-      return child;
-    });
-    
-    return { ...paragraph, children };
-  };
-
-  // Apply transformations to paragraphs
-  const transformChildrenRecursively = element => {
-    if (element.type === 'paragraph') {
-      element = transformParagraph(element);
-    }
-    
-    if (element.children) {
-      element.children = element.children.map(transformChildrenRecursively);
-    }
-    
-    return element;
-  };
-
-  return transformChildrenRecursively(document);
-}
-
-/**
  * Extract images from Word document
  * @param {string} docxPath - Path to the Word document
  * @param {string} outputDir - Directory to save images
- * @returns {Promise<Object>} - Map of rId to image info
  */
-async function extractImages(docxPath, outputDir) {
+async function extractDocImages(docxPath, outputDir) {
   try {
-    const imageMap = {};
     const zip = new JSZip();
     
     // Read the .docx file
@@ -140,14 +75,13 @@ async function extractImages(docxPath, outputDir) {
     
     if (mediaFiles.length === 0) {
       console.log('No images found in the document.');
-      return imageMap;
+      return;
     }
     
     console.log(`Found ${mediaFiles.length} images in the document.`);
     
     // Extract and save each image
-    for (let i = 0; i < mediaFiles.length; i++) {
-      const fileName = mediaFiles[i];
+    for (const fileName of mediaFiles) {
       const extension = path.extname(fileName).toLowerCase();
       
       // Only process common image formats
@@ -163,196 +97,142 @@ async function extractImages(docxPath, outputDir) {
       const imageData = await zipContent.files[fileName].async('nodebuffer');
       fs.writeFileSync(outputPath, imageData);
       
-      // Store mapping from rId to path
-      // In Word docs, rIds are usually named sequentially like rId1, rId2, etc.
-      const rId = `rId${i+1}`;
-      const relativePath = path.join('/uploads/images', uniqueFileName).replace(/\\/g, '/');
-      
-      imageMap[rId] = {
-        path: relativePath,
-        originalName: path.basename(fileName)
-      };
-      
       console.log(`Extracted image: ${uniqueFileName}`);
     }
-    
-    return imageMap;
   } catch (error) {
     console.error('Error extracting images:', error);
-    return {};
   }
 }
 
 /**
- * Replace image references in HTML with actual image paths
- * @param {string} html - HTML content
- * @param {Object} imageMap - Map of rId to image info
- * @returns {string} - HTML with image paths
+ * Helper for strict prefix matching: Q:) or Q) only
  */
-function replaceImageReferences(html, imageMap) {
-  // Mammoth outputs image references as spans with relationship IDs
-  let processedHtml = html;
+const prefixRE = (ch) => new RegExp(`^${ch}(?:\\)|:\\))\\s*`);
+
+/**
+ * Clean leading/trailing <br>
+ */
+const cleanEdgeBr = (s) =>
+    s.replace(/^(?:<br\s*\/?>\s*)+/i, "")
+     .replace(/(?:<br\s*\/?>\s*)+$/i, "")
+     .trim();
   
-  // Replace each image reference
-  Object.keys(imageMap).forEach(rId => {
-    const imagePath = imageMap[rId].path;
-    const pattern = new RegExp(`<img([^>]*)r:id="${rId}"([^>]*)>`, 'g');
+/**
+ * Process embedded images in HTML content
+ */
+const processImages = (htmlFragment, imageDir) => {
+  if (!htmlFragment) return htmlFragment;
+  
+  const $ = cheerio.load(htmlFragment, null, false);
+  
+  // Process data URI images
+  $("img[src^='data:image/']").each((_, img) => {
+    const $img = $(img);
+    const dataUri = $img.attr("src");
+    const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUri);
+    if (!match) return;
+
+    const mime = match[1];
+    const ext = mime.split("/")[1];
+    const fileName = `${uuidv4()}.${ext}`;
+    const outPath = path.join(imageDir, fileName);
+
+    fs.writeFileSync(outPath, Buffer.from(match[2], "base64"));
     
-    processedHtml = processedHtml.replace(pattern, `<img$1src="${imagePath}"$2>`);
+    // Update the src to a relative path
+    const relativePath = `/uploads/images/${fileName}`;
+    $img.attr("src", relativePath);
   });
   
-  return processedHtml;
-}
+  // Handle already extracted images (from extractDocImages)
+  $("img").each((_, img) => {
+    const $img = $(img);
+    const src = $img.attr("src") || '';
+    
+    // If it's a Word media reference, replace with relative URL
+    if (src.includes('word/media/') || src.includes('image')) {
+      const uniqueFileName = `${uuidv4()}.png`;
+      const relativePath = `/uploads/images/${uniqueFileName}`;
+      $img.attr("src", relativePath);
+    }
+  });
+
+  return $.html();
+};
 
 /**
- * Parse MCQs from HTML content
- * @param {string} html - HTML content
+ * Smart field appender
+ */
+const pushText = (target, htmlText, cur, imageDir) => {
+  if (!cur || !target) return;
+  const cleaned = cleanEdgeBr(processImages(htmlText, imageDir));
+  if (!cleaned) return;
+  const add = (prev) => (prev ? prev + "<br>" + cleaned : cleaned);
+
+  switch (target) {
+    case "question": cur.questionText = add(cur.questionText); break;
+    case "A": cur.options.A = add(cur.options.A); break;
+    case "B": cur.options.B = add(cur.options.B); break;
+    case "C": cur.options.C = add(cur.options.C); break;
+    case "D": cur.options.D = add(cur.options.D); break;
+    case "gen": cur.explanationGeneral = add(cur.explanationGeneral); break;
+    case "Aexp": cur.explanationA = add(cur.explanationA); break;
+    case "Bexp": cur.explanationB = add(cur.explanationB); break;
+    case "Cexp": cur.explanationC = add(cur.explanationC); break;
+    case "Dexp": cur.explanationD = add(cur.explanationD); break;
+  }
+};
+
+/**
+ * Parse MCQs from HTML lines
+ * @param {Array} lines - Array of HTML lines
+ * @param {string} imageDir - Directory for images
  * @returns {Array} - Array of MCQ objects
  */
-function parseMCQsFromHTML(html) {
+function parseMCQsFromLines(lines, imageDir) {
   const mcqs = [];
-  
-  // Match Q:) or Q) to find questions - handle both formats
-  const questionPattern = /<p[^>]*>\s*(Q[:\)])\s*([^<]+(?:<[^>]+>[^<]*<\/[^>]+>[^<]*)*)(?:<\/p>)/g;
-  let startIndex = 0;
-  let match;
-  
-  while ((match = questionPattern.exec(html)) !== null) {
-    if (match.index < startIndex) continue;
-    
-    try {
-      const questionStart = match.index;
-      const questionText = cleanHtml(match[2]); // Text after Q:) or Q)
-      
-      // Find the start of the next question or end of content
-      const nextQuestionMatch = findNextQuestionStart(html, questionStart + match[0].length);
-      const nextQuestionIndex = nextQuestionMatch ? nextQuestionMatch.index : html.length;
-      
-      // Extract the content from current question to next question
-      const mcqContent = html.substring(questionStart, nextQuestionIndex);
-      
-      // Parse the MCQ
-      const mcq = parseSingleMCQ(mcqContent, questionText);
-      
-      if (mcq) {
-        mcqs.push(mcq);
-      }
-      
-      // Update start index to avoid re-processing
-      startIndex = nextQuestionIndex;
-    } catch (error) {
-      console.error('Error parsing MCQ:', error);
+  let cur = null;
+  let part = null;
+
+  for (let raw of lines) {
+    if (/^Q(?:\)|:\))\s*/.test(raw)) {
+      if (cur) mcqs.push(cur);
+      cur = {
+        questionText: "",
+        options: { A: "", B: "", C: "", D: "" },
+        correctAnswer: "",
+        explanationGeneral: "",
+        explanationA: "",
+        explanationB: "",
+        explanationC: "",
+        explanationD: ""
+      };
+      raw = raw.replace(prefixRE("Q"), "");
+      part = "question";
+      pushText(part, raw, cur, imageDir);
+      continue;
     }
+
+    if (/^A(?:\)|:\))\s*/.test(raw)) { part = "A"; raw = raw.replace(prefixRE("A"), ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^B(?:\)|:\))\s*/.test(raw)) { part = "B"; raw = raw.replace(prefixRE("B"), ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^C(?:\)|:\))\s*/.test(raw)) { part = "C"; raw = raw.replace(prefixRE("C"), ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^D(?:\)|:\))\s*/.test(raw)) { part = "D"; raw = raw.replace(prefixRE("D"), ""); pushText(part, raw, cur, imageDir); continue; }
+
+    if (/^:Correct:/i.test(raw)) { cur.correctAnswer = raw.replace(/^:Correct:\s*/, "").trim(); part = null; continue; }
+    if (/^:MsgCorrect:/i.test(raw)) { part = null; continue; } // Just marking end of correct answer section
+    if (/^:Explanation:/i.test(raw)) { part = "gen"; raw = raw.replace(/^:Explanation:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:ExplanationA:/i.test(raw)) { part = "Aexp"; raw = raw.replace(/^:ExplanationA:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:ExplanationB:/i.test(raw)) { part = "Bexp"; raw = raw.replace(/^:ExplanationB:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:ExplanationC:/i.test(raw)) { part = "Cexp"; raw = raw.replace(/^:ExplanationC:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:ExplanationD:/i.test(raw)) { part = "Dexp"; raw = raw.replace(/^:ExplanationD:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+
+    // Otherwise: continue adding to current section
+    pushText(part, raw, cur, imageDir);
   }
+  
+  if (cur) mcqs.push(cur);
   
   return mcqs;
-}
-
-/**
- * Find the next question marker
- * @param {string} html - HTML content
- * @param {number} startIndex - Index to start searching from
- * @returns {Object|null} - Match object or null
- */
-function findNextQuestionStart(html, startIndex) {
-  // Look for both Q:) and Q) formats
-  const questionPattern = /<p[^>]*>\s*(Q[:\)])\s*/g;
-  questionPattern.lastIndex = startIndex;
-  
-  return questionPattern.exec(html);
-}
-
-/**
- * Parse a single MCQ
- * @param {string} content - MCQ content
- * @param {string} questionText - Already extracted question text
- * @returns {Object|null} - MCQ object
- */
-function parseSingleMCQ(content, questionText) {
-  try {
-    // Initial MCQ structure
-    const mcq = {
-      questionText: questionText,
-      options: {
-        A: '',
-        B: '',
-        C: '',
-        D: ''
-      },
-      correctOption: '',
-      explanation: '',
-      optionExplanations: {
-        A: '',
-        B: '',
-        C: '',
-        D: ''
-      },
-      hasImages: content.includes('<img')
-    };
-    
-    // Extract options (A:), B:), C:), D:) or A), B), C), D))
-    for (const option of ['A', 'B', 'C', 'D']) {
-      // Support both A:) and A) formats
-      const optionPattern = new RegExp(`<p[^>]*>\\s*(${option}[:\\)])\\s*([^<]+(?:<[^>]+>[^<]*<\\/[^>]+>[^<]*)*)(?:<\\/p>)`, 'i');
-      const optionMatch = content.match(optionPattern);
-      
-      if (optionMatch) {
-        mcq.options[option] = cleanHtml(optionMatch[2]);
-      }
-    }
-    
-    // Extract correct answer (:Correct: X)
-    const correctPattern = /:Correct:\s*([A-D])/i;
-    const correctMatch = content.match(correctPattern);
-    
-    if (correctMatch) {
-      mcq.correctOption = correctMatch[1];
-    }
-    
-    // Extract general explanation (:Explanation:)
-    const explanationPattern = /:Explanation:\s*([^<:]+(?:<[^>]+>[^<:]*<\/[^>]+>[^<:]*)*)(?=:|\n|<\/p>|$)/i;
-    const explanationMatch = content.match(explanationPattern);
-    
-    if (explanationMatch) {
-      mcq.explanation = cleanHtml(explanationMatch[1]);
-    }
-    
-    // Extract option-specific explanations (:ExplanationA:, :ExplanationB:, etc.)
-    for (const option of ['A', 'B', 'C', 'D']) {
-      const optExplanationPattern = new RegExp(`:Explanation${option}:\\s*([^<:]+(?:<[^>]+>[^<:]*<\\/[^>]+>[^<:]*)*)(?=:|\\n|<\\/p>|$)`, 'i');
-      const optExplanationMatch = content.match(optExplanationPattern);
-      
-      if (optExplanationMatch) {
-        mcq.optionExplanations[option] = cleanHtml(optExplanationMatch[1]);
-      }
-    }
-    
-    return mcq;
-  } catch (error) {
-    console.error('Error parsing single MCQ:', error);
-    return null;
-  }
-}
-
-/**
- * Clean HTML content
- * @param {string} html - HTML content to clean
- * @returns {string} - Cleaned HTML
- */
-function cleanHtml(html) {
-  if (!html) return '';
-  
-  let cleaned = html.trim()
-    // Fix HTML entities
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    // Remove extra whitespace
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  return cleaned;
 }
 
 /**
@@ -375,23 +255,45 @@ function ensureDirectoryExists(dirPath) {
 function convertToBackendFormat(mcqs, testId, defaultValues = {}) {
   return mcqs.map(mcq => {
     // Format options for the database
-    const options = Object.keys(mcq.options).map(key => {
-      return {
-        optionLetter: key,
-        optionText: mcq.options[key],
-        isCorrect: key === mcq.correctOption,
-        explanationText: mcq.optionExplanations[key] || ''
-      };
-    });
+    const options = Object.keys(mcq.options)
+      .filter(key => mcq.options[key]) // Only include options with content
+      .map(key => {
+        return {
+          optionLetter: key,
+          optionText: mcq.options[key],
+          isCorrect: key === mcq.correctAnswer,
+          explanationText: mcq[`explanation${key}`] || ''
+        };
+      });
+    
+    // Ensure we have at least 2 options
+    if (options.length < 2) {
+      console.warn('Warning: MCQ has less than 2 options');
+      // Add empty options if needed
+      while (options.length < 2) {
+        const nextLetter = String.fromCharCode(65 + options.length); // A, B, C, D
+        options.push({
+          optionLetter: nextLetter,
+          optionText: '',
+          isCorrect: false,
+          explanationText: ''
+        });
+      }
+    }
+    
+    // Ensure one option is marked as correct
+    const hasCorrectOption = options.some(opt => opt.isCorrect);
+    if (!hasCorrectOption && options.length > 0) {
+      // Default to first option if none is marked
+      options[0].isCorrect = true;
+    }
     
     // Create MCQ object for the database
     return {
       questionText: mcq.questionText,
       options,
-      explanationText: mcq.explanation,
-      hasImages: mcq.hasImages,
+      explanationText: mcq.explanationGeneral,
       author: defaultValues.author || 'System Import',
-      published: defaultValues.published !== undefined ? defaultValues.published : false,
       testId,
       subject: defaultValues.subject || '',
       unit: defaultValues.unit || '',
@@ -399,9 +301,11 @@ function convertToBackendFormat(mcqs, testId, defaultValues = {}) {
       subTopic: defaultValues.subTopic || '',
       session: defaultValues.session || '',
       difficulty: defaultValues.difficulty || 'Medium',
-      isPublic: defaultValues.isPublic !== undefined ? defaultValues.isPublic : true
+      isPublic: defaultValues.isPublic !== undefined ? defaultValues.isPublic : true,
+      revisionCount: 0,
+      lastRevised: null
     };
-  });
+  }).filter(mcq => mcq.questionText && mcq.options.length >= 2); // Filter out invalid MCQs
 }
 
 module.exports = {

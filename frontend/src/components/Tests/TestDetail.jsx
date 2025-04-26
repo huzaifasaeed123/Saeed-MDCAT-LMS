@@ -16,6 +16,7 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 
+
 const TestDetail = () => {
   const { id } = useParams();
   const [test, setTest] = useState(null);
@@ -40,6 +41,7 @@ const TestDetail = () => {
   }, [id]);
 
   const fetchTestDetails = async () => {
+    console.log("Called")
     try {
       const response = await apiClient.get(`/tests/${id}`);
       if (response.data.success) {
