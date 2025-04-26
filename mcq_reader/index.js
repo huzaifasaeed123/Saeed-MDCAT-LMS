@@ -173,8 +173,8 @@ async function convertMCQsToJson(inputFile, outputFile) {
 }
 
 // Example usage
-const inputFile = './Q.docx';  // Replace with your input file path
-const outputFile = './mcqs.json';              // Output JSON file path
+const inputFile = './testing.docx';  // Replace with your input file path
+const outputFile = './mcqs1.json';              // Output JSON file path
 
 // Only run if called directly (not imported)
 if (require.main === module) {

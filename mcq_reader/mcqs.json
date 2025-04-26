@@ -1,24 +1,527 @@
 [
   {
-    "questionText": "It truly represents the total gain of glycolysis: <br /></p><p>",
+    "questionText": "720g of glucose contains how many moles of glucose<br>Fdfdfsdfdf fdfsd sdfdsf dfsfds",
     "options": {
-      "A": "2 H<sub>2</sub>0, 2 NADH, 4 ATP and 2 Pyruvates <br /></p><p>",
-      "B": "2 H<sub>2</sub>0, 1 NADH, 4 ATP and 2 C0<sub>2</sub> <br /></p><p>",
-      "C": "2 H<sub>2</sub>0, 2 NADH, 2 ATP and 2 Glucose </p><p>",
-      "D": "2 H<sub>2</sub>0,1 Pyruvate, 2 NADH and 2 Pymvates </p><p>"
+      "A": "2dsfdsf<br>dsfdsf",
+      "B": "4",
+      "C": "6",
+      "D": "8"
     },
-    "correctOption": "",
-    "explanation": ""
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A<br>Dsfdf<br>fdsfdsf",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
   },
   {
-    "questionText": "23It truly  × represents the total gain of glycolysis: ⟶  → <br /></p><p>",
+    "questionText": "A sample of 0.1 mole of metal 'M' reacts completely with excess of chlorine to form 7.45 g of MCl. What is the atomic mass of Metal 'M'",
     "options": {
-      "A": "2 H<sub>2</sub>0, 2 N<sup>2</sup>ADH, 4 ATP and 2 Pyruvates <br /></p><p>",
-      "B": "2 H<sub>2</sub>0, 1 NADH, 4 ATP and 2 C0<sub>2</sub> <br /></p><p>",
-      "C": "2 H<sub>2</sub>0, 2 NADH, 2 ATP and 2 Glucose <br /></p><p>",
-      "D": "2 H<sub>2</sub>0,1 Pyruvate, 2 NADH and 2 Pymvates </p><p>"
+      "A": "39 g/mole",
+      "B": "40 g/mole",
+      "C": "23 g/mole",
+      "D": "74.5 g/mole"
     },
-    "correctOption": "",
-    "explanation": ""
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Which one will produce largest number of negatively charged ions in case of 100% dissociation of 1 mole",
+    "options": {
+      "A": "FeCl<sub>3</sub>",
+      "B": "NaOH",
+      "C": "Na<sub>2</sub>S0<sub>4</sub>",
+      "D": "ZnCl<sub>2</sub>"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Four moles of each of hydrogen and oxygen allowed to react. How much water will be obtained",
+    "options": {
+      "A": "36g",
+      "B": "72g",
+      "C": "54g",
+      "D": "90g"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "How many moles of oxygen are needed for the complete combustion of two moles of n-butane?",
+    "options": {
+      "A": "10moles",
+      "B": "8moles",
+      "C": "13 moles",
+      "D": "4moles"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The number of moles of KM<sub>n</sub>0<sub>4</sub> that contain 1mole of oxygen atom",
+    "options": {
+      "A": "2 moles",
+      "B": "0.25 moles",
+      "C": "0.5 moles",
+      "D": "1.5 moles"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "If a sample of ammonium phosphate, (NH<sub>4</sub>)<sub>3</sub>P0<sub>4</sub> contains 6 moles of hydrogen atoms. Then number of moles of oxygen atoms in the sample is",
+    "options": {
+      "A": "1",
+      "B": "2",
+      "C": "4",
+      "D": "6"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Number of moles of CO<sub>2</sub> which contains 8.0 goxygen IS",
+    "options": {
+      "A": "1.0 mole",
+      "B": "0.50 mole",
+      "C": "0.25m01e",
+      "D": "0.75 mole"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "How many moles of neutron are present in one mole of heavy water",
+    "options": {
+      "A": "18",
+      "B": "8",
+      "C": "10",
+      "D": "20"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The number of moles of CO which contains 8g of oxygen",
+    "options": {
+      "A": "0.25 moles",
+      "B": "0.5 moles",
+      "C": "1.0 moles",
+      "D": "1.5 moles"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "For a reaction A + 2B → C. The amount of C formed by starting the reaction with 3 moles of A and 4 moles of B:",
+    "options": {
+      "A": "2 moles",
+      "B": "3 moles",
+      "C": "4 moles",
+      "D": "5 moles"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Choose the correct option regarding number of particles associated with one mole of a substance:",
+    "options": {
+      "A": "6.03 x 10<sup>23</sup>",
+      "B": "6.01 x 10<sup>-19</sup>",
+      "C": "6.02 x 10<sup>-23</sup>",
+      "D": "6.02 x 10<sup>23</sup>"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "How many moles are there in 0.44 g of C0<sub>2</sub> (Mr = 44 amu)?",
+    "options": {
+      "A": "0.01 mol",
+      "B": "0.1 mol",
+      "C": "0.001 mol",
+      "D": "0.00001 mol"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "10<sup>-3</sup> moles of MgS0<sub>4</sub> has the mass (Ar, Mg = 24=32 O =16)",
+    "options": {
+      "A": "0.1lg",
+      "B": "0.12g",
+      "C": "0.13g",
+      "D": "O.14g"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "How many moles of oxygen are needed for the complete combustion of two moles of butane?",
+    "options": {
+      "A": "2",
+      "B": "8",
+      "C": "10",
+      "D": "13"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "4.8 x 10<sup>24</sup> of water molecules has number of moles of water (N<sub>A</sub> =6.0 x 10<sup>23</sup>)",
+    "options": {
+      "A": "7.0 moles of water",
+      "B": "6.0 moles of water",
+      "C": "5.0 moles of water",
+      "D": "8.0 moles of water"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "1 mole of ethanol and 1 mole of ethane have an equal:",
+    "options": {
+      "A": "Number of molecules",
+      "B": "Number of electrons",
+      "C": "Number of atoms",
+      "D": "Mass"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "<img alt=\"A paper with text and numbers\n\nAI-generated content may be incorrect.\" src=\"uploads\\images\\898d11d0-0560-49cd-a6b1-8c8b82868702.png\"><br>:Type: S",
+    "options": {
+      "A": "A",
+      "B": "B",
+      "C": "C",
+      "D": "D"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The atomic mass, formula mass and molecular mass of a substance expressed in grams is called mole. Which one of the following statements is incorrect about mole?",
+    "options": {
+      "A": "I mol of N= 14g",
+      "B": "I mol of NaCl= 1 mol of ions",
+      "C": "1 mol of NH<sub>3</sub> = 17g",
+      "D": "I mol of O<sub>2</sub>= 32g"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Which of the following is not true for a mole?",
+    "options": {
+      "A": "It is a counting unit",
+      "B": "It contains 6.023 x 10<sup>23</sup> particles",
+      "C": "It contains different number of particles for different substances",
+      "D": "It is the gram atomic or gram formula mass of a substance"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "One mole of propane has the same:",
+    "options": {
+      "A": "Number of H-atoms as one mole of methane (CH<sub>4</sub>)",
+      "B": "Number of C-atoms as in one mole of butane (C<sub>4</sub>H<sub>10</sub>)",
+      "C": "Mass as half a mole of hexane (C<sub>6</sub>H<sub>14</sub>)",
+      "D": "Number of molecules as in one mole of ethane (C<sub>2</sub>H<sub>6</sub>)"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "For a reaction A +2B → C . The amount of C formed by starting the reaction with 3 moles of A and 4 moles of B:",
+    "options": {
+      "A": "2 moles",
+      "B": "3 moles",
+      "C": "4 moles",
+      "D": "5 moles"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "2.4 x 10<sup>24</sup> number of ethanol molecules has number of moles of ethanol (N<sub>A</sub>= 6.0 x 10<sup>23</sup>):",
+    "options": {
+      "A": "2.0 moles of ethanol",
+      "B": "3.0 moles of ethanol",
+      "C": "4.0 moles of ethanol",
+      "D": "5.0 moles of ethanol"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The mass of one mole of electrons is (1N<sub>A</sub> = 6.0 x 10<sup>23</sup>):",
+    "options": {
+      "A": "5.50 × 10 <sup>-4</sup> g",
+      "B": "1.008 × 10 <sup>3</sup> g",
+      "C": "1.84 × 10 <sup>2</sup> g",
+      "D": "1.673 × 10<sup>3</sup> g"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Identify the incorrect statement:",
+    "options": {
+      "A": "One mole of an ideal gas at STP occupies volume 22.4 dm<sup>3</sup>",
+      "B": "One mole of an ideal gas at RTP occupies volume 24.0 dm<sup>3</sup>",
+      "C": "22.4 dm<sup>3</sup> of different gases at STP has same number of molecules",
+      "D": "22.4 dm<sup>3</sup> of different gases at STP have same molecular masses"
+    },
+    "correctAnswer": "D",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The number of moles of C0<sub>2</sub> which contains 16g of oxygen is:",
+    "options": {
+      "A": "0.25",
+      "B": "0.5",
+      "C": "1.0",
+      "D": "1.5"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "<img alt=\"A white paper with black text\n\nAI-generated content may be incorrect.\" src=\"uploads\\images\\dea7deb5-30bf-4e38-803f-ddecad5591ed.png\"><br>:Type: S",
+    "options": {
+      "A": "A",
+      "B": "B",
+      "C": "C",
+      "D": "D"
+    },
+    "correctAnswer": "C",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The octane present in gasoline burns according to the following equation:<br>2C<sub>8</sub>H<sub>18</sub> +25O<sub>2</sub> → 16CO<sub>2</sub> +18H<sub>2</sub>O<br>How many moles of CO<sub>2</sub> can be produced from one mole of octane?",
+    "options": {
+      "A": "2",
+      "B": "8",
+      "C": "4",
+      "D": "16"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Which of the following reaction mixtures could produce the greatest amount of product when they combine according to the reaction gives below?<br>N<sub>2</sub>(g)+ 3H<sub>2</sub>(g) → 2NH<sub>3</sub>(g)",
+    "options": {
+      "A": "I mole of N<sub>2</sub> and 3 moles of H<sub>2</sub>",
+      "B": "2 moles of N<sub>2</sub> and 3 moles of H<sub>2</sub>",
+      "C": "I mole of N<sub>2</sub> and 5 moles of H<sub>2</sub>",
+      "D": "Each produce the same amount of product"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "1 mole of diamond chain and 1 mole of gold ring has same number of:",
+    "options": {
+      "A": "Atoms",
+      "B": "Protons",
+      "C": "Electrons",
+      "D": "Neutrons"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "240g of urea contains how many moles of urea:",
+    "options": {
+      "A": "2",
+      "B": "4",
+      "C": "6",
+      "D": "8"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Four moles of each of hydrogen and oxygen are allowed to react. How much water will be formed?",
+    "options": {
+      "A": "36g",
+      "B": "72g",
+      "C": "54g",
+      "D": "90g"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "0.72 moles of each aluminium and oxygen react with each other to produce aluminium oxide. The amount of product formed is:",
+    "options": {
+      "A": "0.36 mole",
+      "B": "0.48 mole",
+      "C": "0.54 mole",
+      "D": "0.18 mole"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "The mass of O<sub>2</sub> gas required to burn 0.1 mole of ethanol (C<sub>2</sub>H<sub>5</sub>0H) is:",
+    "options": {
+      "A": "9.6g",
+      "B": "4.3g",
+      "C": "19.2g",
+      "D": "10.6g"
+    },
+    "correctAnswer": "A",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
+  },
+  {
+    "questionText": "Number of moles of sulphur in 100 moles of H<sub>2</sub>S0<sub>4</sub> is:",
+    "options": {
+      "A": "200",
+      "B": "100",
+      "C": "400",
+      "D": "600"
+    },
+    "correctAnswer": "B",
+    "explanationGeneral": "Here is the General Explanation",
+    "explanationA": "Here is the Explanation for A",
+    "explanationB": "Here is the Explanation for B",
+    "explanationC": "Here is the Explanation for C",
+    "explanationD": "Here is the Explanation for D"
   }
 ]

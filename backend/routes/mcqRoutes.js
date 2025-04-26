@@ -10,9 +10,10 @@ const {
   getMCQsForTest,
   getMCQ,
   updateMCQ,
-  deleteMCQ
+  deleteMCQ,
+  uploadDocument,
+  getImportStatus,
 } = require('../controllers/mcqController');
-
 // All routes require authentication
 router.use(protect);
 
@@ -23,4 +24,8 @@ router.get('/:id', getMCQ);
 router.put('/:id', authorize('admin', 'teacher'), validateMCQ, updateMCQ);
 router.delete('/:id', authorize('admin', 'teacher'), deleteMCQ);
 
+
+// Only admins and teachers can import MCQs
+router.post('/import-document', authorize('admin', 'teacher'), uploadDocument);
+router.get('/import-status/:importId', authorize('admin', 'teacher'), getImportStatus);
 module.exports = router;

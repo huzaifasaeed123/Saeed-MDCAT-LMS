@@ -1,6 +1,9 @@
 {
   "dependencies": {
+    "cheerio": "^1.0.0",
+    "jsdom": "^26.1.0",
     "mammoth": "^1.9.0",
+    "uuid": "^11.1.0",
     "xmldom": "^0.6.0"
   }
 }

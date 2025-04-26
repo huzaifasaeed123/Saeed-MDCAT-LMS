@@ -1,3 +1,4 @@
+// frontend/src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
@@ -35,6 +36,7 @@ import TestForm from './components/Tests/TestForm';
 import TestDetail from './components/Tests/TestDetail';
 import MCQForm from './components/MCQs/MCQForm';
 import SequentialMCQEditor from './components/MCQs/SequentialMCQEditor';
+import MCQDocumentUpload from './components/MCQs/MCQDocumentUpload';
 
 function AppContent() {
   return (
@@ -125,6 +127,16 @@ function AppContent() {
               element={
                 <DashboardLayout>
                   <TestForm />
+                </DashboardLayout>
+              }
+            />
+            
+            {/* MCQ Import Route */}
+            <Route
+              path="/tests/:testId/import-mcqs"
+              element={
+                <DashboardLayout>
+                  <MCQDocumentUpload />
                 </DashboardLayout>
               }
             />
