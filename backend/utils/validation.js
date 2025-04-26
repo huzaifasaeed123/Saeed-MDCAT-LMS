@@ -1,4 +1,4 @@
-// Place this file in: utils/validation.js
+// File: utils/validation.js
 
 const { body, validationResult } = require('express-validator');
 
@@ -8,6 +8,8 @@ exports.validateMCQ = [
   body('options.*.optionText').notEmpty().withMessage('Option text is required'),
   body('options.*.optionLetter').isIn(['A', 'B', 'C', 'D', 'E']).withMessage('Invalid option letter'),
   body('testId').notEmpty().withMessage('Test ID is required'),
+  body('difficulty').optional().isIn(['Easy', 'Medium', 'Hard']).withMessage('Difficulty must be Easy, Medium, or Hard'),
+  body('isPublic').optional().isBoolean().withMessage('isPublic must be a boolean value'),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

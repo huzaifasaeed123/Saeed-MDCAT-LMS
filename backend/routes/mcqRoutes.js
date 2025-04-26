@@ -1,9 +1,10 @@
-// Place this file in: routes/mcqRoutes.js
+// File: routes/mcqRoutes.js
 
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/roleCheck');
+const { validateMCQ } = require('../utils/validation');
 const {
   createMCQ,
   getMCQsForTest,
@@ -15,11 +16,11 @@ const {
 // All routes require authentication
 router.use(protect);
 
-// MCQ routes
-router.post('/', authorize('admin', 'teacher'), createMCQ);
+// MCQ routes with validation
+router.post('/', authorize('admin', 'teacher'), validateMCQ, createMCQ);
 router.get('/test/:testId', getMCQsForTest);
 router.get('/:id', getMCQ);
-router.put('/:id', authorize('admin', 'teacher'), updateMCQ);
+router.put('/:id', authorize('admin', 'teacher'), validateMCQ, updateMCQ);
 router.delete('/:id', authorize('admin', 'teacher'), deleteMCQ);
 
 module.exports = router;

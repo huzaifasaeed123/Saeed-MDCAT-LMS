@@ -1,4 +1,4 @@
-// Place this file in: models/MCQ.js
+// File: models/McqModel.js
 
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
@@ -69,7 +69,25 @@ const mcqSchema = new Schema(
     topic: String,
     subTopic: String,
     statistics: statisticsSchema,
-    testId: { type: Schema.Types.ObjectId, ref: 'Test', required: true }, //Make review for this decesion
+    testId: { type: Schema.Types.ObjectId, ref: 'Test', required: true },
+    
+    // New fields
+    difficulty: { 
+      type: String, 
+      enum: ['Easy', 'Medium', 'Hard'], 
+      default: 'Medium' 
+    },
+    isPublic: { 
+      type: Boolean, 
+      default: true 
+    },
+    revisionCount: { 
+      type: Number, 
+      default: 0 
+    },
+    lastRevised: { 
+      type: Date
+    }
   },
   { timestamps: true }
 );
@@ -83,5 +101,8 @@ mcqSchema.pre('save', function(next) {
     next();
   }
 });
+
+// Fix for the update hook - removing the problematic pre findOneAndUpdate hook
+// We'll handle revision tracking in the controller instead
 
 module.exports = mongoose.model('MCQ', mcqSchema);

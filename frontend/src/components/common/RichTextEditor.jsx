@@ -1,3 +1,5 @@
+// File: components/common/RichTextEditor.jsx
+
 import React from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -6,7 +8,7 @@ import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
 import Superscript from '@tiptap/extension-superscript';
 import Subscript from '@tiptap/extension-subscript';
-import { FaBold, FaItalic, FaUnderline, FaListUl, FaListOl, FaImage, FaLink, FaUndo, FaRedo, FaHeading, FaSuperscript, FaSubscript } from 'react-icons/fa';
+import { FiBold, FiItalic, FiUnderline, FiList, FiCheckSquare, FiImage, FiLink, FiCornerUpLeft, FiCornerUpRight, FiType, FiInfo, FiHelpCircle } from 'react-icons/fi';
 import apiClient from '../../utils/axiosConfig';
 
 // Helper function to get backend URL
@@ -82,25 +84,25 @@ const MenuBar = ({ editor }) => {
         onClick={() => editor.chain().focus().toggleBold().run()}
         className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('bold') ? 'bg-gray-200' : ''}`}
         type="button"
-        title="Bold"
+        title="Bold (Ctrl+B)"
       >
-        <FaBold className="w-4 h-4" />
+        <FiBold className="w-4 h-4" />
       </button>
       <button
         onClick={() => editor.chain().focus().toggleItalic().run()}
         className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('italic') ? 'bg-gray-200' : ''}`}
         type="button"
-        title="Italic"
+        title="Italic (Ctrl+I)"
       >
-        <FaItalic className="w-4 h-4" />
+        <FiItalic className="w-4 h-4" />
       </button>
       <button
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('underline') ? 'bg-gray-200' : ''}`}
         type="button"
-        title="Underline"
+        title="Underline (Ctrl+U)"
       >
-        <FaUnderline className="w-4 h-4" />
+        <FiUnderline className="w-4 h-4" />
       </button>
       
       {/* Add Superscript button */}
@@ -108,9 +110,9 @@ const MenuBar = ({ editor }) => {
         onClick={() => editor.chain().focus().toggleSuperscript().run()}
         className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('superscript') ? 'bg-gray-200' : ''}`}
         type="button"
-        title="Superscript"
+        title="Superscript (Ctrl+.)"
       >
-        <FaSuperscript className="w-4 h-4" />
+        <span className="text-xs font-bold">X²</span>
       </button>
       
       {/* Add Subscript button */}
@@ -118,9 +120,9 @@ const MenuBar = ({ editor }) => {
         onClick={() => editor.chain().focus().toggleSubscript().run()}
         className={`p-2 rounded hover:bg-gray-200 ${editor.isActive('subscript') ? 'bg-gray-200' : ''}`}
         type="button"
-        title="Subscript"
+        title="Subscript (Ctrl+,)"
       >
-        <FaSubscript className="w-4 h-4" />
+        <span className="text-xs font-bold">X₂</span>
       </button>
       
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
@@ -130,7 +132,7 @@ const MenuBar = ({ editor }) => {
         type="button"
         title="Heading"
       >
-        <FaHeading className="w-4 h-4" />
+        <FiType className="w-4 h-4" />
       </button>
       <button
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -138,7 +140,7 @@ const MenuBar = ({ editor }) => {
         type="button"
         title="Bullet List"
       >
-        <FaListUl className="w-4 h-4" />
+        <FiList className="w-4 h-4" />
       </button>
       <button
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
@@ -146,7 +148,7 @@ const MenuBar = ({ editor }) => {
         type="button"
         title="Numbered List"
       >
-        <FaListOl className="w-4 h-4" />
+        <FiCheckSquare className="w-4 h-4" />
       </button>
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
       <button
@@ -155,7 +157,7 @@ const MenuBar = ({ editor }) => {
         type="button"
         title="Add Image"
       >
-        <FaImage className="w-4 h-4" />
+        <FiImage className="w-4 h-4" />
       </button>
       <button
         onClick={setLink}
@@ -163,7 +165,7 @@ const MenuBar = ({ editor }) => {
         type="button"
         title="Add Link"
       >
-        <FaLink className="w-4 h-4" />
+        <FiLink className="w-4 h-4" />
       </button>
       <div className="w-px h-6 bg-gray-300 mx-1 self-center" />
       <button
@@ -171,24 +173,44 @@ const MenuBar = ({ editor }) => {
         disabled={!editor.can().undo()}
         className={`p-2 rounded hover:bg-gray-200 ${!editor.can().undo() ? 'opacity-50 cursor-not-allowed' : ''}`}
         type="button"
-        title="Undo"
+        title="Undo (Ctrl+Z)"
       >
-        <FaUndo className="w-4 h-4" />
+        <FiCornerUpLeft className="w-4 h-4" />
       </button>
       <button
         onClick={() => editor.chain().focus().redo().run()}
         disabled={!editor.can().redo()}
         className={`p-2 rounded hover:bg-gray-200 ${!editor.can().redo() ? 'opacity-50 cursor-not-allowed' : ''}`}
         type="button"
-        title="Redo"
+        title="Redo (Ctrl+Shift+Z)"
       >
-        <FaRedo className="w-4 h-4" />
+        <FiCornerUpRight className="w-4 h-4" />
       </button>
     </div>
   );
 };
 
-const RichTextEditor = ({ value, onChange, placeholder, minimal = false }) => {
+const EditorTips = ({ showTips }) => {
+  if (!showTips) return null;
+  
+  return (
+    <div className="bg-blue-50 p-3 border-t border-blue-100 text-xs text-gray-600">
+      <div className="font-medium text-blue-700 mb-1 flex items-center">
+        <FiHelpCircle className="mr-1" /> Editor Keyboard Shortcuts
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
+        <div><span className="font-medium">Bold:</span> Ctrl+B</div>
+        <div><span className="font-medium">Italic:</span> Ctrl+I</div>
+        <div><span className="font-medium">Underline:</span> Ctrl+U</div>
+        <div><span className="font-medium">Superscript:</span> Ctrl+.</div>
+        <div><span className="font-medium">Subscript:</span> Ctrl+,</div>
+        <div><span className="font-medium">Undo/Redo:</span> Ctrl+Z / Ctrl+Shift+Z</div>
+      </div>
+    </div>
+  );
+};
+
+const RichTextEditor = ({ value, onChange, placeholder, minimal = false, showTips = false }) => {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -263,11 +285,7 @@ const RichTextEditor = ({ value, onChange, placeholder, minimal = false }) => {
     <div className="border border-gray-300 rounded-lg shadow-sm">
       {!minimal && <MenuBar editor={editor} />}
       <EditorContent editor={editor} />
-      {minimal && (
-        <div className="text-xs text-gray-500 text-right p-2 border-t">
-          <span>Tip: You can use Ctrl+B for bold, Ctrl+I for italic</span>
-        </div>
-      )}
+      <EditorTips showTips={showTips || !minimal} />
     </div>
   );
 };

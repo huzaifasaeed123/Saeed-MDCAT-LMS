@@ -1,11 +1,10 @@
-// Place this file in: controllers/mcqController.js
+// File: controllers/mcqController.js
 
 const MCQ = require('../models/McqModel');
 const Test = require('../models/TestModel');
 
 // Create new MCQ
 exports.createMCQ = async (req, res) => {
-  // console.log(req.user)
   try {
     const mcqData = {
       ...req.body,
@@ -102,9 +101,17 @@ exports.updateMCQ = async (req, res) => {
     //   });
     // }
     
+    // Manual revision tracking
+    const updatedData = {
+      ...req.body,
+      revisionCount: (mcq.revisionCount || 0) + 1,
+      lastRevised: new Date()
+    };
+    
+    // Using findByIdAndUpdate to update the MCQ
     const updatedMCQ = await MCQ.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updatedData,
       {
         new: true,
         runValidators: true
@@ -116,6 +123,7 @@ exports.updateMCQ = async (req, res) => {
       data: updatedMCQ
     });
   } catch (error) {
+    console.error('Error updating MCQ:', error);
     res.status(400).json({
       success: false,
       message: error.message
@@ -143,7 +151,7 @@ exports.deleteMCQ = async (req, res) => {
     //   });
     // }
     
-    // Remove MCQ from test,This Operation Must ,otherwise Empty Id oR error Show While redring Test
+    // Remove MCQ from test
     const test = await Test.findById(mcq.testId);
     if (test) {
       test.mcqs = test.mcqs.filter(id => id.toString() !== mcq._id.toString());

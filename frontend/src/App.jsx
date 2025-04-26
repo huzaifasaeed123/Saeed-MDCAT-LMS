@@ -34,6 +34,7 @@ import TestList from './components/Tests/TestList';
 import TestForm from './components/Tests/TestForm';
 import TestDetail from './components/Tests/TestDetail';
 import MCQForm from './components/MCQs/MCQForm';
+import SequentialMCQEditor from './components/MCQs/SequentialMCQEditor';
 
 function AppContent() {
   return (
@@ -142,6 +143,15 @@ function AppContent() {
               element={
                 <DashboardLayout>
                   <MCQForm />
+                </DashboardLayout>
+              }
+            />
+            {/* Sequential MCQ Editor Route */}
+            <Route
+              path="/tests/:testId/mcqs/edit-all/:index"
+              element={
+                <DashboardLayout>
+                  <SequentialMCQEditor />
                 </DashboardLayout>
               }
             />

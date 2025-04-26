@@ -1,0 +1,24 @@
+[
+  {
+    "questionText": "It truly represents the total gain of glycolysis: <br /></p><p>",
+    "options": {
+      "A": "2 H<sub>2</sub>0, 2 NADH, 4 ATP and 2 Pyruvates <br /></p><p>",
+      "B": "2 H<sub>2</sub>0, 1 NADH, 4 ATP and 2 C0<sub>2</sub> <br /></p><p>",
+      "C": "2 H<sub>2</sub>0, 2 NADH, 2 ATP and 2 Glucose </p><p>",
+      "D": "2 H<sub>2</sub>0,1 Pyruvate, 2 NADH and 2 Pymvates </p><p>"
+    },
+    "correctOption": "",
+    "explanation": ""
+  },
+  {
+    "questionText": "23It truly  × represents the total gain of glycolysis: ⟶  → <br /></p><p>",
+    "options": {
+      "A": "2 H<sub>2</sub>0, 2 N<sup>2</sup>ADH, 4 ATP and 2 Pyruvates <br /></p><p>",
+      "B": "2 H<sub>2</sub>0, 1 NADH, 4 ATP and 2 C0<sub>2</sub> <br /></p><p>",
+      "C": "2 H<sub>2</sub>0, 2 NADH, 2 ATP and 2 Glucose <br /></p><p>",
+      "D": "2 H<sub>2</sub>0,1 Pyruvate, 2 NADH and 2 Pymvates </p><p>"
+    },
+    "correctOption": "",
+    "explanation": ""
+  }
+]
