@@ -17,10 +17,7 @@ const TestDetail = () => {
     const loadData = async () => {
       try {
         setLoading(true);
-        await Promise.all([
-          fetchTestDetails(),
-          fetchMCQs()
-        ]);
+        await fetchTestDetails();
       } catch (err) {
         console.error('Error loading test data:', err);
         setError('Failed to load test data. Please try again later.');
@@ -36,7 +33,18 @@ const TestDetail = () => {
     try {
       const response = await apiClient.get(`/tests/${id}`);
       if (response.data.success) {
-        setTest(response.data.data);
+        const testData = response.data.data;
+        setTest(testData);
+        
+        // If the test data includes populated mcqs, use them directly
+        if (testData.mcqs && Array.isArray(testData.mcqs) && testData.mcqs.length > 0 
+            && typeof testData.mcqs[0] === 'object') {
+          setMcqs(testData.mcqs);
+        } 
+        // If mcqs is just an array of IDs, we still need to fetch them separately
+        else {
+          await fetchMCQs();
+        }
       } else {
         throw new Error(response.data.message || 'Failed to load test details');
       }
@@ -48,6 +56,7 @@ const TestDetail = () => {
     }
   };
 
+  // Only used as a fallback if test.mcqs contains just IDs instead of populated objects
   const fetchMCQs = async () => {
     try {
       const response = await apiClient.get(`/mcqs/test/${id}`);
@@ -71,11 +80,8 @@ const TestDetail = () => {
         
         if (response.data.success) {
           toast.success('Question deleted successfully');
-          // Refresh MCQs and test data
-          await Promise.all([
-            fetchMCQs(),
-            fetchTestDetails()
-          ]);
+          // After deleting a question, refresh the test details which will include updated MCQs
+          await fetchTestDetails();
         } else {
           throw new Error(response.data.message || 'Failed to delete question');
         }
@@ -264,6 +270,31 @@ const TestDetail = () => {
           </div>
         </div>
 
+        {/* Question Summary - At the top before the questions */}
+        {mcqs.length > 0 && (
+          <div className="mb-6 pb-4 border-b border-gray-200">
+            <h3 className="font-semibold mb-2">Question Summary</h3>
+            <div className="flex gap-4 mt-2 text-sm">
+              <div className="flex items-center">
+                <span className="inline-block w-3 h-3 rounded-full bg-green-100 mr-1"></span>
+                <span>Easy: {mcqs.filter(m => m.difficulty === 'Easy').length}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="inline-block w-3 h-3 rounded-full bg-yellow-100 mr-1"></span>
+                <span>Medium: {mcqs.filter(m => m.difficulty === 'Medium' || !m.difficulty).length}</span>
+              </div>
+              <div className="flex items-center">
+                <span className="inline-block w-3 h-3 rounded-full bg-red-100 mr-1"></span>
+                <span>Hard: {mcqs.filter(m => m.difficulty === 'Hard').length}</span>
+              </div>
+              <div className="flex items-center">
+                <FiLock className="text-gray-400 mr-1 w-3 h-3" />
+                <span>Private: {mcqs.filter(m => m.isPublic === false).length}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {mcqs.length === 0 ? (
           <div className="bg-gray-50 text-center py-12 rounded-lg">
             <FiInfo className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -278,32 +309,32 @@ const TestDetail = () => {
           <div className="space-y-6">
             {mcqs.map((mcq, index) => (
               <div key={mcq._id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-start gap-3">
+                {/* Top div with question number, tags, and action buttons */}
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2">
+                    {/* Question number */}
                     <div className="bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center text-gray-700 font-semibold flex-shrink-0">
                       {index + 1}
                     </div>
-                    <div className="flex-grow">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {getDifficultyBadge(mcq.difficulty)}
-                        {mcq.isPublic === false && (
-                          <span className="flex items-center text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                            <FiLock className="mr-1" /> Private
-                          </span>
-                        )}
-                        {(mcq.revisionCount > 0) && (
-                          <span className="flex items-center text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded-full">
-                            <FiEdit3 className="mr-1" /> Revised {mcq.revisionCount} times
-                          </span>
-                        )}
-                      </div>
-                      <div 
-                        className="prose max-w-none"
-                        dangerouslySetInnerHTML={{ __html: mcq.questionText }}
-                      />
-                    </div>
+                    
+                    {/* Question tags/badges */}
+                    {getDifficultyBadge(mcq.difficulty)}
+                    
+                    {mcq.isPublic === false && (
+                      <span className="flex items-center text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        <FiLock className="mr-1" /> Private
+                      </span>
+                    )}
+                    
+                    {(mcq.revisionCount > 0) && (
+                      <span className="flex items-center text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded-full">
+                        <FiEdit3 className="mr-1" /> Revised {mcq.revisionCount} times
+                      </span>
+                    )}
                   </div>
-                  <div className="flex space-x-2 ml-4 flex-shrink-0">
+                  
+                  {/* Action buttons */}
+                  <div className="flex space-x-2">
                     <Link
                       to={`/tests/${id}/mcqs/${mcq._id}/edit`}
                       className="text-yellow-600 hover:text-yellow-900 p-2 rounded hover:bg-yellow-50"
@@ -320,32 +351,39 @@ const TestDetail = () => {
                     </button>
                   </div>
                 </div>
-
-                <div className="ml-11 space-y-2 mt-3">
+                
+                {/* Question text */}
+                <div className="prose max-w-none mb-3">
+                  <div dangerouslySetInnerHTML={{ __html: mcq.questionText }} />
+                </div>
+                
+                {/* Options with two-column layout */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
                   {mcq.options && mcq.options.map((option) => (
                     <div 
                       key={option._id || `${mcq._id}-${option.optionLetter}`}
-                      className={`p-2 rounded ${
+                      className={`p-2 rounded flex items-start ${
                         option.isCorrect 
                           ? 'bg-green-50 border border-green-200' 
                           : 'bg-gray-50 border border-gray-200'
                       }`}
                     >
-                      <span className="font-medium">{option.optionLetter}.</span>{' '}
-                      <span dangerouslySetInnerHTML={{ __html: option.optionText }} />
+                      <span className="font-medium mr-2 flex-shrink-0">{option.optionLetter}.</span>
+                      <span className="inline" dangerouslySetInnerHTML={{ __html: option.optionText }} />
                     </div>
                   ))}
                 </div>
 
+                {/* Explanation section */}
                 {mcq.explanationText && (
-                  <div className="mt-4 ml-11 p-3 bg-blue-50 rounded">
+                  <div className="p-3 bg-blue-50 rounded mb-3">
                     <p className="text-sm font-semibold text-blue-800">Explanation:</p>
                     <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: mcq.explanationText }} />
                   </div>
                 )}
                 
-                {/* Display additional MCQ metadata */}
-                <div className="mt-4 ml-11 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+                {/* MCQ metadata */}
+                <div className="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
                   <div>Author: {mcq.author || 'Unknown'}</div>
                   {mcq.lastRevised && <div>Last revised: {formatDate(mcq.lastRevised)}</div>}
                   <div>Created: {formatDate(mcq.createdAt)}</div>
@@ -358,40 +396,15 @@ const TestDetail = () => {
           </div>
         )}
 
-        {mcqs.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-semibold">Question Summary</h3>
-                <div className="flex gap-4 mt-2 text-sm">
-                  <div className="flex items-center">
-                    <span className="inline-block w-3 h-3 rounded-full bg-green-100 mr-1"></span>
-                    <span>Easy: {mcqs.filter(m => m.difficulty === 'Easy').length}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="inline-block w-3 h-3 rounded-full bg-yellow-100 mr-1"></span>
-                    <span>Medium: {mcqs.filter(m => m.difficulty === 'Medium' || !m.difficulty).length}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="inline-block w-3 h-3 rounded-full bg-red-100 mr-1"></span>
-                    <span>Hard: {mcqs.filter(m => m.difficulty === 'Hard').length}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <FiLock className="text-gray-400 mr-1 w-3 h-3" />
-                    <span>Private: {mcqs.filter(m => m.isPublic === false).length}</span>
-                  </div>
-                </div>
-              </div>
-              
-              {test.status !== 'published' && (
-                <button
-                  onClick={handlePublishTest}
-                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center"
-                >
-                  <FiEye className="mr-2" /> Publish Test
-                </button>
-              )}
-            </div>
+        {/* Publish button at the bottom for convenience */}
+        {mcqs.length > 0 && test.status !== 'published' && (
+          <div className="mt-6 pt-6 border-t border-gray-200 flex justify-end">
+            <button
+              onClick={handlePublishTest}
+              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center"
+            >
+              <FiEye className="mr-2" /> Publish Test
+            </button>
           </div>
         )}
       </div>

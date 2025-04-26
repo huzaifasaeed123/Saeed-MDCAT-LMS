@@ -60,7 +60,6 @@ const mcqSchema = new Schema(
       validate: [v => v.length >= 2, 'At least 2 options are required']
     },
     explanationText: String,
-    published: { type: Boolean, default: false },
     referencePdfs: [referencePdfSchema],
     category: String,
     session: String,
