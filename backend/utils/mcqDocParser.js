@@ -18,7 +18,7 @@ async function extractMCQsFromDoc(docxPath, imageDir = 'uploads/images') {
     ensureDirectoryExists(imageDir);
     
     // Extract images from docx file
-    await extractDocImages(docxPath, imageDir);
+    // await extractDocImages(docxPath, imageDir);
     
     // Convert Word document to HTML with preserved formatting
     const result = await mammoth.convertToHtml({
@@ -56,55 +56,6 @@ async function extractMCQsFromDoc(docxPath, imageDir = 'uploads/images') {
 }
 
 /**
- * Extract images from Word document
- * @param {string} docxPath - Path to the Word document
- * @param {string} outputDir - Directory to save images
- */
-async function extractDocImages(docxPath, outputDir) {
-  try {
-    const zip = new JSZip();
-    
-    // Read the .docx file
-    const content = fs.readFileSync(docxPath);
-    const zipContent = await zip.loadAsync(content);
-    
-    // Find all image files in the document
-    const mediaFiles = Object.keys(zipContent.files).filter(name => 
-      name.startsWith('word/media/')
-    );
-    
-    if (mediaFiles.length === 0) {
-      console.log('No images found in the document.');
-      return;
-    }
-    
-    console.log(`Found ${mediaFiles.length} images in the document.`);
-    
-    // Extract and save each image
-    for (const fileName of mediaFiles) {
-      const extension = path.extname(fileName).toLowerCase();
-      
-      // Only process common image formats
-      if (!['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'].includes(extension)) {
-        continue;
-      }
-      
-      // Generate unique filename to avoid collisions
-      const uniqueFileName = `${uuidv4()}${extension}`;
-      const outputPath = path.join(outputDir, uniqueFileName);
-      
-      // Extract image data
-      const imageData = await zipContent.files[fileName].async('nodebuffer');
-      fs.writeFileSync(outputPath, imageData);
-      
-      console.log(`Extracted image: ${uniqueFileName}`);
-    }
-  } catch (error) {
-    console.error('Error extracting images:', error);
-  }
-}
-
-/**
  * Helper for strict prefix matching: Q:) or Q) only
  */
 const prefixRE = (ch) => new RegExp(`^${ch}(?:\\)|:\\))\\s*`);
@@ -119,46 +70,47 @@ const cleanEdgeBr = (s) =>
   
 /**
  * Process embedded images in HTML content
+ * ✅ Generates exactly ONE UUID per <img>, 
+ * uses it both for saving and for DB path
  */
 const processImages = (htmlFragment, imageDir) => {
   if (!htmlFragment) return htmlFragment;
-  
   const $ = cheerio.load(htmlFragment, null, false);
-  
-  // Process data URI images
-  $("img[src^='data:image/']").each((_, img) => {
-    const $img = $(img);
-    const dataUri = $img.attr("src");
-    const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUri);
-    if (!match) return;
 
-    const mime = match[1];
-    const ext = mime.split("/")[1];
-    const fileName = `${uuidv4()}.${ext}`;
-    const outPath = path.join(imageDir, fileName);
-
-    fs.writeFileSync(outPath, Buffer.from(match[2], "base64"));
-    
-    // Update the src to a relative path
-    const relativePath = `/uploads/images/${fileName}`;
-    $img.attr("src", relativePath);
-  });
-  
-  // Handle already extracted images (from extractDocImages)
   $("img").each((_, img) => {
     const $img = $(img);
     const src = $img.attr("src") || '';
-    
-    // If it's a Word media reference, replace with relative URL
-    if (src.includes('word/media/') || src.includes('image')) {
-      const uniqueFileName = `${uuidv4()}.png`;
-      const relativePath = `/uploads/images/${uniqueFileName}`;
-      $img.attr("src", relativePath);
+    const uuidFile = `${uuidv4()}.png`; // ✅ generate ONCE
+    const outPath = path.join(imageDir, uuidFile);
+
+    try {
+      if (src.startsWith('data:image/')) {
+        // ✅ Base64 image
+        const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(src);
+        if (match) {
+          fs.writeFileSync(outPath, Buffer.from(match[2], "base64"));
+          $img.attr("src", `/uploads/images/${uuidFile}`);
+        }
+      } 
+      else if (src.includes('word/media/')) {
+        // ✅ Word document embedded image
+        // Try to read original image file from disk
+        if (fs.existsSync(src)) {
+          const imageData = fs.readFileSync(src);
+          fs.writeFileSync(outPath, imageData);
+          $img.attr("src", `/uploads/images/${uuidFile}`);
+        } else {
+          console.warn(`⚠️ Original image not found: ${src}`);
+        }
+      }
+    } catch (err) {
+      console.error(`⚠️ Failed to process image: ${src}`, err);
     }
   });
 
   return $.html();
 };
+
 
 /**
  * Smart field appender

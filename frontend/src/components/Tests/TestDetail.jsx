@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import apiClient from "../../utils/axiosConfig";
+import { fixImageUrls } from "../../utils/fixImageUrls";
 import {
   FiEdit,
   FiTrash,
@@ -425,7 +426,7 @@ const TestDetail = () => {
 
                 {/* Question text */}
                 <div className="prose max-w-none mb-3">
-                  <div dangerouslySetInnerHTML={{ __html: mcq.questionText }} />
+                  <div dangerouslySetInnerHTML={{ __html: fixImageUrls(mcq.questionText) }} />
                 </div>
 
                 {/* Options with two-column layout */}
@@ -446,7 +447,7 @@ const TestDetail = () => {
                         <span
                           className="inline"
                           dangerouslySetInnerHTML={{
-                            __html: option.optionText,
+                            __html: fixImageUrls(option.optionText),
                           }}
                         />
                       </div>
@@ -461,7 +462,7 @@ const TestDetail = () => {
                     </p>
                     <div
                       className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: mcq.explanationText }}
+                      dangerouslySetInnerHTML={{ __html: fixImageUrls(mcq.explanationText) }}
                     />
                   </div>
                 )}
