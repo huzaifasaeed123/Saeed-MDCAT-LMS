@@ -10,7 +10,8 @@ const {
   getTest,
   updateTest,
   deleteTest,
-  publishTest
+  publishTest,
+  addMcqsToTest,
 } = require('../controllers/testController');
 
 // All routes require authentication
@@ -23,5 +24,6 @@ router.get('/:id', getTest);
 router.put('/:id', authorize('admin', 'teacher'), updateTest);
 router.delete('/:id', authorize('admin', 'teacher'), deleteTest);
 router.put('/:id/publish', authorize('admin', 'teacher'), publishTest);
+router.post('/:id/add-mcqs', authorize('admin', 'teacher'), addMcqsToTest);
 
 module.exports = router;

@@ -1,60 +1,47 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 
-// Protect routes - Verify access token
-exports.protect = async (req, res, next) => {
+// Protect routes — verifies the access token from Authorization header or cookie.
+// Does NOT query the database — the JWT payload already carries id, role, fullName.
+// Any endpoint that needs the full User document fetches it itself.
+exports.protect = (req, res, next) => {
   let token;
 
-  // Check if token exists in headers
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    // Set token from Bearer token in header
+  if (req.headers.authorization?.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
-  } 
-  // Check if token exists in cookies
-  else if (req.cookies.accessToken) {
+  } else if (req.cookies.accessToken) {
     token = req.cookies.accessToken;
   }
 
-  // Make sure token exists
   if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'Access denied. No token provided.'
-    });
+    return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
   }
 
   try {
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-
-    // Add user to req object
-    req.user = await User.findById(decoded.id);
-    
-    // If user not found
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
+    // Expose both .id and ._id so all controllers work regardless of which they use.
+    req.user = {
+      id:       decoded.id,
+      _id:      decoded.id,
+      role:     decoded.role,
+      fullName: decoded.fullName,
+    };
     next();
   } catch (err) {
-    // Check for token expiration
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
         message: 'Token expired. Please refresh your token.',
-        tokenExpired: true
+        tokenExpired: true,
       });
     }
-    
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token. Please log in again.'
-    });
+    return res.status(401).json({ success: false, message: 'Invalid token. Please log in again.' });
   }
+};
+
+// Role-based access control — must be used after protect.
+exports.authorize = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Not authorized for this action.' });
+  }
+  next();
 };

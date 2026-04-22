@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Saeed MDCAT LMS — Complete Technical Documentation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a2e;background:#f8f9fc;padding:24px;line-height:1.6}
+@media print{body{background:white;padding:12px;font-size:11.5px}.pb{page-break-before:always}.nopb{page-break-inside:avoid}}
+/* Cover */
+.cover{background:linear-gradient(135deg,#0f3460,#16213e,#1a1a2e);color:white;border-radius:14px;padding:40px;margin-bottom:28px;text-align:center}
+.cover h1{font-size:26px;font-weight:800;margin-bottom:6px}
+.cover .sub{font-size:13px;opacity:.75;margin-bottom:20px}
+.cover .pills{display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+.cover .pill{background:rgba(255,255,255,.13);border-radius:8px;padding:8px 16px;font-size:12px}
+.cover .pill b{display:block;font-size:15px;font-weight:800}
+/* TOC */
+.toc{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:28px}
+.toc h2{font-size:15px;font-weight:800;color:#0f3460;margin-bottom:12px}
+.toc ol{padding-left:20px}
+.toc li{font-size:12.5px;color:#1e40af;margin-bottom:4px}
+/* Section headers */
+.sh{display:flex;align-items:center;gap:10px;margin:28px 0 14px;padding-bottom:8px;border-bottom:3px solid #e2e8f0}
+.sh-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.sh h2{font-size:18px;font-weight:800;color:#0f3460}
+.sh .bdg{margin-left:auto;background:#e8f4fd;color:#1a73e8;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
+/* Sub headers */
+.sub-h{font-size:14px;font-weight:800;color:#1e40af;margin:18px 0 8px;padding-left:8px;border-left:3px solid #1e40af}
+.sub-h2{font-size:12.5px;font-weight:700;color:#374151;margin:12px 0 6px}
+/* Cards */
+.card{background:white;border-radius:10px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:12px}
+.card.lo{border-left:4px solid #f97316}
+.card.lb{border-left:4px solid #1a73e8}
+.card.lg{border-left:4px solid #10b981}
+.card.lp{border-left:4px solid #8b5cf6}
+.card.lr{border-left:4px solid #ef4444}
+.card.ly{border-left:4px solid #f59e0b}
+/* Tables */
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+th{background:#1e3a5f;color:white;padding:8px 10px;text-align:left;font-weight:700}
+td{padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#374151;vertical-align:top}
+tr:nth-child(even) td{background:#f8faff}
+.method{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:800}
+.get{background:#dbeafe;color:#1e40af}
+.post{background:#dcfce7;color:#166534}
+.put{background:#fef9c3;color:#854d0e}
+.del{background:#fee2e2;color:#991b1b}
+/* Code */
+pre,code{font-family:'Courier New',monospace;font-size:11.5px;background:#f1f5f9;border-radius:5px;color:#1e293b}
+code{padding:1px 5px}
+pre{padding:12px 14px;overflow-x:auto;margin:8px 0;border:1px solid #e2e8f0}
+/* Tags */
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.tag{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px}
+.tg{background:#dcfce7;color:#14532d}
+.tb{background:#dbeafe;color:#1e40af}
+.tp{background:#f3e8ff;color:#6b21a8}
+.tr{background:#fee2e2;color:#991b1b}
+.ty{background:#fef9c3;color:#854d0e}
+/* Two col */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:10px}
+/* Alert boxes */
+.alert{border-radius:8px;padding:12px 14px;margin:10px 0;font-size:12.5px}
+.alert-r{background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d}
+.alert-y{background:#fffbeb;border:1px solid #fcd34d;color:#78350f}
+.alert-g{background:#f0fdf4;border:1px solid #86efac;color:#14532d}
+.alert-b{background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a}
+.alert b{display:block;font-weight:800;margin-bottom:4px}
+/* Flow diagram */
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:8px 0;font-size:12px}
+.fbox{background:#e8f4fd;border:1px solid #93c5fd;color:#1e40af;padding:4px 10px;border-radius:6px;font-weight:600;white-space:nowrap}
+.farr{color:#94a3b8;font-weight:700}
+.fbox.db{background:#f3e8ff;border-color:#c4b5fd;color:#5b21b6}
+.fbox.ok{background:#f0fdf4;border-color:#86efac;color:#14532d}
+.fbox.red{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+/* Model fields */
+.field-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #f8faff;font-size:12px}
+.field-name{font-weight:700;color:#1e40af;min-width:160px}
+.field-type{color:#059669;min-width:80px}
+.field-note{color:#6b7280;font-style:italic}
+/* Page API box */
+.api-call{background:#f8faff;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin:6px 0;font-size:12px}
+.api-call .url{font-family:'Courier New',monospace;color:#1e40af;font-weight:700}
+/* Footer */
+.footer{background:#1a1a2e;color:rgba(255,255,255,.6);border-radius:10px;padding:16px 20px;font-size:11px;text-align:center;margin-top:32px}
+hr.dv{border:none;border-top:2px dashed #e2e8f0;margin:24px 0}
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <h1>📚 Saeed MDCAT LMS — Complete Technical Documentation</h1>
+  <p class="sub">Backend routes · Controllers · Database models · Frontend pages · API flows · Performance & code quality analysis</p>
+  <div class="pills">
+    <div class="pill"><b>9</b>DB Models</div>
+    <div class="pill"><b>10</b>Controllers</div>
+    <div class="pill"><b>70+</b>API Endpoints</div>
+    <div class="pill"><b>43</b>Frontend Pages</div>
+    <div class="pill"><b>April 2026</b>Generated</div>
+  </div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <h2>📋 Table of Contents</h2>
+  <ol>
+    <li>Server Entry Point &amp; Middleware Stack</li>
+    <li>Backend Routes → Controllers Map (all 70+ endpoints)</li>
+    <li>Database Models — Every Field Explained</li>
+    <li>Frontend Routing — All 43 Pages &amp; Their URLs</li>
+    <li>Frontend Pages → API Calls (page-by-page)</li>
+    <li>Complete API Flow Examples (step-by-step)</li>
+    <li>Duplicate Code &amp; Refactoring Opportunities</li>
+    <li>Performance Optimisations for 1000+ Concurrent Users</li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 1: SERVER ENTRY POINT -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh"><div class="sh-icon" style="background:#eff6ff">🖥️</div><h2>1. Server Entry Point &amp; Middleware Stack</h2><span class="bdg">backend/app.js + server.js</span></div>
+
+<div class="card lb">
+  <div class="sub-h">Middleware Execution Order (every request passes through these)</div>
+  <table>
+    <tr><th>#</th><th>Middleware</th><th>Purpose</th></tr>
+    <tr><td>1</td><td><code>express.json()</code></td><td>Parse JSON request bodies</td></tr>
+    <tr><td>2</td><td><code>cookieParser()</code></td><td>Parse cookies (used for refreshToken httpOnly cookie)</td></tr>
+    <tr><td>3</td><td><code>helmet()</code></td><td>Set security HTTP headers (XSS, clickjacking protection)</td></tr>
+    <tr><td>4</td><td>Custom logger</td><td>Logs every request: timestamp + method + URL + body for POST/PUT</td></tr>
+    <tr><td>5</td><td><code>cors({ origin: 'http://localhost:5173', credentials: true })</code></td><td>Allow frontend origin with cookies</td></tr>
+    <tr><td>6</td><td><code>/uploads</code> static serving</td><td>Serves uploaded images and PDFs with CORP header</td></tr>
+    <tr><td>7</td><td><code>morgan('dev')</code></td><td>HTTP request logger (development only)</td></tr>
+    <tr><td>8</td><td><code>passport.initialize()</code></td><td>Google OAuth setup</td></tr>
+    <tr><td>9</td><td>Route handlers</td><td>All /api/* routes mounted here</td></tr>
+    <tr><td>10</td><td><code>errorHandler</code></td><td>Global error handler — catches uncaught errors</td></tr>
+  </table>
+  <div class="sub-h">Route Mounting</div>
+  <pre>app.use('/api/auth',           authRoutes)
+app.use('/api/users',          userRoutes)
+app.use('/api/mcqs',           mcqRoutes)
+app.use('/api/tests',          testRoutes)
+app.use('/api/user-tests',     userTestRoutes)
+app.use('/api',                uploadRoutes)       // → POST /api/upload-image
+app.use('/api/courses',        courseRoutes)
+app.use('/api/question-banks', questionBankRoutes)
+app.use('/api/settings',       settingsRoutes)
+app.use('/api/mcq-reports',    mcqReportRoutes)</pre>
+  <div class="alert alert-y"><b>⚠️ Performance Issue #1</b>The custom logger logs the full req.body on every POST/PUT to the console. On 1000 concurrent students submitting answers, this floods stdout and adds latency. Should be disabled in production or limited to errors only.</div>
+</div>
+
+<div class="card lb">
+  <div class="sub-h">Auth Middleware (backend/middleware/auth.js)</div>
+  <div class="sub-h2"><code>protect</code> — verifies JWT, attaches req.user</div>
+  <div class="flow">
+    <div class="fbox">Request arrives</div><div class="farr">→</div>
+    <div class="fbox">Read token from Authorization header OR accessToken cookie</div><div class="farr">→</div>
+    <div class="fbox db">JWT.verify(token, JWT_ACCESS_SECRET)</div><div class="farr">→</div>
+    <div class="fbox db">User.findById(decoded.id)</div><div class="farr">→</div>
+    <div class="fbox ok">req.user = user; next()</div>
+  </div>
+  <div class="flow" style="margin-top:4px">
+    <div class="fbox red">Token expired → 401 { tokenExpired: true }</div>
+    <div class="farr">|</div>
+    <div class="fbox red">User not found → 401 Unauthorized</div>
+  </div>
+  <div class="sub-h2"><code>authorize(...roles)</code> — role-based access</div>
+  <pre>// Example: authorize('admin', 'teacher')
+// Returns 403 if req.user.role not in allowed roles array</pre>
+</div>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 2: ALL ROUTES -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#fff7ed">🛣️</div><h2>2. Backend Routes → Controllers Map</h2><span class="bdg">All 70+ Endpoints</span></div>
+
+<!-- AUTH -->
+<div class="sub-h">2.1 Auth Routes — /api/auth (authRoutes.js → authController.js)</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/auth/register</td><td>Public</td><td>register()</td><td>Create user: hash password, save to DB, return tokens + user</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/auth/login</td><td>Public</td><td>login()</td><td>Find user by email, matchPassword(), return access+refresh tokens</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/auth/logout</td><td>protect</td><td>logout()</td><td>Clear refreshToken from DB + clear cookie</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/auth/me</td><td>protect</td><td>getMe()</td><td>Return req.user (no extra DB call since protect already loaded user)</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/auth/google</td><td>Public</td><td>googleAuthGIS()</td><td>Verify Google ID token → find/create user → return tokens</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/auth/refresh-token</td><td>Public</td><td>refreshToken()</td><td>Read refreshToken cookie → verify → issue new accessToken</td></tr>
+</table>
+
+<!-- USERS -->
+<div class="sub-h">2.2 User Routes — /api/users (userRoutes.js → userController.js)</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/users</td><td>protect + admin</td><td>getUsers()</td><td>User.find() — all users list</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/users</td><td>protect + admin</td><td>createUser()</td><td>Admin creates a user account directly</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/users/:id</td><td>protect + admin</td><td>getUser()</td><td>User.findById(id)</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/users/:id</td><td>protect + admin</td><td>updateUser()</td><td>findByIdAndUpdate — admin edits any user</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/users/:id</td><td>protect + admin</td><td>deleteUser()</td><td>findByIdAndDelete</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/users/profile</td><td>protect</td><td>updateProfile()</td><td>User updates own profile (fullName, contactNumber, password, profilePicture)</td></tr>
+</table>
+
+<!-- TESTS -->
+<div class="sub-h">2.3 Test Routes — /api/tests (testRoutes.js → testController.js)</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/tests</td><td>protect + admin/teacher</td><td>createTest()</td><td>Test.create({ ...req.body, createdBy: req.user._id })</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/tests</td><td>protect</td><td>getTests()</td><td>Test.find(query) with filters: status, subjects[], chapters[], topics[], questionBankId, courseId, dateFrom/dateTo. Populates createdBy, questionBankId, courseId</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/tests/:id</td><td>protect</td><td>getTest()</td><td>Test.findById().populate('mcqs') — returns full test with all MCQ objects</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/tests/:id</td><td>protect + admin/teacher</td><td>updateTest()</td><td>findByIdAndUpdate with runValidators:true</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/tests/:id</td><td>protect + admin/teacher</td><td>deleteTest()</td><td>MCQ.deleteMany({testId}), UserTestAttempt.deleteMany({test}), test.deleteOne()</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/tests/:id/publish</td><td>protect + admin/teacher</td><td>publishTest()</td><td>Sets status='published', isPublished=true, awaits syncTestClassification()</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/tests/:id/add-mcqs</td><td>protect + admin/teacher</td><td>addMcqsToTest()</td><td>Push mcqIds (dedup) to test.mcqs, update totalQuestions, fire-and-forget syncTestClassification</td></tr>
+</table>
+
+<!-- MCQs -->
+<div class="sub-h">2.4 MCQ Routes — /api/mcqs (mcqRoutes.js → mcqController.js)</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/mcqs</td><td>protect + admin/teacher</td><td>createMCQ()</td><td>MCQ.create(), push to test.mcqs, syncTestClassification fire-and-forget</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcqs/test/:testId</td><td>protect</td><td>getMCQsForTest()</td><td>MCQ.find({testId}) — falls back to Test.findById().populate('mcqs') if empty</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcqs/question-bank/:qbId</td><td>protect</td><td>getMCQsForQuestionBank()</td><td>MCQ.find({questionBankId, optional filters: qbSubjectId, qbChapterId, qbTopicId})</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcqs/question-bank/:qbId/topic-counts</td><td>protect</td><td>getTopicCounts()</td><td>Aggregation: group MCQs by qbTopicId, count per topic</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcqs/:id</td><td>protect</td><td>getMCQ()</td><td>MCQ.findById(id)</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/mcqs/:id</td><td>protect + admin/teacher</td><td>updateMCQ()</td><td>findByIdAndUpdate + increments revisionCount + sets lastRevised</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/mcqs/:id</td><td>protect + admin/teacher</td><td>deleteMCQ()</td><td>MCQ.findByIdAndDelete — removes from test.mcqs array too</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/mcqs/import-document</td><td>protect + admin/teacher</td><td>uploadDocument()</td><td>Multer accepts .docx (10MB), returns importId, processes async via extractMCQsFromDoc</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcqs/import-status/:importId</td><td>protect + admin/teacher</td><td>getImportStatus()</td><td>Returns import progress: status, importedCount, message</td></tr>
+</table>
+
+<!-- USER TESTS -->
+<div class="sub-h">2.5 User Test Routes — /api/user-tests (userTestRoutes.js → userTestController.js)</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/user-tests/start</td><td>protect</td><td>startTest()</td><td>Find/create UserTestAttempt. If existing in-progress → return it. Else create new with questionAttempts[] from test.mcqs</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/user-tests/:attemptId</td><td>protect</td><td>getTestAttempt()</td><td>UserTestAttempt.findById().populate('test').populate('questionAttempts.mcqId')</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/user-tests/:attemptId/question/:index</td><td>protect</td><td>submitAnswer()</td><td>Find MCQ, check isCorrect, update questionAttempts[index], attempt.save()</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/user-tests/:attemptId/report/:index</td><td>protect</td><td>reportQuestion()</td><td>Set reported=true on questionAttempt, create MCQReport doc if none exists</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/user-tests/:attemptId/save/:index</td><td>protect</td><td>saveQuestion()</td><td>Set saved=true on questionAttempt, SavedQuestion.findOneAndUpdate (upsert)</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/user-tests/:attemptId/mark/:index</td><td>protect</td><td>toggleMarkForReview()</td><td>Toggle markedForReview boolean on questionAttempt</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/user-tests/:attemptId/complete</td><td>protect</td><td>completeTest()</td><td>Set status='completed', endTime, totalTimeSpent. Pre-save hook auto-calculates score/scorePercentage</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/user-tests/history</td><td>protect</td><td>getUserTestHistory()</td><td>UserTestAttempt.find({user}).populate test (with QB, course) sorted by createdAt desc</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/user-tests/saved-questions</td><td>protect</td><td>getSavedQuestions()</td><td>SavedQuestion.find({user}).populate('mcq')</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/user-tests/saved-questions/:id</td><td>protect</td><td>removeSavedQuestion()</td><td>SavedQuestion.findByIdAndDelete</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/user-tests/saved-questions/mcq/:mcqId</td><td>protect</td><td>removeSavedQuestionByMcqId()</td><td>SavedQuestion.findOneAndDelete({user, mcq: mcqId})</td></tr>
+</table>
+
+<!-- QB -->
+<div class="sub-h">2.6 Question Bank Routes — /api/question-banks</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/question-banks</td><td>protect</td><td>getQuestionBanks()</td><td>QuestionBank.find().select('-subjects') — excludes large subjects array for list performance</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/question-banks</td><td>protect + admin</td><td>createQuestionBank()</td><td>cleanSubjects() strips tmp_ IDs → QuestionBank.create()</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/question-banks/:id</td><td>protect</td><td>getQuestionBank()</td><td>QuestionBank.findById() — full hierarchy included</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/question-banks/:id</td><td>protect + admin</td><td>updateQuestionBank()</td><td>cleanSubjects() → findByIdAndUpdate</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/question-banks/:id</td><td>protect + admin</td><td>deleteQuestionBank()</td><td>findByIdAndDelete (does NOT cascade delete MCQs — potential orphan data)</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/question-banks/:id/mcq-count</td><td>protect</td><td>getMcqCount()</td><td>MCQ.countDocuments with filter: topicId &gt; chapterId &gt; subjectId &gt; bankId</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/question-banks/generate-test</td><td>protect</td><td>generateTest()</td><td>Random $sample aggregation from MCQs → create/update Test → syncTestClassification</td></tr>
+</table>
+
+<!-- COURSES -->
+<div class="sub-h">2.7 Course Routes — /api/courses</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/courses</td><td>protect</td><td>getCourses()</td><td>Course.find().select('-subjects') — list without content for performance</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/courses</td><td>protect + admin</td><td>createCourse()</td><td>cleanSubjects() → Course.create()</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/courses/:id</td><td>protect</td><td>getCourse()</td><td>Course.findById().populate testId refs in resources with title/subjects/chapters/topics</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/courses/:id</td><td>protect + admin</td><td>updateCourse()</td><td>cleanSubjects() → findByIdAndUpdate</td></tr>
+  <tr><td><span class="method del">DELETE</span></td><td>/api/courses/:id</td><td>protect + admin</td><td>deleteCourse()</td><td>findByIdAndDelete (does NOT unlink tests from courseId — potential stale refs)</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/courses/upload/feature-image</td><td>protect + admin</td><td>uploadFeatureImage()</td><td>Multer: jpeg/png/gif/webp max 5MB → /uploads/courses/ → return URL</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/courses/upload/pdf</td><td>protect + admin</td><td>uploadPdf()</td><td>Multer: PDF max 50MB → /uploads/notes/ → return URL + fileName</td></tr>
+</table>
+
+<!-- MCQ REPORTS -->
+<div class="sub-h">2.8 MCQ Report Routes — /api/mcq-reports</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/mcq-reports</td><td>protect</td><td>createReport()</td><td>MCQReport.create() with denormalized MCQ metadata (subject, chapter, topic, QB)</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/my</td><td>protect</td><td>getMyReports()</td><td>MCQReport.find({reportedBy: req.user.id}) with filters + pagination (page/limit)</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports</td><td>protect + admin/teacher</td><td>getAllReports()</td><td>Admin: all reports. Teacher: only their handled ones. With filters + pagination</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/admin/summary</td><td>protect + admin</td><td>getAdminSummary()</td><td>Aggregation: counts by status, today count, satisfaction stats</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/admin/teacher-stats</td><td>protect + admin</td><td>getTeacherStats()</td><td>Aggregation: per-teacher stats — handled, active, closed, satisfaction %</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/teacher/summary</td><td>protect + admin/teacher</td><td>getTeacherOwnSummary()</td><td>Teacher's own stats (same shape as admin summary but filtered to self)</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/counts</td><td>protect + admin/teacher</td><td>getCountsByMcqs()</td><td>Count reports per MCQ (for display badges on MCQ list)</td></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/mcq-reports/for-mcq/:mcqId</td><td>protect + admin/teacher</td><td>getReportsForMcq()</td><td>All reports for a specific MCQ</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/mcq-reports/:id/messages</td><td>protect</td><td>addMessage()</td><td>Push to report.messages[] with sender info, update status to 'active'</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/mcq-reports/:id/assign</td><td>protect + admin/teacher</td><td>assignReport()</td><td>Set handledBy, status='active'</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/mcq-reports/:id/close</td><td>protect</td><td>closeReport()</td><td>Set status='closed', closedBy, closedAt</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/mcq-reports/:id/feedback</td><td>protect</td><td>submitFeedback()</td><td>Set studentSatisfied = true/false</td></tr>
+</table>
+
+<!-- SETTINGS + UPLOAD -->
+<div class="sub-h">2.9 Settings &amp; Upload Routes</div>
+<table>
+  <tr><th>Method</th><th>Full Path</th><th>Middleware</th><th>Controller Fn</th><th>What It Does</th></tr>
+  <tr><td><span class="method get">GET</span></td><td>/api/settings</td><td>protect</td><td>getSettings()</td><td>SystemSettings.findOne({key:'global'}) — returns maxMcqsPerAutoTest, defaultQuestionBankId</td></tr>
+  <tr><td><span class="method put">PUT</span></td><td>/api/settings</td><td>protect + admin</td><td>updateSettings()</td><td>findOneAndUpdate({key:'global'}, req.body, {upsert:true})</td></tr>
+  <tr><td><span class="method post">POST</span></td><td>/api/upload-image</td><td>protect</td><td>uploadImage()</td><td>Multer: any image type, saves to /uploads/images/, returns URL</td></tr>
+</table>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 3: DATABASE MODELS -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#f3e8ff">🗄️</div><h2>3. Database Models — Every Field Explained</h2><span class="bdg">MongoDB / Mongoose</span></div>
+
+<div class="sub-h">3.1 User Model (backend/models/User.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">fullName</div><div class="field-type">String</div><div class="field-note">required, maxLength:50, trimmed</div></div>
+<div class="field-row"><div class="field-name">email</div><div class="field-type">String</div><div class="field-note">required, unique, regex-validated email format</div></div>
+<div class="field-row"><div class="field-name">contactNumber</div><div class="field-type">String</div><div class="field-note">optional, regex: international phone (10–14 digits)</div></div>
+<div class="field-row"><div class="field-name">password</div><div class="field-type">String</div><div class="field-note">minLength:6, required if no googleId; hashed with bcrypt salt:10 in pre-save hook</div></div>
+<div class="field-row"><div class="field-name">role</div><div class="field-type">String</div><div class="field-note">enum: ['student','teacher','admin'], default:'student'</div></div>
+<div class="field-row"><div class="field-name">googleId</div><div class="field-type">String</div><div class="field-note">optional; set when user signs in with Google</div></div>
+<div class="field-row"><div class="field-name">profilePicture</div><div class="field-type">String</div><div class="field-note">URL to uploaded image or Google profile URL</div></div>
+<div class="field-row"><div class="field-name">refreshToken</div><div class="field-type">String</div><div class="field-note">stored hashed; excluded from queries by default (select:false)</div></div>
+<div class="field-row"><div class="field-name">resetPasswordToken</div><div class="field-type">String</div><div class="field-note">for password reset flow (not fully implemented yet)</div></div>
+<div class="field-row"><div class="field-name">resetPasswordExpire</div><div class="field-type">Date</div><div class="field-note">expiry of reset token</div></div>
+<div class="field-row"><div class="field-name">createdAt / updatedAt</div><div class="field-type">Date</div><div class="field-note">auto via timestamps:true</div></div>
+<div class="tags">
+  <span class="tag tg">Methods: matchPassword(), getSignedAccessToken() [1h JWT], getSignedRefreshToken() [1yr JWT]</span>
+</div>
+</div>
+
+<div class="sub-h">3.2 MCQ Model (backend/models/McqModel.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">author</div><div class="field-type">String</div><div class="field-note">required; auto-filled from req.user.fullName on create</div></div>
+<div class="field-row"><div class="field-name">questionText</div><div class="field-type">String</div><div class="field-note">required; HTML allowed (from TipTap rich text editor)</div></div>
+<div class="field-row"><div class="field-name">options[]</div><div class="field-type">Array</div><div class="field-note">min 2 required; each: optionLetter (A-E), optionText, isCorrect (bool), explanationText</div></div>
+<div class="field-row"><div class="field-name">explanationText</div><div class="field-type">String</div><div class="field-note">general explanation shown after answer; HTML allowed</div></div>
+<div class="field-row"><div class="field-name">referencePdfs[]</div><div class="field-type">Array</div><div class="field-note">linked PDF references: board, startPage, endPage, pdfLink, pdfName, subject</div></div>
+<div class="field-row"><div class="field-name">category / session</div><div class="field-type">String</div><div class="field-note">legacy classification fields (MCQ's own tags)</div></div>
+<div class="field-row"><div class="field-name">subject / unit / topic / subTopic</div><div class="field-type">String</div><div class="field-note">MCQ's own string tags (separate from QB hierarchy)</div></div>
+<div class="field-row"><div class="field-name">difficulty</div><div class="field-type">String</div><div class="field-note">enum: ['Easy','Medium','Hard'], default:'Medium'</div></div>
+<div class="field-row"><div class="field-name">isPublic</div><div class="field-type">Boolean</div><div class="field-note">default:true; controls visibility</div></div>
+<div class="field-row"><div class="field-name">questionBankId</div><div class="field-type">ObjectId→QB</div><div class="field-note">QB this MCQ belongs to (null if test-only MCQ)</div></div>
+<div class="field-row"><div class="field-name">qbSubjectId / qbChapterId / qbTopicId</div><div class="field-type">ObjectId</div><div class="field-note">embedded subdocument IDs in QB hierarchy (not ref — just ID match)</div></div>
+<div class="field-row"><div class="field-name">testId</div><div class="field-type">ObjectId→Test</div><div class="field-note">optional; set for test-specific MCQs created via MCQFormPage</div></div>
+<div class="field-row"><div class="field-name">revisionCount</div><div class="field-type">Number</div><div class="field-note">incremented on every updateMCQ() call</div></div>
+<div class="field-row"><div class="field-name">lastRevised</div><div class="field-type">Date</div><div class="field-note">updated on every updateMCQ() call</div></div>
+<div class="field-row"><div class="field-name">statistics.optionsSelections</div><div class="field-type">Map&lt;String,Number&gt;</div><div class="field-note">counts how many times each option (A/B/C/D/E) was selected platform-wide</div></div>
+<div class="field-row"><div class="field-name">statistics.correctPercentage</div><div class="field-type">Number</div><div class="field-note">% of students who got this right (calculated field)</div></div>
+<div class="field-row"><div class="field-name">statistics.expertSolutionVideoLink</div><div class="field-type">String</div><div class="field-note">YouTube URL for expert video explanation (UI not yet built)</div></div>
+<div class="tags"><span class="tag tr">Validation: exactly one option must have isCorrect:true (custom validator)</span></div>
+</div>
+
+<div class="sub-h">3.3 Test Model (backend/models/TestModel.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">title</div><div class="field-type">String</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">description</div><div class="field-type">String</div><div class="field-note">optional</div></div>
+<div class="field-row"><div class="field-name">totalQuestions</div><div class="field-type">Number</div><div class="field-note">default:0; kept in sync when MCQs added/removed</div></div>
+<div class="field-row"><div class="field-name">passingScore</div><div class="field-type">Number</div><div class="field-note">percentage, default:50</div></div>
+<div class="field-row"><div class="field-name">isPublished</div><div class="field-type">Boolean</div><div class="field-note">default:false; set true on publish</div></div>
+<div class="field-row"><div class="field-name">status</div><div class="field-type">String</div><div class="field-note">enum: ['draft','published','archived'], default:'draft'</div></div>
+<div class="field-row"><div class="field-name">difficultyLevel</div><div class="field-type">String</div><div class="field-note">enum: ['Easy','Medium','Hard'], default:'Medium'</div></div>
+<div class="field-row"><div class="field-name">instructions</div><div class="field-type">String</div><div class="field-note">optional instructions shown on TestStartPage</div></div>
+<div class="field-row"><div class="field-name">createdBy</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">mcqs[]</div><div class="field-type">[ObjectId→MCQ]</div><div class="field-note">MCQ refs; used for QB-sourced and auto-generated tests</div></div>
+<div class="field-row"><div class="field-name">questionBankId</div><div class="field-type">ObjectId→QB</div><div class="field-note">optional; which QB this test was generated from</div></div>
+<div class="field-row"><div class="field-name">subjects[] / chapters[] / topics[]</div><div class="field-type">[String]</div><div class="field-note">auto-populated by syncTestClassification() from MCQs' QB hierarchy</div></div>
+<div class="field-row"><div class="field-name">courseId</div><div class="field-type">ObjectId→Course</div><div class="field-note">optional course linkage</div></div>
+</div>
+
+<div class="sub-h">3.4 QuestionBank Model (backend/models/QuestionBankModel.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">title</div><div class="field-type">String</div><div class="field-note">required, trim</div></div>
+<div class="field-row"><div class="field-name">description</div><div class="field-type">String</div><div class="field-note">default: ''</div></div>
+<div class="field-row"><div class="field-name">isActive</div><div class="field-type">Boolean</div><div class="field-note">default: true</div></div>
+<div class="field-row"><div class="field-name">createdBy</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">subjects[].title / .order</div><div class="field-type">String/Number</div><div class="field-note">Subject level of hierarchy</div></div>
+<div class="field-row"><div class="field-name">subjects[].chapters[].title / .order</div><div class="field-type">String/Number</div><div class="field-note">Chapter level — has auto-generated _id used as qbChapterId in MCQs</div></div>
+<div class="field-row"><div class="field-name">subjects[].chapters[].topics[].title / .order</div><div class="field-type">String/Number</div><div class="field-note">Topic level — _id used as qbTopicId in MCQs</div></div>
+<div class="tags"><span class="tag tb">All subdocuments get auto-generated MongoDB _id. MCQs reference these IDs via qbSubjectId/qbChapterId/qbTopicId</span></div>
+</div>
+
+<div class="sub-h">3.5 UserTestAttempt Model (backend/models/UserTestAttempt.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">user</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">test</div><div class="field-type">ObjectId→Test</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">mode</div><div class="field-type">String</div><div class="field-note">enum: ['tutor','timer'], required</div></div>
+<div class="field-row"><div class="field-name">status</div><div class="field-type">String</div><div class="field-note">enum: ['in-progress','completed','abandoned'], default:'in-progress'</div></div>
+<div class="field-row"><div class="field-name">startTime / endTime</div><div class="field-type">Date</div><div class="field-note">startTime set on creation; endTime set on complete</div></div>
+<div class="field-row"><div class="field-name">totalTimeSpent</div><div class="field-type">Number</div><div class="field-note">seconds; sent by frontend on completeTest()</div></div>
+<div class="field-row"><div class="field-name">currentQuestionIndex</div><div class="field-type">Number</div><div class="field-note">updated on each submitAnswer() — tracks resume position</div></div>
+<div class="field-row"><div class="field-name">score / maxScore / scorePercentage</div><div class="field-type">Number</div><div class="field-note">auto-calculated by pre-save hook counting isCorrect:true</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].mcqId</div><div class="field-type">ObjectId→MCQ</div><div class="field-note">required; one entry per question in test</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].selectedOption</div><div class="field-type">String</div><div class="field-note">enum: ['A','B','C','D','E',null], default:null</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].isCorrect</div><div class="field-type">Boolean</div><div class="field-note">default:false; set by submitAnswer()</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].reported</div><div class="field-type">Boolean</div><div class="field-note">flag set by reportQuestion()</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].saved</div><div class="field-type">Boolean</div><div class="field-note">flag set by saveQuestion()</div></div>
+<div class="field-row"><div class="field-name">questionAttempts[].markedForReview</div><div class="field-type">Boolean</div><div class="field-note">toggled by toggleMarkForReview()</div></div>
+</div>
+
+<div class="sub-h">3.6 MCQReport Model (backend/models/MCQReport.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">mcq</div><div class="field-type">ObjectId→MCQ</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">test / attempt</div><div class="field-type">ObjectId</div><div class="field-note">optional; links back to context where report was made</div></div>
+<div class="field-row"><div class="field-name">reportedBy</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">reason</div><div class="field-type">String</div><div class="field-note">enum: 'Question Statement Wrong' | 'Option Wrong' | 'Answer Key is Incorrect' | 'Wrong Explanation' | 'Need Explanation'</div></div>
+<div class="field-row"><div class="field-name">details</div><div class="field-type">String</div><div class="field-note">student's written description</div></div>
+<div class="field-row"><div class="field-name">status</div><div class="field-type">String</div><div class="field-note">enum: ['open','active','closed'], default:'open'</div></div>
+<div class="field-row"><div class="field-name">handledBy</div><div class="field-type">ObjectId→User</div><div class="field-note">teacher/admin assigned to this report</div></div>
+<div class="field-row"><div class="field-name">messages[]</div><div class="field-type">Array</div><div class="field-note">discussion thread: {sender, senderName, senderRole, text, timestamps}</div></div>
+<div class="field-row"><div class="field-name">studentSatisfied</div><div class="field-type">Boolean</div><div class="field-note">null = not yet rated; set by student after close</div></div>
+<div class="field-row"><div class="field-name">mcqSubject / mcqChapter / mcqTopic / mcqQuestionBankId</div><div class="field-type">String/ObjectId</div><div class="field-note">denormalized for fast filtering without joins</div></div>
+<div class="tags"><span class="tag tg">Indexes: (reportedBy+status), (handledBy+status), (status+createdAt), mcqQuestionBankId, mcq</span></div>
+</div>
+
+<div class="sub-h">3.7 Course Model (backend/models/CourseModel.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">title / shortDescription / longDescription</div><div class="field-type">String</div><div class="field-note">course metadata</div></div>
+<div class="field-row"><div class="field-name">featureImage</div><div class="field-type">String</div><div class="field-note">URL to uploaded image in /uploads/courses/</div></div>
+<div class="field-row"><div class="field-name">isPublic</div><div class="field-type">Boolean</div><div class="field-note">default:false</div></div>
+<div class="field-row"><div class="field-name">createdBy</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">subjects[].chapters[].useTopics</div><div class="field-type">Boolean</div><div class="field-note">if true → resources are inside topics; if false → resources direct on chapter</div></div>
+<div class="field-row"><div class="field-name">resources[].type</div><div class="field-type">String</div><div class="field-note">enum: ['test','notes','lecture']</div></div>
+<div class="field-row"><div class="field-name">resources[].testId</div><div class="field-type">ObjectId→Test</div><div class="field-note">for type='test'; populated on getCourse()</div></div>
+<div class="field-row"><div class="field-name">resources[].fileUrl / fileName</div><div class="field-type">String</div><div class="field-note">for type='notes' PDF</div></div>
+<div class="field-row"><div class="field-name">resources[].youtubeUrl</div><div class="field-type">String</div><div class="field-note">for type='lecture'</div></div>
+</div>
+
+<div class="sub-h">3.8 SavedQuestion Model (backend/models/SavedQuestion.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">user</div><div class="field-type">ObjectId→User</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">mcq</div><div class="field-type">ObjectId→MCQ</div><div class="field-note">required</div></div>
+<div class="field-row"><div class="field-name">notes</div><div class="field-type">String</div><div class="field-note">student's personal note on this MCQ</div></div>
+<div class="field-row"><div class="field-name">taggedCategories</div><div class="field-type">[String]</div><div class="field-note">custom labels e.g. ['hard','revision']</div></div>
+<div class="field-row"><div class="field-name">testId</div><div class="field-type">ObjectId→Test</div><div class="field-note">which test this was saved from</div></div>
+<div class="tags"><span class="tag tr">Unique compound index: (user, mcq) — prevents duplicate saves</span></div>
+</div>
+
+<div class="sub-h">3.9 SystemSettings Model (backend/models/SystemSettings.js)</div>
+<div class="card lp">
+<div class="field-row"><div class="field-name">key</div><div class="field-type">String</div><div class="field-note">default:'global', unique — single-document pattern (only one settings record)</div></div>
+<div class="field-row"><div class="field-name">maxMcqsPerAutoTest</div><div class="field-type">Number</div><div class="field-note">default:100; caps the count field in AutoTestGeneratorPage</div></div>
+<div class="field-row"><div class="field-name">defaultQuestionBankId</div><div class="field-type">ObjectId→QB</div><div class="field-note">pre-selected QB in auto test generator</div></div>
+</div>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 4: FRONTEND ROUTING -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#f0fdf4">🗺️</div><h2>4. Frontend Routing — All 43 Pages</h2><span class="bdg">frontend/src/core/router/AppRouter.jsx</span></div>
+
+<table>
+  <tr><th>URL Path</th><th>Page Component</th><th>Access</th><th>Has Dashboard Layout</th></tr>
+  <tr><td>/</td><td>HomePage</td><td>Public</td><td>No</td></tr>
+  <tr><td>/login</td><td>LoginPage</td><td>Public</td><td>No</td></tr>
+  <tr><td>/register</td><td>RegisterPage</td><td>Public</td><td>No</td></tr>
+  <tr><td>/dashboard</td><td>DashboardPage (role-based)</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/profile</td><td>ProfilePage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/admin/users</td><td>UsersPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/users/new</td><td>NewUserPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/users/:id</td><td>EditUserPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/courses</td><td>CourseListPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/courses/create</td><td>CourseFormPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/courses/:id/edit</td><td>CourseFormPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks</td><td>QuestionBankListPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/create</td><td>QuestionBankFormPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:id/edit</td><td>QuestionBankFormPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:qbId/import</td><td>QuestionBankImportPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:id</td><td>QuestionBankDetailPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:qbId/mcqs</td><td>QBMCQListPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:qbId/mcqs/edit-all/:index</td><td>QBSequentialMCQEditorPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/question-banks/:qbId/mcqs/:mcqId/edit</td><td>MCQFormPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/auto-test</td><td>AutoTestGeneratorPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/settings</td><td>SettingsPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/admin/mcq-reports</td><td>AdminMCQReportsPage</td><td>Admin only</td><td>Yes</td></tr>
+  <tr><td>/teacher/mcq-reports</td><td>TeacherMCQReportsPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests</td><td>TestListPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/create</td><td>TestFormPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:id</td><td>TestDetailPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:id/edit</td><td>TestFormPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:testId/import-mcqs</td><td>MCQDocumentUploadPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:testId/mcqs/create</td><td>MCQFormPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:testId/mcqs/:mcqId/edit</td><td>MCQFormPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:testId/mcqs/edit-all/:index</td><td>SequentialMCQEditorPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/tests/:testId/pick-mcqs</td><td>QBManualPickPage</td><td>Admin + Teacher</td><td>Yes</td></tr>
+  <tr><td>/auto-test</td><td>AutoTestGeneratorPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/courses</td><td>CourseCatalogPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/courses/:id</td><td>CourseDetailPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/mcq-reports</td><td>StudentMCQReportsPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/tests</td><td>TestHistoryPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/tests/:testId</td><td>TestStartPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/tests/:testId/play</td><td>TestPlayerPage</td><td>Any logged-in</td><td><b>No</b> (full screen)</td></tr>
+  <tr><td>/student/tests/:testId/result/:attemptId</td><td>TestResultPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>/student/tests/:testId/review/:attemptId</td><td>TestAttemptReviewPage</td><td>Any logged-in</td><td>Yes</td></tr>
+  <tr><td>* (any unknown)</td><td>→ redirect to /dashboard</td><td>—</td><td>—</td></tr>
+</table>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 5: FRONTEND PAGES → API CALLS -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#fff7ed">📡</div><h2>5. Frontend Pages → API Calls</h2><span class="bdg">Every page &amp; every API call</span></div>
+
+<!-- AUTH PAGES -->
+<div class="sub-h">5.1 Auth Pages</div>
+<div class="g2">
+<div class="card lo">
+  <div class="sub-h2">LoginPage.jsx — /login</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/auth/login</span><br/>Body: <code>{ email, password }</code><br/>Returns: <code>{ accessToken, user: {id, fullName, email, role, profilePicture} }</code><br/>On success: store accessToken in memory, redirect to /dashboard</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/auth/google</span> (Google button click)<br/>Body: <code>{ token: googleIdToken }</code><br/>Returns same shape as login</div>
+</div>
+<div class="card lo">
+  <div class="sub-h2">RegisterPage.jsx — /register</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/auth/register</span><br/>Body: <code>{ fullName, email, contactNumber, password }</code><br/>Returns: <code>{ accessToken, user }</code><br/>On success: auto-login, redirect to /dashboard</div>
+</div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="sub-h">5.2 Dashboard Pages</div>
+<div class="card lg">
+  <div class="sub-h2">DashboardPage.jsx — /dashboard</div>
+  <p style="color:#475569;font-size:12.5px">Reads role from AuthContext (no API call needed — user already in context from login). Renders AdminDashboard, TeacherDashboard, or StudentDashboard based on role.</p>
+  <div class="g3">
+    <div style="background:#f0fdf4;border-radius:6px;padding:10px;font-size:12px">
+      <b style="color:#166534">AdminDashboard</b><br/>Navigation cards only — links to /admin/users, /admin/courses, /tests, /admin/mcq-reports. No API calls on mount.
+    </div>
+    <div style="background:#eff6ff;border-radius:6px;padding:10px;font-size:12px">
+      <b style="color:#1e40af">TeacherDashboard</b><br/>Navigation cards only — links to /tests, /teacher/mcq-reports. No API calls on mount.
+    </div>
+    <div style="background:#fdf4ff;border-radius:6px;padding:10px;font-size:12px">
+      <b style="color:#6b21a8">StudentDashboard</b><br/>Navigation cards — links to /student/courses, /student/tests, /student/mcq-reports. No API calls on mount.
+    </div>
+  </div>
+  <div class="alert alert-y" style="margin-top:10px"><b>⚠️ Issue</b>All three dashboard components show static navigation cards only. Zero real-time data. This means the dashboard gives no actual insight — a missed opportunity to show stats like tests completed today, recent scores, pending reports, etc.</div>
+</div>
+
+<!-- TESTS -->
+<div class="sub-h">5.3 Test Management Pages (Admin/Teacher)</div>
+<div class="card lo nopb">
+  <div class="sub-h2">TestListPage.jsx — /tests</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests</span> — on mount, fetches ALL tests (no server-side pagination)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks</span> — for QB filter dropdown</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/courses</span> — for Course filter dropdown</div>
+  <div class="alert alert-r"><b>🔴 Performance Issue</b>Loads ALL tests at once then filters client-side. With 1000+ tests this becomes very slow. Needs server-side pagination + filtering.</div>
+</div>
+<div class="card lo nopb">
+  <div class="sub-h2">TestFormPage.jsx — /tests/create or /tests/:id/edit</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests/:id</span> (edit mode only) — pre-fill form</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/tests</span> (create) — Body: <code>{ title, description, passingScore, difficultyLevel, instructions }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/tests/:id</span> (edit) — same body</div>
+  On success: navigate to /tests/:id (TestDetailPage)
+</div>
+<div class="card lo nopb">
+  <div class="sub-h2">TestDetailPage.jsx — /tests/:id</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests/:id</span> — on mount (returns test + all populated MCQs)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcqs/test/:testId</span> — separate call for MCQ list display</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/tests/:id/publish</span> — Publish button click</div>
+  <div class="alert alert-r"><b>🔴 Duplicate API Call</b>getTest() already populates MCQs (test.mcqs[]), yet the page also calls getMCQsForTest() separately. This is two DB round-trips fetching the same data. Only one call needed.</div>
+</div>
+
+<!-- STUDENT TEST FLOW -->
+<div class="sub-h">5.4 Student Test-Taking Flow (the most important flow)</div>
+<div class="card lg nopb">
+  <div class="sub-h2">TestHistoryPage.jsx — /student/tests</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/user-tests/history</span> — on mount; returns all attempts with nested test → QB → Course populate</div>
+  Client-side: filters by status, subject, QB, search text. All filtering local.
+</div>
+<div class="card lg nopb">
+  <div class="sub-h2">TestStartPage.jsx — /student/tests/:testId</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests/:testId</span> — test info (title, description, totalQuestions, passingScore, difficultyLevel)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/user-tests/history</span> — check for existing in-progress attempt for this test</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/user-tests/start</span> (Start Test button) — Body: <code>{ testId, mode: 'tutor'|'timer' }</code><br/>Returns: full UserTestAttempt with populated MCQs</div>
+  On success: navigate to /student/tests/:testId/play?attemptId=xxx&amp;duration=yyy (seconds for timer mode)
+  <div class="alert alert-r"><b>🔴 Inefficiency</b>TestStartPage fetches the full user history (ALL attempts, all tests) just to check if one test has an in-progress attempt. Should call a dedicated endpoint: GET /api/user-tests/active?testId=xxx</div>
+</div>
+<div class="card lg nopb">
+  <div class="sub-h2">TestPlayerPage.jsx — /student/tests/:testId/play</div>
+  Reads ?attemptId and ?duration from URL params.
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/user-tests/:attemptId</span> — on mount (get full attempt with MCQ details)</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/user-tests/:attemptId/question/:index</span> — on every answer select<br/>Body: <code>{ selectedOption: 'A'|'B'|'C'|'D'|'E' }</code><br/>Returns: <code>{ isCorrect, correctOption, explanation, attempt }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/user-tests/:attemptId/report/:index</span> — Report button<br/>Body: <code>{ reportReason }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/user-tests/:attemptId/save/:index</span> — Save button<br/>Body: <code>{ notes, taggedCategories }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/user-tests/:attemptId/mark/:index</span> — Mark for Review toggle</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/user-tests/:attemptId/complete</span> — Submit Test button<br/>Body: <code>{ totalTimeSpent }</code><br/>On success: navigate to /student/tests/:testId/result/:attemptId</div>
+  <div class="alert alert-r"><b>🔴 Critical Performance Issue</b>Every single answer selection fires an API call immediately. For 200 questions in a mock exam with 1000 students = potentially 200,000 API calls per exam session. Should debounce or batch these into periodic saves (every 30s) + on navigation. Only save immediately for tutor mode feedback.</div>
+</div>
+<div class="card lg nopb">
+  <div class="sub-h2">TestResultPage.jsx — /student/tests/:testId/result/:attemptId</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/user-tests/:attemptId</span> — load attempt with score details</div>
+  Displays: score %, correct/wrong counts, pass/fail badge, links to review
+</div>
+<div class="card lg nopb">
+  <div class="sub-h2">TestAttemptReviewPage.jsx — /student/tests/:testId/review/:attemptId</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/user-tests/:attemptId</span> — full attempt with all MCQ details</div>
+  Displays: each question with student's answer highlighted, correct answer, explanation
+</div>
+
+<!-- MCQ PAGES -->
+<div class="sub-h">5.5 MCQ Management Pages</div>
+<div class="card lo nopb">
+  <div class="sub-h2">MCQFormPage.jsx — /tests/:testId/mcqs/create or /tests/:testId/mcqs/:mcqId/edit</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests/:testId</span> — pre-fill subject/unit/topic from test (legacy, now returns empty)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcqs/:mcqId</span> (edit mode only) — load MCQ for editing</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/mcqs</span> or <span class="method put">PUT</span> <span class="url">/api/mcqs/:mcqId</span></div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/upload-image</span> — for inline images in rich text editor</div>
+  Body: <code>{ questionText, options[{optionLetter, optionText, isCorrect, explanationText}], explanationText, subject, unit, topic, difficulty, isPublic, testId }</code>
+</div>
+<div class="card lo nopb">
+  <div class="sub-h2">MCQDocumentUploadPage.jsx — /tests/:testId/import-mcqs</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks</span> — QB dropdown for classification</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/mcqs/import-document</span> — FormData: file (.docx), testId, classifications (JSON array)<br/>Returns: <code>{ importId }</code></div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcqs/import-status/:importId</span> — polled every 2s until status='completed'</div>
+</div>
+
+<!-- QB PAGES -->
+<div class="sub-h">5.6 Question Bank Pages</div>
+<div class="card lb nopb">
+  <div class="sub-h2">QuestionBankListPage.jsx — /admin/question-banks</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks</span> — list (no subjects array)</div>
+  <div class="api-call"><span class="method del">DELETE</span> <span class="url">/api/question-banks/:id</span> — with confirmation dialog</div>
+</div>
+<div class="card lb nopb">
+  <div class="sub-h2">QuestionBankDetailPage.jsx — /admin/question-banks/:id</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks/:id</span> — full hierarchy</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks/:id/mcq-count?subjectId=&amp;chapterId=&amp;topicId=</span> — counts per node</div>
+  Links to QBMCQListPage, AutoTestGeneratorPage, QuestionBankImportPage
+</div>
+<div class="card lb nopb">
+  <div class="sub-h2">AutoTestGeneratorPage.jsx — /admin/auto-test or /auto-test</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks</span> — QB dropdown</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/settings</span> — maxMcqsPerAutoTest cap + defaultQuestionBankId</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/question-banks/:qbId/mcq-count?subjectId=...&amp;chapterId=...&amp;topicId=...</span> — live count as user selects hierarchy (called on every checkbox change)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/tests/:testId</span> (if ?testId= query param — "add to existing test" mode)</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/question-banks/generate-test</span><br/>Body: <code>{ questionBankId, count, testTitle, description, passingScore, difficultyLevel, instructions, subjectIds[], chapterIds[], topicIds[], existingTestId? }</code></div>
+  <div class="alert alert-y"><b>⚠️ Issue</b>MCQ count is re-fetched on every checkbox change. With a large QB having 50 topics, a single "select all" action can fire 50 simultaneous count requests. Should debounce by 300ms.</div>
+</div>
+
+<!-- COURSES -->
+<div class="sub-h">5.7 Course Pages</div>
+<div class="card lp nopb">
+  <div class="sub-h2">CourseFormPage.jsx — /admin/courses/create or /admin/courses/:id/edit</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/courses/:id</span> (edit mode) — load course</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/courses/upload/feature-image</span> — FormData with image file</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/courses/upload/pdf</span> — FormData with PDF file</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/courses</span> or <span class="method put">PUT</span> <span class="url">/api/courses/:id</span></div>
+</div>
+<div class="card lp nopb">
+  <div class="sub-h2">CourseCatalogPage.jsx — /student/courses</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/courses</span> — list (no subjects content)</div>
+</div>
+<div class="card lp nopb">
+  <div class="sub-h2">CourseDetailPage.jsx — /student/courses/:id</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/courses/:id</span> — full course with all resources; testId refs populated</div>
+  Renders: subjects → chapters → topics → resources (test links, PDF downloads, YouTube embeds)
+</div>
+
+<!-- REPORTS -->
+<div class="sub-h">5.8 MCQ Report Pages</div>
+<div class="card lr nopb">
+  <div class="sub-h2">StudentMCQReportsPage.jsx — /student/mcq-reports</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports/my?status=&amp;page=1</span> — paginated, filtered</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/mcq-reports/:id/messages</span> — Body: <code>{ text }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/mcq-reports/:id/feedback</span> — Body: <code>{ studentSatisfied: true|false }</code></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/mcq-reports/:id/close</span></div>
+</div>
+<div class="card lr nopb">
+  <div class="sub-h2">TeacherMCQReportsPage.jsx — /teacher/mcq-reports</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports/teacher/summary</span> — stats card</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports?status=&amp;page=1</span> — paginated list</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/mcq-reports/:id/messages</span> — reply</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/mcq-reports/:id/assign</span> — assign to self</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/mcq-reports/:id/close</span></div>
+</div>
+<div class="card lr nopb">
+  <div class="sub-h2">AdminMCQReportsPage.jsx — /admin/mcq-reports</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports/admin/summary</span> — stats row (total/open/active/closed/today)</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports/admin/teacher-stats</span> — per-teacher table</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/mcq-reports?filters&amp;page=1</span> — all reports paginated</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/mcq-reports/:id/assign</span> — assign to teacher</div>
+</div>
+
+<div class="sub-h">5.9 User Management + Profile Pages</div>
+<div class="g2">
+<div class="card lo nopb">
+  <div class="sub-h2">UsersPage + NewUserPage + EditUserPage — /admin/users</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/users</span></div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/users</span> — Body: <code>{ fullName, email, contactNumber, password, role }</code></div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/users/:id</span></div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/users/:id</span></div>
+  <div class="api-call"><span class="method del">DELETE</span> <span class="url">/api/users/:id</span></div>
+</div>
+<div class="card lo nopb">
+  <div class="sub-h2">ProfilePage.jsx — /profile</div>
+  <div class="api-call"><span class="method get">GET</span> <span class="url">/api/auth/me</span> — load current user data</div>
+  <div class="api-call"><span class="method post">POST</span> <span class="url">/api/upload-image</span> — profile picture upload</div>
+  <div class="api-call"><span class="method put">PUT</span> <span class="url">/api/users/profile</span> — Body: <code>{ fullName, contactNumber, password?, profilePicture? }</code></div>
+</div>
+</div>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 6: COMPLETE FLOW EXAMPLES -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#dcfce7">⚡</div><h2>6. Complete API Flow Examples</h2><span class="bdg">Step-by-step</span></div>
+
+<div class="sub-h">6.1 Admin Creates a New Test (manual MCQ method)</div>
+<div class="card lg">
+<table>
+  <tr><th>Step</th><th>Action</th><th>API Call</th><th>Backend DB Operations</th><th>Result</th></tr>
+  <tr><td>1</td><td>Admin opens /tests/create</td><td>—</td><td>—</td><td>Empty form shown</td></tr>
+  <tr><td>2</td><td>Admin fills form + clicks Create</td><td>POST /api/tests</td><td>Test.create({title, description, passingScore, difficultyLevel, createdBy, status:'draft'})</td><td>Test doc created. Redirected to /tests/:id</td></tr>
+  <tr><td>3</td><td>TestDetailPage loads</td><td>GET /api/tests/:id + GET /api/mcqs/test/:testId</td><td>Test.findById().populate('mcqs') + MCQ.find({testId})</td><td>Test details shown, MCQ list empty</td></tr>
+  <tr><td>4</td><td>Click "Add MCQ manually"</td><td>→ navigate to /tests/:testId/mcqs/create</td><td>—</td><td>MCQFormPage opens</td></tr>
+  <tr><td>5</td><td>Fill MCQ form + Save</td><td>POST /api/mcqs</td><td>MCQ.create({...fields, testId, author}) → Test.findById() → test.mcqs.push(mcq._id) → test.save() → syncTestClassification() fire-and-forget</td><td>MCQ saved. Redirected back. Test totalQuestions incremented.</td></tr>
+  <tr><td>6</td><td>Repeat step 4–5 for all MCQs</td><td>—</td><td>—</td><td>—</td></tr>
+  <tr><td>7</td><td>Click "Publish Test"</td><td>PUT /api/tests/:id/publish</td><td>test.status='published', test.isPublished=true, await syncTestClassification(test._id) → Test.findByIdAndUpdate({subjects, chapters, topics})</td><td>Test published. Classification arrays updated. Visible to students.</td></tr>
+</table>
+</div>
+
+<div class="sub-h">6.2 Auto-Generate Test from Question Bank</div>
+<div class="card lg">
+<table>
+  <tr><th>Step</th><th>Action</th><th>API Call</th><th>Backend DB Operations</th><th>Result</th></tr>
+  <tr><td>1</td><td>Open /admin/auto-test</td><td>GET /api/question-banks + GET /api/settings</td><td>QB.find().select('-subjects') + SystemSettings.findOne()</td><td>QB dropdown + count cap loaded</td></tr>
+  <tr><td>2</td><td>Select QB from dropdown</td><td>GET /api/question-banks/:qbId</td><td>QB.findById() — full hierarchy</td><td>Subject → Chapter → Topic checkboxes rendered</td></tr>
+  <tr><td>3</td><td>Check a topic checkbox</td><td>GET /api/question-banks/:qbId/mcq-count?topicId=xxx</td><td>MCQ.countDocuments({questionBankId, qbTopicId})</td><td>Shows "42 MCQs available"</td></tr>
+  <tr><td>4</td><td>Set count=20, fill title, click Generate</td><td>POST /api/question-banks/generate-test</td><td>MCQ.aggregate([{$match: filter}, {$sample:{size:20}}, {$project:{_id:1}}]) → Test.create({...}) → syncTestClassification(test._id)</td><td>Test created + classified. Redirect to /tests/:id</td></tr>
+</table>
+</div>
+
+<div class="sub-h">6.3 Student Takes a Timed Test (complete flow)</div>
+<div class="card lg">
+<table>
+  <tr><th>Step</th><th>Action</th><th>API Call</th><th>Backend DB Operations</th><th>Result</th></tr>
+  <tr><td>1</td><td>Open /student/tests/:testId</td><td>GET /api/tests/:testId + GET /api/user-tests/history</td><td>Test.findById() + UserTestAttempt.find({user}).populate(test...)</td><td>Test info + resume banner (if in-progress)</td></tr>
+  <tr><td>2</td><td>Select Timed Mode + 1.5x speed + click Start</td><td>POST /api/user-tests/start</td><td>Test.findById().populate('mcqs') → UserTestAttempt.create({user, test, mode:'timer', questionAttempts:[...]})</td><td>Attempt created. Navigate to /play?attemptId=xxx&amp;duration=2400 (40 MCQs × 60s)</td></tr>
+  <tr><td>3</td><td>TestPlayerPage loads</td><td>GET /api/user-tests/:attemptId</td><td>UserTestAttempt.findById().populate('test').populate('questionAttempts.mcqId')</td><td>All questions loaded. Timer starts from ?duration.</td></tr>
+  <tr><td>4</td><td>Student selects option B for Q1</td><td>PUT /api/user-tests/:attemptId/question/0</td><td>MCQ.findById(mcqId) → check isCorrect → attempt.questionAttempts[0].selectedOption='B' → attempt.save() (pre-save recalculates score)</td><td>No feedback shown (timer mode). Navigator marks Q1 answered.</td></tr>
+  <tr><td>5</td><td>Timer runs out / student submits</td><td>PUT /api/user-tests/:attemptId/complete</td><td>attempt.status='completed', endTime=now, totalTimeSpent=body.totalTimeSpent → attempt.save()</td><td>Navigate to /result/:attemptId</td></tr>
+  <tr><td>6</td><td>Result page loads</td><td>GET /api/user-tests/:attemptId</td><td>UserTestAttempt.findById().populate('test').populate('questionAttempts.mcqId')</td><td>Score, %, pass/fail shown</td></tr>
+</table>
+</div>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 7: CODE QUALITY & DUPLICATES -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#fef3c7">🔧</div><h2>7. Duplicate Code &amp; Refactoring Opportunities</h2><span class="bdg">Code Quality</span></div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🔴 Issue 1: Duplicate API call in TestDetailPage — Double MCQ fetch</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>File:</b> frontend/src/modules/tests/pages/TestDetailPage.jsx<br/>
+    <b>Problem:</b> The page calls <code>GET /api/tests/:id</code> which already populates the full <code>mcqs[]</code> array (returns complete MCQ objects). Then the same page <i>also</i> calls <code>GET /api/mcqs/test/:testId</code> to display the MCQ list. This is two DB round-trips fetching identical data.
+  </p>
+  <pre>// Current — BAD: two calls for same data
+const testRes = await apiClient.get(`/tests/${id}`);   // already has test.mcqs[]
+const mcqRes  = await apiClient.get(`/mcqs/test/${id}`); // fetches same MCQs again
+
+// Fix — use data from the first call
+const testRes = await apiClient.get(`/tests/${id}`);
+setTest(testRes.data.data);
+setMcqs(testRes.data.data.mcqs || []);  // already populated</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🔴 Issue 2: cleanSubjects() duplicated in 3 controllers</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>Files:</b> questionBankController.js, courseController.js (and a similar pattern in mcqController.js)<br/>
+    <b>Problem:</b> The <code>cleanSubjects()</code>, <code>cleanChapter()</code>, <code>cleanTopic()</code>, and <code>isRealId()</code> helpers are copy-pasted in both controllers with nearly identical logic.
+  </p>
+  <pre>// Fix: extract to backend/utils/hierarchyCleaners.js
+// exports.isRealId, exports.cleanSubjects, exports.cleanChapter, exports.cleanTopic
+// Then import in both controllers:
+const { cleanSubjects } = require('../utils/hierarchyCleaners');</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🔴 Issue 3: Attempt ownership check repeated in every userTestController function</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>File:</b> backend/controllers/userTestController.js<br/>
+    <b>Problem:</b> Every single function (submitAnswer, reportQuestion, saveQuestion, toggleMarkForReview, completeTest) starts with the same 3-step pattern: find attempt → check not found → check ownership. This is ~15 lines of code repeated 5+ times.
+  </p>
+  <pre>// Current in EVERY function:
+const attempt = await UserTestAttempt.findById(attemptId);
+if (!attempt) return res.status(404).json({...});
+if (attempt.user.toString() !== req.user.id) return res.status(403).json({...});
+if (attempt.status !== 'in-progress') return res.status(400).json({...});
+
+// Fix: extract a middleware / helper
+const loadAttempt = async (req, res, next) => {
+  const attempt = await UserTestAttempt.findById(req.params.attemptId);
+  if (!attempt) return res.status(404).json({ success:false, message:'Not found' });
+  if (attempt.user.toString() !== req.user.id) return res.status(403).json({...});
+  req.attempt = attempt;
+  next();
+};
+// Then in routes: router.put('/:attemptId/question/:index', protect, loadAttempt, submitAnswer);</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Issue 4: MCQFormPage used for 3 different contexts without context isolation</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>File:</b> frontend/src/modules/mcqs/pages/MCQFormPage.jsx<br/>
+    <b>Problem:</b> The same MCQFormPage component serves: (1) test-specific MCQ creation (/tests/:testId/mcqs/create), (2) QB MCQ edit (/admin/question-banks/:qbId/mcqs/:mcqId/edit), and (3) standalone MCQ edit. The component reads params from 3 different places and has complex conditional logic deciding which API to call. This is hard to maintain and test.
+  </p>
+  <pre>// Fix: use a shared MCQFormFields component (already exists) and create
+// lightweight wrappers for each context — each wrapper handles its own
+// data loading, save logic, and navigation without shared state confusion.</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Issue 5: Standard API response pattern not enforced — error handling inconsistent</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>Files:</b> All controllers<br/>
+    <b>Problem:</b> Some controllers use <code>res.status(400)</code> for errors, some use <code>res.status(500)</code>. Error messages vary in format. Some catch blocks call <code>console.error</code>, some call <code>console.log</code>. The frontend has to handle inconsistent shapes.
+  </p>
+  <pre>// Fix: use the existing errorHandler utility consistently. In each catch:
+return next(new ErrorResponse(err.message, 400));
+// Instead of:
+res.status(400).json({ success: false, message: err.message });</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Issue 6: No server-side pagination on TestListPage, TestHistoryPage, UsersPage</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>Files:</b> testController.js getTests(), userTestController.js getUserTestHistory(), userController.js getUsers()<br/>
+    <b>Problem:</b> All three endpoints return every single document in the collection. With 2000 tests, 50,000 attempts, and 5000 users, these endpoints will transfer enormous payloads and time out.
+  </p>
+  <pre>// Fix: add pagination to all list endpoints
+const page  = parseInt(req.query.page)  || 1;
+const limit = parseInt(req.query.limit) || 20;
+const skip  = (page - 1) * limit;
+const [data, total] = await Promise.all([
+  Test.find(query).skip(skip).limit(limit).sort({ createdAt: -1 }),
+  Test.countDocuments(query)
+]);
+res.json({ success:true, data, total, page, totalPages: Math.ceil(total/limit) });</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Issue 7: startTest() runs two separate DB queries for the same test</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>File:</b> backend/controllers/userTestController.js → startTest()<br/>
+    <b>Problem:</b> First it calls <code>Test.findById(testId)</code> to check if test exists and is published. Then it calls <code>Test.findById(testId).populate('mcqs')</code> again to get the MCQs. Two separate DB queries for the same document.
+  </p>
+  <pre>// Fix: do one query with populate from the start
+const test = await Test.findById(testId).populate('mcqs');
+if (!test) return 404;
+if (test.status !== 'published' && ...) return 400;
+// Now use test.mcqs directly — no second query needed</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Issue 8: syncTestClassification() can be very slow on large tests</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">
+    <b>File:</b> backend/controllers/testController.js<br/>
+    <b>Problem:</b> syncTestClassification() loads ALL MCQs for a test via <code>.populate('mcqs')</code>, then for each unique questionBankId it calls <code>QuestionBank.findById()</code>. A test with 200 MCQs across 3 QBs = 1 populate + 3 QB queries. Fine now but grows proportionally. The publishTest() call awaits this, adding latency to the publish response.
+  </p>
+  <pre>// Fix: use MongoDB aggregation to compute subjects/chapters/topics in one query
+// instead of JS-level loops with multiple DB round-trips.
+// Also: run syncTestClassification in a background job queue (Bull/BullMQ)
+// so publishTest() returns immediately without waiting.</pre>
+</div>
+
+<hr class="dv"/>
+
+<!-- ════════════════════════════════════════ -->
+<!-- SECTION 8: PERFORMANCE OPTIMISATIONS -->
+<!-- ════════════════════════════════════════ -->
+<div class="sh pb"><div class="sh-icon" style="background:#fce7f3">🚀</div><h2>8. Performance Optimisations for 1000+ Concurrent Users</h2><span class="bdg">Scalability</span></div>
+
+<div class="sub-h">8.1 Database Optimisations (Highest Impact)</div>
+
+<div class="card lp nopb">
+  <div class="sub-h2">🔴 Add MongoDB Indexes (critical — do this first)</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:8px">Without indexes, MongoDB does full collection scans on every query. With 100,000 MCQs, a query like <code>MCQ.find({questionBankId: X})</code> reads every document.</p>
+  <pre>// Add to McqModel.js:
+mcqSchema.index({ questionBankId: 1 });
+mcqSchema.index({ questionBankId: 1, qbSubjectId: 1 });
+mcqSchema.index({ questionBankId: 1, qbChapterId: 1 });
+mcqSchema.index({ questionBankId: 1, qbTopicId:   1 });
+mcqSchema.index({ testId: 1 });
+
+// Add to TestModel.js:
+testSchema.index({ status: 1, createdAt: -1 });
+testSchema.index({ subjects: 1 });
+testSchema.index({ questionBankId: 1 });
+testSchema.index({ courseId: 1 });
+
+// Add to UserTestAttempt.js:
+attemptSchema.index({ user: 1, status: 1 });
+attemptSchema.index({ user: 1, test: 1 });
+attemptSchema.index({ test: 1 });</pre>
+</div>
+
+<div class="card lp nopb">
+  <div class="sub-h2">🔴 Implement Server-Side Pagination on all list endpoints</div>
+  <p style="color:#475569;font-size:12.5px">Already covered in Issue #6 above. Apply to: GET /tests, GET /users, GET /user-tests/history, GET /mcqs/question-bank/:qbId, GET /mcq-reports. Each should accept <code>?page=1&amp;limit=20</code> and return <code>{ data, total, totalPages }</code>.</p>
+</div>
+
+<div class="card lp nopb">
+  <div class="sub-h2">🟡 Use .select() to return only needed fields</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:6px">Many endpoints return complete documents when only a few fields are needed by the frontend.</p>
+  <pre>// TestListPage only needs: title, status, totalQuestions, difficultyLevel, subjects, createdAt
+// Current: returns entire test document including mcqs[] array refs
+// Fix:
+Test.find(query)
+  .select('title status totalQuestions difficultyLevel subjects chapters topics createdAt questionBankId courseId')
+  .populate('questionBankId', 'title')
+  .populate('courseId', 'title')
+
+// getUserTestHistory only needs basic attempt info for the list view
+// Heavy MCQ data should only load when student opens a specific attempt</pre>
+</div>
+
+<div class="sub-h">8.2 API Request Batching &amp; Debouncing (Frontend)</div>
+
+<div class="card lb nopb">
+  <div class="sub-h2">🔴 Batch answer saves in TestPlayerPage — most critical</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:8px">Currently every single answer selection sends an immediate API call. In timer mode this is completely unnecessary — the student doesn't get feedback until the end anyway.</p>
+  <pre>// Strategy: local state + periodic sync
+const pendingAnswers = useRef({});  // { questionIndex: selectedOption }
+
+const handleAnswerSelect = (index, option) => {
+  // Update local state immediately (instant UI)
+  setPendingAnswers(prev => ({ ...prev, [index]: option }));
+  setCurrentAnswers(prev => ({ ...prev, [index]: option }));
+
+  // In tutor mode: send immediately (student needs instant feedback)
+  if (mode === 'tutor') {
+    apiClient.put(`/user-tests/${attemptId}/question/${index}`, { selectedOption: option });
+  }
+  // In timer mode: just buffer — sync every 30s or on navigation
+};
+
+// Periodic sync for timer mode (every 30 seconds)
+useEffect(() => {
+  if (mode !== 'timer') return;
+  const interval = setInterval(syncPendingAnswers, 30000);
+  return () => clearInterval(interval);
+}, [mode]);
+
+// Also sync before navigating away / on submit</pre>
+</div>
+
+<div class="card lb nopb">
+  <div class="sub-h2">🟡 Debounce MCQ count calls in AutoTestGeneratorPage</div>
+  <pre>// Wrap the count fetch in a debounce to avoid firing on every keystroke/click
+import { useMemo } from 'react';
+import debounce from 'lodash/debounce';
+
+const fetchCounts = useMemo(
+  () => debounce(async (filters) => {
+    const res = await apiClient.get(`/question-banks/${qbId}/mcq-count`, { params: filters });
+    setAvailableCount(res.data.count);
+  }, 300),
+  [qbId]
+);</pre>
+</div>
+
+<div class="sub-h">8.3 Caching Strategy</div>
+
+<div class="card lg nopb">
+  <div class="sub-h2">🟡 Cache quasi-static data in browser (React Query / SWR)</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:8px">The following data barely changes and is re-fetched on every page load unnecessarily:</p>
+  <table style="margin:0">
+    <tr><th>Data</th><th>Changes How Often</th><th>Cache Duration</th></tr>
+    <tr><td>GET /api/question-banks (list)</td><td>Rarely (admin creates/edits)</td><td>10 minutes</td></tr>
+    <tr><td>GET /api/courses (list)</td><td>Rarely</td><td>10 minutes</td></tr>
+    <tr><td>GET /api/settings</td><td>Very rarely</td><td>30 minutes</td></tr>
+    <tr><td>GET /api/question-banks/:id (hierarchy)</td><td>Rarely</td><td>5 minutes</td></tr>
+    <tr><td>GET /api/tests (list)</td><td>Changes when admin publishes</td><td>2 minutes</td></tr>
+  </table>
+  <pre>// Install: npm install @tanstack/react-query
+// Replace all apiClient.get() useEffect patterns with:
+import { useQuery } from '@tanstack/react-query';
+
+const { data: questionBanks } = useQuery({
+  queryKey: ['question-banks'],
+  queryFn: () => apiClient.get('/question-banks').then(r => r.data.data),
+  staleTime: 10 * 60 * 1000,  // 10 minutes
+  cacheTime: 15 * 60 * 1000,
+});</pre>
+</div>
+
+<div class="card lg nopb">
+  <div class="sub-h2">🟡 Server-side caching for expensive aggregations</div>
+  <p style="color:#475569;font-size:12.5px;margin-bottom:8px">The admin summary and teacher stats endpoints run MongoDB aggregations on every request. With many reports these become slow.</p>
+  <pre>// Option 1: Simple in-memory TTL cache (no Redis needed to start)
+const cache = {};
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+exports.getAdminSummary = async (req, res) => {
+  const cacheKey = 'admin-summary';
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < CACHE_TTL) {
+    return res.json(cache[cacheKey].data);
+  }
+  const summary = await runAggregation();
+  cache[cacheKey] = { data: summary, ts: Date.now() };
+  res.json(summary);
+};
+
+// Option 2: Redis (for production with multiple server instances)
+// Use ioredis + cache-aside pattern</pre>
+</div>
+
+<div class="sub-h">8.4 Production Deployment Issues to Fix Now</div>
+
+<div class="card lr nopb">
+  <div class="sub-h2">🔴 CORS hardcoded to localhost:5173</div>
+  <pre>// Current — breaks in production:
+app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+
+// Fix: use environment variable
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));</pre>
+</div>
+
+<div class="card lr nopb">
+  <div class="sub-h2">🔴 Remove console.log(req.body) from production middleware</div>
+  <pre>// Current app.js logs the full body of EVERY POST/PUT request — leaks passwords in logs
+// Fix: remove the custom logger entirely OR guard it:
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+}</pre>
+</div>
+
+<div class="card lr nopb">
+  <div class="sub-h2">🔴 Uploaded files stored on local disk — breaks with multiple servers</div>
+  <pre>// Current: Multer saves to backend/uploads/ — fine for single server
+// Problem: on deployment (Heroku, Railway, etc.) the filesystem is ephemeral
+//          and files are lost on restart. With multiple instances, files
+//          on server-1 are invisible to server-2.
+
+// Fix: Use Cloudinary (free tier) or AWS S3 for file storage
+// npm install multer-storage-cloudinary cloudinary
+// Change Multer storage from diskStorage to cloudinaryStorage</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Rate limiting — protect against brute force and spam</div>
+  <pre>// npm install express-rate-limit
+const rateLimit = require('express-rate-limit');
+
+// Strict limit on auth endpoints (prevent password brute force)
+const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 10 });
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+
+// General API limit (prevent abuse)
+const apiLimiter = rateLimit({ windowMs: 1*60*1000, max: 200 });
+app.use('/api/', apiLimiter);</pre>
+</div>
+
+<div class="card ly nopb">
+  <div class="sub-h2">🟡 Missing database connection pooling + retry logic</div>
+  <pre>// backend/config/db.js — add connection options
+mongoose.connect(process.env.MONGO_URI, {
+  maxPoolSize: 10,          // max 10 concurrent connections (default 5)
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  retryWrites: true,
+});
+
+// Add reconnect handler
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected — attempting reconnect...');
+  mongoose.connect(process.env.MONGO_URI);
+});</pre>
+</div>
+
+<div class="sub-h">8.5 Summary Table — Priority vs Effort</div>
+<table>
+  <tr><th>Issue</th><th>Impact on 1000 users</th><th>Fix Effort</th><th>Priority</th></tr>
+  <tr><td>Add MongoDB indexes</td><td>🔴 Critical — queries 10-100x slower without</td><td>1 hour</td><td>Do immediately</td></tr>
+  <tr><td>Remove body logging in prod</td><td>🔴 Security + performance</td><td>15 min</td><td>Do immediately</td></tr>
+  <tr><td>Fix CORS for production</td><td>🔴 App broken in production</td><td>30 min</td><td>Do immediately</td></tr>
+  <tr><td>Server-side pagination</td><td>🔴 Page timeouts at 1000+ tests</td><td>1–2 days</td><td>High</td></tr>
+  <tr><td>Batch answer saves (TestPlayer)</td><td>🔴 200K API calls per exam session</td><td>1 day</td><td>High</td></tr>
+  <tr><td>Fix duplicate API call (TestDetailPage)</td><td>🟡 Wastes 1 DB query per page load</td><td>30 min</td><td>Medium</td></tr>
+  <tr><td>Fix double Test.findById in startTest</td><td>🟡 Extra DB query per test start</td><td>30 min</td><td>Medium</td></tr>
+  <tr><td>Debounce count calls (AutoTest)</td><td>🟡 50 parallel requests on checkbox</td><td>1 hour</td><td>Medium</td></tr>
+  <tr><td>React Query caching on frontend</td><td>🟡 Repeated fetches of QB/course lists</td><td>2–3 days</td><td>Medium</td></tr>
+  <tr><td>Add rate limiting</td><td>🟡 Prevent abuse + DDoS</td><td>2 hours</td><td>Medium</td></tr>
+  <tr><td>Move uploads to Cloudinary/S3</td><td>🔴 Files lost on redeployment</td><td>1 day</td><td>High (pre-launch)</td></tr>
+  <tr><td>Extract cleanSubjects utility</td><td>⚪ Code quality only</td><td>1 hour</td><td>Low</td></tr>
+  <tr><td>Extract loadAttempt middleware</td><td>⚪ Code quality only</td><td>2 hours</td><td>Low</td></tr>
+</table>
+
+<hr class="dv"/>
+
+<div class="footer">
+  <strong>Saeed MDCAT LMS — Complete Technical Documentation</strong><br/>
+  Generated April 2026 · Based on full codebase analysis: 9 models, 10 controllers, 70+ endpoints, 43 pages, AppRouter.jsx<br/>
+  Stack: MongoDB + Mongoose · Express.js · React 19 + Vite · Tailwind CSS · JWT Auth · Google OAuth
+</div>
+
+</body>
+</html>

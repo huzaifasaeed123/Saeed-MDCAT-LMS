@@ -7,14 +7,21 @@ const {
   submitAnswer,
   reportQuestion,
   saveQuestion,
+  toggleMarkForReview,
   completeTest,
   getUserTestHistory,
   getSavedQuestions,
+  removeSavedQuestionByMcqId,
   removeSavedQuestion
 } = require('../controllers/userTestController');
 
-// Apply auth middleware to all routes
 router.use(protect);
+
+// Static routes MUST come before /:attemptId to avoid Express mismatching
+router.get('/history', getUserTestHistory);
+router.get('/saved-questions', getSavedQuestions);
+router.delete('/saved-questions/mcq/:mcqId', removeSavedQuestionByMcqId);
+router.delete('/saved-questions/:savedQuestionId', removeSavedQuestion);
 
 // Test attempt routes
 router.post('/start', startTest);
@@ -22,11 +29,7 @@ router.get('/:attemptId', getTestAttempt);
 router.put('/:attemptId/question/:questionIndex', submitAnswer);
 router.put('/:attemptId/report/:questionIndex', reportQuestion);
 router.put('/:attemptId/save/:questionIndex', saveQuestion);
+router.put('/:attemptId/mark/:questionIndex', toggleMarkForReview);
 router.put('/:attemptId/complete', completeTest);
-router.get('/history', getUserTestHistory);
-
-// Saved questions routes
-router.get('/saved-questions', getSavedQuestions);
-router.delete('/saved-questions/:savedQuestionId', removeSavedQuestion);
 
 module.exports = router;

@@ -2,6 +2,7 @@ const UserTestAttempt = require('../models/UserTestAttempt');
 const SavedQuestion = require('../models/SavedQuestion');
 const Test = require('../models/TestModel');
 const MCQ = require('../models/McqModel');
+const MCQReport = require('../models/MCQReport');
 
 /**
  * Start a new test attempt
@@ -37,8 +38,8 @@ exports.startTest = async (req, res) => {
       });
     }
     
-    // Check if test is published
-    if (test.status !== 'published') {
+    // Only block if not published AND user is not the creator
+    if (test.status !== 'published' && test.createdBy?.toString() !== req.user.id) {
       return res.status(400).json({
         success: false,
         message: 'Test is not published'
@@ -53,34 +54,39 @@ exports.startTest = async (req, res) => {
     });
     
     if (existingAttempt) {
-      // Return existing attempt
+      const populated = await UserTestAttempt.findById(existingAttempt._id)
+        .populate('test')
+        .populate({ path: 'questionAttempts.mcqId', model: 'MCQ' });
       return res.status(200).json({
         success: true,
         message: 'Found existing test attempt',
-        data: existingAttempt
+        data: populated
       });
     }
     
-    // Get all MCQs for this test
-    const mcqs = await MCQ.find({ testId });
-    
+    // Get MCQs from test.mcqs array (QB-sourced tests) or by testId field (legacy)
+    const fullTest = await Test.findById(testId).populate('mcqs');
+    let mcqs = fullTest.mcqs && fullTest.mcqs.length > 0
+      ? fullTest.mcqs
+      : await MCQ.find({ testId });
+
     if (mcqs.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Test has no questions'
       });
     }
-    
+
     // Create a new attempt
     const questionAttempts = mcqs.map(mcq => ({
       mcqId: mcq._id,
       selectedOption: null,
       isCorrect: false,
-      timeSpent: 0,
       reported: false,
-      saved: false
+      saved: false,
+      markedForReview: false
     }));
-    
+
     const newAttempt = await UserTestAttempt.create({
       user: req.user.id,
       test: testId,
@@ -89,11 +95,16 @@ exports.startTest = async (req, res) => {
       maxScore: mcqs.length,
       questionAttempts
     });
-    
+
+    // Return populated attempt
+    const populatedAttempt = await UserTestAttempt.findById(newAttempt._id)
+      .populate('test')
+      .populate({ path: 'questionAttempts.mcqId', model: 'MCQ' });
+
     res.status(201).json({
       success: true,
       message: 'Test attempt started successfully',
-      data: newAttempt
+      data: populatedAttempt
     });
   } catch (error) {
     console.error('Error starting test:', error);
@@ -156,7 +167,7 @@ exports.getTestAttempt = async (req, res) => {
 exports.submitAnswer = async (req, res) => {
   try {
     const { attemptId, questionIndex } = req.params;
-    const { selectedOption, timeSpent } = req.body;
+    const { selectedOption } = req.body;
     
     // Find the test attempt
     const attempt = await UserTestAttempt.findById(attemptId);
@@ -219,16 +230,9 @@ exports.submitAnswer = async (req, res) => {
     // Update the question attempt
     attempt.questionAttempts[questionIdx].selectedOption = selectedOption;
     attempt.questionAttempts[questionIdx].isCorrect = isCorrect;
-    attempt.questionAttempts[questionIdx].timeSpent = timeSpent || 0;
-    
-    // Update current question index if moving to next question
+
+    // Update current question index
     attempt.currentQuestionIndex = questionIdx;
-    
-    // Update total time spent
-    attempt.totalTimeSpent = attempt.questionAttempts.reduce(
-      (total, q) => total + (q.timeSpent || 0),
-      0
-    );
     
     await attempt.save();
     
@@ -291,9 +295,32 @@ exports.reportQuestion = async (req, res) => {
     // Update the question attempt with report
     attempt.questionAttempts[questionIdx].reported = true;
     attempt.questionAttempts[questionIdx].reportReason = reportReason || '';
-    
+
     await attempt.save();
-    
+
+    // Also create an MCQReport doc if one doesn't exist yet for this student+MCQ
+    try {
+      const mcqId = attempt.questionAttempts[questionIdx].mcqId;
+      const existing = await MCQReport.findOne({
+        mcq: mcqId,
+        reportedBy: req.user.id,
+        status: { $in: ['open', 'active'] },
+      });
+      if (!existing && mcqId) {
+        const mcq = await MCQ.findById(mcqId);
+        await MCQReport.create({
+          mcq: mcqId,
+          test: attempt.test,
+          attempt: attempt._id,
+          reportedBy: req.user.id,
+          reason: reportReason || 'Question Statement Wrong',
+          mcqSubject: mcq?.subject || '',
+          mcqChapter: mcq?.unit || '',
+          mcqTopic: mcq?.topic || '',
+        });
+      }
+    } catch (_) { /* MCQReport creation is non-blocking */ }
+
     res.status(200).json({
       success: true,
       message: 'Question reported successfully',
@@ -316,7 +343,7 @@ exports.reportQuestion = async (req, res) => {
 exports.saveQuestion = async (req, res) => {
   try {
     const { attemptId, questionIndex } = req.params;
-    const { notes, taggedCategories } = req.body;
+    const { notes, taggedCategories } = req.body || {};
     
     // Find the test attempt
     const attempt = await UserTestAttempt.findById(attemptId);
@@ -471,7 +498,14 @@ exports.getUserTestHistory = async (req, res) => {
   try {
     const attempts = await UserTestAttempt.find({ user: req.user.id })
       .sort({ createdAt: -1 })
-      .populate('test', 'title subject topic unit');
+      .populate({
+        path: 'test',
+        select: 'title subjects chapters topics questionBankId courseId',
+        populate: [
+          { path: 'questionBankId', select: 'title' },
+          { path: 'courseId',       select: 'title' },
+        ],
+      });
     
     res.status(200).json({
       success: true,
@@ -510,6 +544,47 @@ exports.getSavedQuestions = async (req, res) => {
       success: false,
       message: 'Server Error'
     });
+  }
+};
+
+/**
+ * Toggle mark-for-review on a question
+ * @route PUT /api/user-tests/:attemptId/mark/:questionIndex
+ * @access Private
+ */
+exports.toggleMarkForReview = async (req, res) => {
+  try {
+    const { attemptId, questionIndex } = req.params;
+    const attempt = await UserTestAttempt.findById(attemptId);
+    if (!attempt) return res.status(404).json({ success: false, message: 'Attempt not found' });
+    if (attempt.user.toString() !== req.user.id) return res.status(403).json({ success: false, message: 'Not authorized' });
+
+    const idx = parseInt(questionIndex);
+    if (idx < 0 || idx >= attempt.questionAttempts.length) return res.status(400).json({ success: false, message: 'Invalid index' });
+
+    attempt.questionAttempts[idx].markedForReview = !attempt.questionAttempts[idx].markedForReview;
+    await attempt.save();
+
+    res.status(200).json({ success: true, markedForReview: attempt.questionAttempts[idx].markedForReview });
+  } catch (error) {
+    console.error('Error toggling mark:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+/**
+ * Remove saved question by MCQ ID (for toggle unsave)
+ * @route DELETE /api/user-tests/saved-questions/mcq/:mcqId
+ * @access Private
+ */
+exports.removeSavedQuestionByMcqId = async (req, res) => {
+  try {
+    const { mcqId } = req.params;
+    await SavedQuestion.findOneAndDelete({ user: req.user.id, mcq: mcqId });
+    res.status(200).json({ success: true, message: 'Removed from saved' });
+  } catch (error) {
+    console.error('Error removing saved question:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
 

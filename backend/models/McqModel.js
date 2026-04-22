@@ -68,8 +68,15 @@ const mcqSchema = new Schema(
     topic: String,
     subTopic: String,
     statistics: statisticsSchema,
-    testId: { type: Schema.Types.ObjectId, ref: 'Test', required: true },
-    
+    // Primary QB classification (MCQ always belongs to a QB first)
+    questionBankId: { type: Schema.Types.ObjectId, ref: 'QuestionBank' },
+    qbSubjectId:    { type: Schema.Types.ObjectId },
+    qbChapterId:    { type: Schema.Types.ObjectId },
+    qbTopicId:      { type: Schema.Types.ObjectId },
+
+    // Optional link to a specific Test (may be null for QB-only MCQs)
+    testId: { type: Schema.Types.ObjectId, ref: 'Test' },
+
     // New fields
     difficulty: { 
       type: String, 

@@ -17,10 +17,6 @@ const questionAttemptSchema = new Schema({
     type: Boolean,
     default: false
   },
-  timeSpent: { // Time spent on this particular question in seconds
-    type: Number,
-    default: 0
-  },
   reported: {
     type: Boolean,
     default: false
@@ -29,6 +25,10 @@ const questionAttemptSchema = new Schema({
     type: String
   },
   saved: {
+    type: Boolean,
+    default: false
+  },
+  markedForReview: {
     type: Boolean,
     default: false
   }

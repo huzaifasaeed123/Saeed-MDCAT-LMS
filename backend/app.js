@@ -19,6 +19,10 @@ const mcqRoutes = require('./routes/mcqRoutes');
 const testRoutes = require('./routes/testRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const userTestRoutes=require('./routes/userTestRoutes')
+const courseRoutes       = require('./routes/courseRoutes');
+const questionBankRoutes = require('./routes/questionBankRoutes');
+const settingsRoutes     = require('./routes/settingsRoutes');
+const mcqReportRoutes    = require('./routes/mcqReportRoutes');
 const app = express();
 
 // Body parser
@@ -50,12 +54,12 @@ app.use(cors({
 }));
 
 
-// ✅ ALSO apply CORS specifically to static image route:
+// Static file serving for all uploads (images, course images, notes PDFs)
 app.use(
   '/uploads',
   cors({ origin: 'http://localhost:5173' }),
   express.static(path.join(__dirname, 'uploads'), {
-    setHeaders: (res, path) => {
+    setHeaders: (res, filePath) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     }
   })
@@ -76,6 +80,10 @@ app.use('/api/mcqs', mcqRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/user-tests',userTestRoutes );
 app.use('/api', uploadRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/question-banks', questionBankRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/mcq-reports', mcqReportRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });

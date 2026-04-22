@@ -8,6 +8,8 @@ const { validateMCQ } = require('../utils/validation');
 const {
   createMCQ,
   getMCQsForTest,
+  getMCQsForQuestionBank,
+  getTopicCounts,
   getMCQ,
   updateMCQ,
   deleteMCQ,
@@ -20,6 +22,9 @@ router.use(protect);
 // MCQ routes with validation
 router.post('/', authorize('admin', 'teacher'), validateMCQ, createMCQ);
 router.get('/test/:testId', getMCQsForTest);
+// QB MCQ endpoints — must be before /:id
+router.get('/question-bank/:qbId/topic-counts', getTopicCounts);
+router.get('/question-bank/:qbId', getMCQsForQuestionBank);
 router.get('/:id', getMCQ);
 router.put('/:id', authorize('admin', 'teacher'), validateMCQ, updateMCQ);
 router.delete('/:id', authorize('admin', 'teacher'), deleteMCQ);

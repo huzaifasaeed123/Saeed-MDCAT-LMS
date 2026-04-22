@@ -1,0 +1,68 @@
+Update RichTextEditor to manage all types of heading like heading 1 to heading 6 
+
+
+the First problem is that you have created antoher file and code for sequencetialeditor that not need,you can use Sequenctialeditor that used in test in Question bank,so please dont write code again and again and put the general code for sequecntial ediot in shared folder and used that file code for both
+
+the 2nd problem is that when we import mcqs from new documents then we have option of linking mcqs to Question bank but there is some addiotnal information that we dont need to store like MCQ Infromation in whihc Author,Session ,Subject,unit,,Topic and sub topic,we dont need this, because we are already linking mcqs to Main question bank and its nessary to link mcqs to Question bank,dont make it optional,so we are sure each mcqs have Question bank,Subjects,Chapter and topics
+
+The 3rd Problem is when we create a test and then for mcqs let say we pick auto mcqs picking option then it take me to Auto Test generator option but it will ask again the test name and maybe its will create new test and previous test have been ignore so manage this things likewhen it redirect then test name etc will already marked and same test will consider
+
+
+
+also enable auto Test option at user side and teacher side,so student can create test and practice as per their own choice
+
+
+And Auto Test Generation Page will be exact copy to attached screenshot,Like on top it have option as Totor or timer mode and then all subject listed and then all all chapters listed and then all topics listed,all topics option willl be in + option,so whenever user slect any subject,all other topics or chapter that related to toher subject will be off,and user can select multiple chapters,multiple topics and multiple chapter accorss differnt subject but when user select any specific subject then it behave as filter option and all other option will be off
+
+
+
+
+
+Now We have to main part of Our LMS,Test Solved at user end and maintain Test history
+Lets first move to Test Solve Method,there will be two method;
+1-Tutor mode
+In this mode when user select any option and then it will submit mcqs and then he got and marked by the system at the same time
+2)Timer mode
+In this mode user will solve the overall Test in whihc time have been given,if time complete then test auto submit,and user will get all the result at last when test is submitted
+
+So We have to Move into depth details for MCQs Test Sections:
+When user click any Test by course or create test by auto Test genrator then it will ask the mode and show the overall details of Test mean lets say user select Test from Course then it show another page where Test Details have been given and also have the option of Test Mode ,,user first select the mode and then click the start button,So when Test Start ,One by one mcqs will be shown and some addiotnal functionlities is needed
+1)There is option where user click and screen make large and occupy the complete screen
+2)There is a option where user can report the MCQs such that,first user select the Main category Reason and then write the details and submit ,Main report reason will be a)Question statement  Wrong b)Option Worng  c)Answer Key is incorrect d)Wrong Explanation
+3)There is screen where all MCQs sequence will shown like lets say we have mcqs from 1 to 10,so int aht screen,it have listed from 1 to 10 and user can navigate to any mcqs by clicking ,and when user solve or mark any question,it color also change which show that it solved or makred or Active MCQs or Unasnwered MCQs like the screenshot have been given,this screen will be hide and user can select it to show or hide
+4)There is button for Next and previous MCQs porperly 
+5)There is also a button to submit the Test and once the all mcqs completeld then next button disbale and user have to finish the test
+6)In tutor mode when user solve any mcqs and click on the submit button then we have to check the mcqs instantly like check whther the user mark correct or not and also manage the user by color to show whihc correct and your selection is wrong and thne at bottom show the Explanation of MCQs
+7)In both Tutor and timer mode,we also have to track the Time take for specific MCQs
+8)While giving Test,user mark any MCQs as Favrioute and later on we will show Favrioute MCQs at other section,but apply this funcitotnlity Now and make sure favrioute MCQs id have been stored in user database or any other approach that suit you whrere to store that
+9)Lets say user start the Test but have not finish the Test and close the website or something else,you will consider that test as Pause,and user can also pause any test intentioanliy,in both case we have to manage it
+10)once test got compelted,then we have to show the compelte statical anylsis of Test to user by beaitiful graph that make good look and easy understanble ,dont make too much complex
+11)We also Need to maintain the Test History of all user,like lets say user have solved the test,and user can see its history,so we will made separte section as Test history at user side,by this section user can select any test to check the complete details of Test (one by one mcqs and see the solution details like it show what user select and what actual and all explanation etc)
+12)The things like user see the test details should be hsown once user finish the Test ,mean once user end the test then on ending screen it also have the button which take user to see the comlete details of test (one by one mcqs like i asked you)
+mean user see the Test details option at two side,
+a)once user complete the test
+b)wjen user go to Test history section
+
+
+so please write above code and all these changing will be implemented at user side mainly but you have to maintiant everything in database properly so we can get any infroamtion at admin side or teacher side,but implemet all the detais on frontend compelte and link test details to both option like when user create auto test or by course
+
+
+
+
+Bugs And Fixes--
+
+Test Related
+3)When we create a Single Test then we are not asigning Subject,topics,chapter to Test,is all these things will managed by course and Test haev no identity?
+4)We also have to seen when we create auto Test then subject,chapter,topics must be assigned as per selections
+
+6)When Test auto genreated then we also have to apply filter to pick mcqs from unused,incorrect,correct and others
+Duration is not needed in auto Test genrator,remove from frontned,backend and from database mdoels,we dont need duration when we create any test
+7)When Refresh token expire and apis fail and then it refresh the token then it move to the dashboard,Check the refresh token expires details when it got expire,updates 
+
+Solved Issues
+
+5)Default Question bank is not selected when auto generated-- Solved
+1)User can place their Image,profile Images and also can edit their profile images,and also get image by Google when user sign in with Google
+Images have not been shown and also alt text is not correct,alt text should only as Image,dont write the string like Ai genreated etc,
+Images Problem will be solved such that,all images have been store in backend directory,so when we have to display any image on frontend then embed the image link at start (same as backend basic url and pick from .env file )
+2)When User create Test then its calling a lot of duplicates apis,Same api calling again and again

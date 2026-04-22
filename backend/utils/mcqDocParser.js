@@ -255,7 +255,12 @@ function convertToBackendFormat(mcqs, testId, defaultValues = {}) {
       difficulty: defaultValues.difficulty || 'Medium',
       isPublic: defaultValues.isPublic !== undefined ? defaultValues.isPublic : true,
       revisionCount: 0,
-      lastRevised: null
+      lastRevised: null,
+      // Question Bank linkage
+      questionBankId: defaultValues.questionBankId || null,
+      qbSubjectId:    defaultValues.qbSubjectId    || null,
+      qbChapterId:    defaultValues.qbChapterId    || null,
+      qbTopicId:      defaultValues.qbTopicId      || null,
     };
   }).filter(mcq => mcq.questionText && mcq.options.length >= 2); // Filter out invalid MCQs
 }

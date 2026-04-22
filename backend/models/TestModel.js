@@ -7,12 +7,6 @@ const testSchema = new Schema(
   {
     title: { type: String, required: true },
     description: String,
-    session: { type: String, required: true },
-    subject: { type: String, required: true },
-    unit: { type: String, required: true },
-    topic: { type: String, required: true },
-    subTopic: String,
-    duration: { type: Number, required: true }, // in minutes
     totalQuestions: { type: Number, default: 0 },
     passingScore: { type: Number, default: 50 }, // percentage
     isPublished: { type: Boolean, default: false },
@@ -29,6 +23,20 @@ const testSchema = new Schema(
     },
     instructions: String,
     mcqs: [{ type: Schema.Types.ObjectId, ref: 'MCQ' }],
+
+    // Question Bank linkage (optional — set when test is QB-linked)
+    questionBankId: { type: Schema.Types.ObjectId, ref: 'QuestionBank' },
+    qbSubjectId:    { type: Schema.Types.ObjectId },
+    qbChapterId:    { type: Schema.Types.ObjectId },
+    qbTopicId:      { type: Schema.Types.ObjectId },
+
+    // Auto-populated from MCQs when they are added/removed
+    subjects: [{ type: String }],
+    chapters: [{ type: String }],
+    topics:   [{ type: String }],
+
+    // Optional course linkage
+    courseId: { type: Schema.Types.ObjectId, ref: 'Course' },
   },
   { timestamps: true }
 );

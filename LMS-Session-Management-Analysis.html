@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LMS Session Management — SaaS Analysis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #1a1a2e; line-height: 1.7; }
+
+  .hero { background: linear-gradient(135deg, #1e3a5f 0%, #16213e 100%); color: white; padding: 48px 40px; }
+  .hero h1 { font-size: 2rem; font-weight: 700; }
+  .hero p { margin-top: 8px; color: #94b4d4; font-size: 1.05rem; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+  /* nav */
+  .toc { background: white; border-radius: 12px; padding: 24px 28px; margin-bottom: 32px; border-left: 4px solid #3b82f6; }
+  .toc h2 { font-size: 1rem; font-weight: 600; color: #374151; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: #2563eb; text-decoration: none; font-size: .95rem; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* section */
+  .section { background: white; border-radius: 12px; padding: 32px 36px; margin-bottom: 28px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .section-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .badge { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; flex-shrink: 0; }
+  .badge.blue  { background: #dbeafe; color: #1d4ed8; }
+  .badge.green { background: #dcfce7; color: #15803d; }
+  .badge.amber { background: #fef9c3; color: #a16207; }
+  .badge.purple{ background: #ede9fe; color: #6d28d9; }
+  .badge.red   { background: #fee2e2; color: #b91c1c; }
+  .section h2 { font-size: 1.25rem; font-weight: 700; color: #111827; }
+  .section h3 { font-size: 1rem; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+
+  p { color: #4b5563; margin-bottom: 12px; }
+  ul, ol { padding-left: 22px; color: #4b5563; margin-bottom: 12px; }
+  li { margin: 5px 0; }
+
+  /* flow steps */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 16px 0; }
+  .flow-step { display: flex; gap: 16px; align-items: flex-start; position: relative; }
+  .flow-step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 32px;
+    bottom: -8px;
+    width: 2px;
+    background: #e5e7eb;
+  }
+  .step-num { width: 32px; height: 32px; border-radius: 50%; background: #1e3a5f; color: white; display: flex; align-items: center; justify-content: center; font-size: .8rem; font-weight: 700; flex-shrink: 0; margin-top: 4px; }
+  .step-body { padding-bottom: 20px; }
+  .step-body strong { color: #111827; display: block; }
+  .step-body span { font-size: .9rem; color: #6b7280; }
+
+  /* metric cards */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 16px 0; }
+  .metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; }
+  .metric .val { font-size: 1.5rem; font-weight: 800; }
+  .metric .lbl { font-size: .78rem; color: #64748b; margin-top: 4px; }
+  .green-val { color: #16a34a; }
+  .amber-val { color: #d97706; }
+  .red-val   { color: #dc2626; }
+  .blue-val  { color: #2563eb; }
+
+  /* comparison table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .9rem; }
+  thead tr { background: #1e3a5f; color: white; }
+  th { padding: 12px 14px; text-align: left; font-weight: 600; }
+  td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+  .tag.low    { background: #dcfce7; color: #15803d; }
+  .tag.medium { background: #fef9c3; color: #a16207; }
+  .tag.high   { background: #fee2e2; color: #b91c1c; }
+  .tag.zero   { background: #f0fdf4; color: #166534; }
+
+  /* callout */
+  .callout { border-radius: 8px; padding: 14px 18px; margin: 14px 0; font-size: .92rem; }
+  .callout.info  { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1d4ed8; }
+  .callout.warn  { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+  .callout.good  { background: #f0fdf4; border-left: 4px solid #22c55e; color: #15803d; }
+  .callout.bad   { background: #fef2f2; border-left: 4px solid #ef4444; color: #b91c1c; }
+
+  /* code inline */
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: .85em; color: #0f172a; }
+
+  /* schema block */
+  .schema { background: #0f172a; color: #94a3b8; border-radius: 8px; padding: 18px 20px; font-family: 'Courier New', monospace; font-size: .82rem; line-height: 1.8; margin: 12px 0; overflow-x: auto; }
+  .schema .key   { color: #7dd3fc; }
+  .schema .str   { color: #86efac; }
+  .schema .num   { color: #fbbf24; }
+  .schema .cmt   { color: #64748b; font-style: italic; }
+  .schema .type  { color: #c084fc; }
+
+  /* verdict */
+  .verdict { background: linear-gradient(135deg, #1e3a5f, #1e40af); color: white; border-radius: 12px; padding: 28px 32px; margin-top: 32px; }
+  .verdict h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
+  .verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .verdict-card { background: rgba(255,255,255,.1); border-radius: 8px; padding: 16px; }
+  .verdict-card h3 { font-size: .9rem; font-weight: 700; margin-bottom: 8px; color: #93c5fd; }
+  .verdict-card p { font-size: .88rem; color: #cbd5e1; margin: 0; }
+
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>LMS Session Management — SaaS Analysis</h1>
+  <p>Three modes · Admin control · Server burden · Implementation complexity · DB schema · Code architecture</p>
+</div>
+
+<div class="container">
+
+  <!-- TOC -->
+  <div class="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#mode1">Mode 1 — Multi-Device, Long-Lived Session (Current + Admin Duration Control)</a></li>
+      <li><a href="#mode2">Mode 2 — Single Session (Last Device Wins)</a></li>
+      <li><a href="#mode3">Mode 3 — Device-Limited Sessions (Max N Devices)</a></li>
+      <li><a href="#combined">Combined SaaS Architecture (All 3 Modes in One System)</a></li>
+      <li><a href="#comparison">Full Comparison Table</a></li>
+      <li><a href="#recommendation">Recommendation</a></li>
+    </ol>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ MODE 1 -->
+  <div class="section" id="mode1">
+    <div class="section-header">
+      <div class="badge blue">1</div>
+      <div>
+        <h2>Mode 1 — Multi-Device, Long-Lived Session</h2>
+        <p style="color:#6b7280;font-size:.9rem;margin:0">Current implementation + admin-configurable duration</p>
+      </div>
+    </div>
+
+    <h3>How It Works Today</h3>
+    <p>Refresh token is a signed JWT verified only by its cryptographic signature — no DB storage. Works across every device the user logs into. A student can have the app open on phone, laptop, and tablet simultaneously with zero conflict.</p>
+
+    <h3>What Adding Admin-Controlled Duration Requires</h3>
+    <p>Currently the session duration is hardcoded as <code>'547d'</code> in <code>User.js</code>. To let admin change this:</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Add a Settings model in DB</strong>
+          <span>Store <code>sessionDurationDays</code> (e.g. 365, 547, 730) alongside other global settings.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Read setting at login time</strong>
+          <span>When issuing the refresh token, do 1 extra DB read to get current <code>sessionDurationDays</code>, then pass it as <code>expiresIn</code> to <code>jwt.sign()</code>.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Match cookie expiry to JWT expiry</strong>
+          <span><code>setRefreshCookie</code> must use the same duration for the cookie's <code>expires</code> field, not the hardcoded 547 days.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Admin changes the setting</strong>
+          <span>Only affects NEW logins. Existing tokens keep their original expiry — JWT expiry is baked in at signing time and cannot be changed retroactively. This is the correct behaviour (existing users are not abruptly logged out).</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout good">
+      <strong>Important:</strong> If admin reduces duration from 2 years to 30 days, existing logged-in users are NOT affected immediately. Their current refresh tokens keep working until their original expiry. Only new logins will get the shorter duration. This is by design — same as how banks handle session policy changes.
+    </div>
+
+    <h3>DB Schema Addition</h3>
+    <div class="schema">
+<span class="cmt">// Settings model (one document in entire DB)</span>
+{
+  <span class="key">sessionMode</span>: <span class="str">'multi'</span> | <span class="str">'single'</span> | <span class="str">'device-limited'</span>,
+  <span class="key">sessionDurationDays</span>: <span class="num">547</span>,       <span class="cmt">// admin sets this</span>
+  <span class="key">maxDevicesPerUser</span>: <span class="num">5</span>,          <span class="cmt">// used in mode 3</span>
+  <span class="key">updatedAt</span>: <span class="type">Date</span>
+}
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="val green-val">0</div><div class="lbl">DB reads per API request</div></div>
+      <div class="metric"><div class="val blue-val">1</div><div class="lbl">DB reads per login (settings)</div></div>
+      <div class="metric"><div class="val blue-val">1</div><div class="lbl">DB reads per token refresh</div></div>
+      <div class="metric"><div class="val green-val">Low</div><div class="lbl">Implementation effort</div></div>
+    </div>
+
+    <h3>Pros</h3>
+    <ul>
+      <li>Zero server burden on normal API calls — no DB touch</li>
+      <li>Multi-device works naturally — no special logic</li>
+      <li>No race conditions between tabs or devices</li>
+      <li>Admin control is one DB field change</li>
+    </ul>
+
+    <h3>Cons</h3>
+    <ul>
+      <li>Cannot force-logout a specific device (no way to invalidate a token without DB storage)</li>
+      <li>If refresh token is stolen, attacker has full access until expiry</li>
+      <li>Admin duration change doesn't affect already-logged-in users</li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ MODE 2 -->
+  <div class="section" id="mode2">
+    <div class="section-header">
+      <div class="badge green">2</div>
+      <div>
+        <h2>Mode 2 — Single Session (Last Device Wins)</h2>
+        <p style="color:#6b7280;font-size:.9rem;margin:0">Only one active session at a time; new login kicks old device</p>
+      </div>
+    </div>
+
+    <h3>How It Works</h3>
+    <p>When a user logs in, a new <code>sessionVersion</code> number is incremented in the DB and embedded in both the access token and refresh token payload. When the old device tries to use its refresh token, the version in the token no longer matches the DB — it gets a 401 and is logged out.</p>
+
+    <div class="callout info">
+      <strong>Why version number, not storing the raw token?</strong> Storing the raw refresh token in DB brings back rotation and race conditions. A simple integer version is smaller, faster to compare, and achieves the same goal.
+    </div>
+
+    <h3>Login Flow</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>User logs in from Device B</strong>
+          <span>Backend does: <code>User.findByIdAndUpdate(id, { $inc: { sessionVersion: 1 } })</code></span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Embed version in both tokens</strong>
+          <span>Access token payload: <code>{ id, role, fullName, sv: 3 }</code>. Refresh token payload: <code>{ id, sv: 3 }</code></span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Device A tries to refresh (1 hour later)</strong>
+          <span>Backend verifies JWT → decodes <code>sv: 2</code> → DB has <code>sv: 3</code> → mismatch → 401 → Device A is logged out</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Device A's access token still works for up to 1 hour</strong>
+          <span>This is the accepted window. You could check <code>sv</code> on every request but that kills the "no DB per request" benefit. 1h window is acceptable for most use cases.</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>DB Schema Change</h3>
+    <div class="schema">
+<span class="cmt">// Add to User model</span>
+{
+  <span class="key">sessionVersion</span>: { <span class="key">type</span>: <span class="type">Number</span>, <span class="key">default</span>: <span class="num">0</span> }
+}
+
+<span class="cmt">// On login:</span>
+<span class="key">const</span> user = <span class="key">await</span> User.findByIdAndUpdate(
+  id,
+  { <span class="key">$inc</span>: { <span class="key">sessionVersion</span>: <span class="num">1</span> } },
+  { <span class="key">new</span>: <span class="num">true</span> }
+);
+
+<span class="cmt">// In refreshToken endpoint:</span>
+<span class="key">if</span> (decoded.sv !== user.sessionVersion) {
+  <span class="key">return</span> res.<span class="num">401</span>({ message: <span class="str">'Session expired on another device'</span> });
+}
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="val green-val">0</div><div class="lbl">DB reads per API request</div></div>
+      <div class="metric"><div class="val blue-val">1</div><div class="lbl">DB writes per login (increment sv)</div></div>
+      <div class="metric"><div class="val blue-val">1</div><div class="lbl">DB reads per token refresh (check sv)</div></div>
+      <div class="metric"><div class="val amber-val">Medium</div><div class="lbl">Implementation effort</div></div>
+    </div>
+
+    <div class="callout warn">
+      <strong>Two-Tab Problem with Single Session Mode:</strong> If a user has two tabs open, both tabs have the same session version and the same refresh token. Tab A refreshes → version increments to 4. Tab B also had version 3 in its token → Tab B gets kicked out after 1h. This is expected and correct behaviour for "single session" mode. The user chose this restriction.
+    </div>
+
+    <h3>Pros</h3>
+    <ul>
+      <li>No persistent session storage — just one integer per user</li>
+      <li>Old device is cleanly kicked within 1 hour (when its access token expires and it tries to refresh)</li>
+      <li>Very low DB overhead — same as Mode 1 (zero per request, one per refresh)</li>
+      <li>Admin can force logout all sessions by bumping the version manually</li>
+    </ul>
+
+    <h3>Cons</h3>
+    <ul>
+      <li>Old device keeps working for up to 1 hour (access token window)</li>
+      <li>Multiple tabs in same browser will eventually conflict (user chose single-session, so this is correct)</li>
+      <li>No "which device" visibility — you know someone is logged in somewhere, but not where</li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ MODE 3 -->
+  <div class="section" id="mode3">
+    <div class="section-header">
+      <div class="badge amber">3</div>
+      <div>
+        <h2>Mode 3 — Device-Limited Sessions (Max N Devices)</h2>
+        <p style="color:#6b7280;font-size:.9rem;margin:0">Track every active device; block or evict when limit is exceeded</p>
+      </div>
+    </div>
+
+    <h3>How It Works</h3>
+    <p>Each login creates a <strong>session record</strong> in the DB with a unique session ID, device info, and last-active timestamp. The refresh token carries the session ID. On every refresh, that specific session record is updated. When the device count exceeds the admin-set limit, the new login is either blocked or the oldest inactive session is evicted.</p>
+
+    <h3>Login Flow</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>User logs in from Device C</strong>
+          <span>Backend counts active sessions for this user. If count &lt; maxDevices → proceed. If count ≥ maxDevices → evict oldest OR block login.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Create session record in DB</strong>
+          <span>Store: <code>{ userId, sessionId (uuid), deviceName, userAgent, ip, createdAt, lastActiveAt }</code></span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Embed sessionId in refresh token</strong>
+          <span>Refresh token payload: <code>{ id, sid: 'uuid-here' }</code>. Cookie is set as usual.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Every token refresh</strong>
+          <span>Backend verifies JWT, extracts <code>sid</code>, checks it exists in DB, updates <code>lastActiveAt</code>. This proves the session is still valid.</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Admin revokes a device</strong>
+          <span>Admin deletes the session record for that <code>sid</code>. Next time that device tries to refresh → session not found → 401 → logged out.</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>DB Schema — New Sessions Collection</h3>
+    <div class="schema">
+<span class="cmt">// New "sessions" collection (separate from User)</span>
+{
+  <span class="key">_id</span>: <span class="str">ObjectId</span>,
+  <span class="key">userId</span>: { <span class="key">type</span>: <span class="type">ObjectId</span>, <span class="key">ref</span>: <span class="str">'User'</span>, <span class="key">index</span>: <span class="num">true</span> },
+  <span class="key">sessionId</span>: { <span class="key">type</span>: <span class="type">String</span>, <span class="key">unique</span>: <span class="num">true</span> },  <span class="cmt">// UUID v4</span>
+  <span class="key">deviceName</span>: <span class="type">String</span>,   <span class="cmt">// 'Chrome on Windows', 'Safari on iPhone'</span>
+  <span class="key">ip</span>: <span class="type">String</span>,
+  <span class="key">createdAt</span>: <span class="type">Date</span>,
+  <span class="key">lastActiveAt</span>: <span class="type">Date</span>,
+  <span class="key">expiresAt</span>: <span class="type">Date</span>         <span class="cmt">// TTL index — auto-delete expired sessions</span>
+}
+
+<span class="cmt">// MongoDB TTL index — sessions auto-delete after expiry (no manual cleanup needed)</span>
+SessionSchema.index({ <span class="key">expiresAt</span>: <span class="num">1</span> }, { <span class="key">expireAfterSeconds</span>: <span class="num">0</span> });
+SessionSchema.index({ <span class="key">userId</span>: <span class="num">1</span> });
+    </div>
+
+    <h3>Device Detection (Frontend)</h3>
+    <p>On login, the frontend sends basic device info in the request body:</p>
+    <div class="schema">
+<span class="cmt">// Send with login request</span>
+{
+  <span class="key">email</span>: <span class="str">'...'</span>,
+  <span class="key">password</span>: <span class="str">'...'</span>,
+  <span class="key">deviceName</span>: <span class="str">`${navigator.userAgent}`</span>  <span class="cmt">// parse on backend</span>
+}
+<span class="cmt">// Backend uses 'ua-parser-js' npm package to extract 'Chrome on Windows 11'</span>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="val green-val">0</div><div class="lbl">DB reads per API request</div></div>
+      <div class="metric"><div class="val red-val">2</div><div class="lbl">DB ops per login (count + create)</div></div>
+      <div class="metric"><div class="val amber-val">1 R + 1 W</div><div class="lbl">DB ops per token refresh</div></div>
+      <div class="metric"><div class="val red-val">High</div><div class="lbl">Implementation effort</div></div>
+    </div>
+
+    <h3>Admin Capabilities with This Mode</h3>
+    <ul>
+      <li>See list of all active devices for any user (device name, IP, last active)</li>
+      <li>Revoke any specific device immediately</li>
+      <li>Set max devices per role (students: 3, teachers: 5)</li>
+      <li>Set behaviour when limit is hit: block new login OR evict oldest device</li>
+      <li>Force logout all devices for a user (delete all sessions for userId)</li>
+    </ul>
+
+    <h3>Pros</h3>
+    <ul>
+      <li>Full device visibility and control for admin</li>
+      <li>Users can see their own active devices and revoke them</li>
+      <li>Strongest security model</li>
+      <li>Natural fit for enterprise/subscription SaaS</li>
+    </ul>
+
+    <h3>Cons</h3>
+    <ul>
+      <li>Extra DB collection to maintain</li>
+      <li>Every token refresh = 1 DB read + 1 DB write (lastActiveAt update)</li>
+      <li>Most implementation work of the three modes</li>
+      <li>Device fingerprinting is imperfect (incognito = different "device")</li>
+    </ul>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ COMBINED -->
+  <div class="section" id="combined">
+    <div class="section-header">
+      <div class="badge purple">⚙</div>
+      <div>
+        <h2>Combined SaaS Architecture — All 3 Modes in One System</h2>
+        <p style="color:#6b7280;font-size:.9rem;margin:0">Admin switches between modes via settings; code handles all three paths</p>
+      </div>
+    </div>
+
+    <h3>How the Admin Switches Modes</h3>
+    <p>One field in the Settings document controls which mode is active: <code>sessionMode: 'multi' | 'single' | 'device-limited'</code>. The backend reads this on login and on refresh to decide which path to take.</p>
+
+    <div class="callout warn">
+      <strong>Server-side caching of settings is essential.</strong> If every API refresh had to read the Settings document to know which mode is active, that's 1 extra DB read per refresh per user. Instead, cache settings in application memory and refresh it every 5 minutes. On a server with 1000 concurrent users, this turns 1000 DB reads/refresh-cycle into 1.
+    </div>
+
+    <h3>Code Architecture — How to Manage All Three</h3>
+
+    <p>The cleanest approach is a <strong>session strategy pattern</strong>. One file per mode, a factory that selects the right one based on cached settings:</p>
+
+    <div class="schema">
+<span class="cmt">// backend/services/session/</span>
+│
+├── <span class="str">multiSessionStrategy.js</span>     <span class="cmt">// Mode 1: just jwt.sign(), no DB touch</span>
+├── <span class="str">singleSessionStrategy.js</span>    <span class="cmt">// Mode 2: increment sessionVersion</span>
+├── <span class="str">deviceLimitedStrategy.js</span>    <span class="cmt">// Mode 3: sessions collection CRUD</span>
+└── <span class="str">sessionFactory.js</span>           <span class="cmt">// reads cached settings, returns right strategy</span>
+
+<span class="cmt">// authController.js calls:</span>
+<span class="key">const</span> strategy = <span class="key">await</span> getSessionStrategy(); <span class="cmt">// from cache, never hits DB per-request</span>
+<span class="key">const</span> tokens = <span class="key">await</span> strategy.createSession(user, req);
+<span class="key">const</span> valid  = <span class="key">await</span> strategy.validateRefresh(decoded, req);
+<span class="key">await</span> strategy.destroySession(decoded, res);
+    </div>
+
+    <h3>Settings Cache Pattern</h3>
+    <div class="schema">
+<span class="cmt">// backend/services/settingsCache.js</span>
+<span class="key">let</span> _cache = <span class="num">null</span>;
+<span class="key">let</span> _lastFetched = <span class="num">0</span>;
+<span class="key">const</span> TTL = <span class="num">5</span> * <span class="num">60</span> * <span class="num">1000</span>; <span class="cmt">// 5 minutes</span>
+
+<span class="key">async function</span> getSettings() {
+  <span class="key">if</span> (_cache && Date.now() - _lastFetched &lt; TTL) <span class="key">return</span> _cache;
+  _cache = <span class="key">await</span> Settings.findOne();
+  _lastFetched = Date.now();
+  <span class="key">return</span> _cache;
+}
+<span class="cmt">// 1 DB read per 5 minutes total, regardless of how many users are active</span>
+    </div>
+
+    <h3>What Happens on Mode Switch</h3>
+    <ul>
+      <li><strong>Multi → Single:</strong> Existing multi-device users keep working until their next refresh. At that point, the new mode is enforced and old sessions start getting invalidated. Gradual rollout automatically.</li>
+      <li><strong>Single → Device-Limited:</strong> The <code>sessionVersion</code> field becomes unused. New logins start creating session records. Old single-mode tokens (without <code>sid</code>) would fail device-limited validation — admin may need to force re-login all users during the migration.</li>
+      <li><strong>Any → Multi:</strong> Immediately relaxes restrictions. All existing tokens that are JWT-valid work again.</li>
+    </ul>
+
+    <div class="callout info">
+      <strong>Recommendation for SaaS:</strong> Build Mode 1 now (it's done). Build Mode 2 next (one DB field, 2 days of work). Build Mode 3 only when a specific customer asks for device management features — it's significant work and most LMS users don't need it.
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ COMPARISON -->
+  <div class="section" id="comparison">
+    <div class="section-header">
+      <div class="badge red">≡</div>
+      <div>
+        <h2>Full Comparison Table</h2>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Factor</th>
+          <th>Mode 1 — Multi-Device</th>
+          <th>Mode 2 — Single Session</th>
+          <th>Mode 3 — Device-Limited</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>DB reads per API request</strong></td>
+          <td><span class="tag zero">0</span></td>
+          <td><span class="tag zero">0</span></td>
+          <td><span class="tag zero">0</span></td>
+        </tr>
+        <tr>
+          <td><strong>DB ops per login</strong></td>
+          <td>1 read (find user)</td>
+          <td>1 read + 1 write (increment sv)</td>
+          <td>1 read (count) + 1 write (create session)</td>
+        </tr>
+        <tr>
+          <td><strong>DB ops per token refresh (every 1h)</strong></td>
+          <td>1 read (find user)</td>
+          <td>1 read (get sv + find user)</td>
+          <td>1 read (check session) + 1 write (update lastActiveAt)</td>
+        </tr>
+        <tr>
+          <td><strong>Server burden (1000 users)</strong></td>
+          <td><span class="tag low">Low</span></td>
+          <td><span class="tag low">Low</span></td>
+          <td><span class="tag medium">Medium</span></td>
+        </tr>
+        <tr>
+          <td><strong>Race condition (multi-tab)</strong></td>
+          <td><span class="tag low">None</span></td>
+          <td><span class="tag medium">Tabs conflict after 1h</span></td>
+          <td><span class="tag low">None (each tab = same session)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Implementation effort</strong></td>
+          <td><span class="tag low">Done ✓</span></td>
+          <td><span class="tag low">Low (1 field, ~50 lines)</span></td>
+          <td><span class="tag high">High (new collection, CRUD, UI)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Force-logout specific device</strong></td>
+          <td>❌ Not possible</td>
+          <td>⚠ All devices (bump sv)</td>
+          <td>✅ Any specific device</td>
+        </tr>
+        <tr>
+          <td><strong>Device visibility in admin</strong></td>
+          <td>❌ None</td>
+          <td>❌ None</td>
+          <td>✅ Full (device name, IP, last active)</td>
+        </tr>
+        <tr>
+          <td><strong>Admin duration control</strong></td>
+          <td>✅ Easy (1 settings field)</td>
+          <td>✅ Easy (same)</td>
+          <td>✅ Easy (same + per-session TTL)</td>
+        </tr>
+        <tr>
+          <td><strong>Mobile app compatible</strong></td>
+          <td>✅ With minor backend change</td>
+          <td>✅ Same</td>
+          <td>✅ Same (sessionId in body not cookie)</td>
+        </tr>
+        <tr>
+          <td><strong>Security level</strong></td>
+          <td><span class="tag medium">Medium</span></td>
+          <td><span class="tag medium">Medium-High</span></td>
+          <td><span class="tag low">Highest</span></td>
+        </tr>
+        <tr>
+          <td><strong>Best for</strong></td>
+          <td>Students, casual users</td>
+          <td>Shared-account prevention</td>
+          <td>Enterprise, compliance, SaaS tiers</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr />
+
+    <h3>Realistic DB Load at Scale (1000 concurrent users, token refresh every 1h)</h3>
+    <table>
+      <thead>
+        <tr><th>Event</th><th>Mode 1</th><th>Mode 2</th><th>Mode 3</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>API requests (all types)</td>
+          <td>0 DB ops</td>
+          <td>0 DB ops</td>
+          <td>0 DB ops</td>
+        </tr>
+        <tr>
+          <td>Token refresh (1000 users × once/hour)</td>
+          <td>1,000 reads/hr</td>
+          <td>1,000 reads/hr</td>
+          <td>1,000 reads + 1,000 writes/hr</td>
+        </tr>
+        <tr>
+          <td>Settings fetch</td>
+          <td>1 read / 5 min (cached)</td>
+          <td>1 read / 5 min</td>
+          <td>1 read / 5 min</td>
+        </tr>
+        <tr>
+          <td><strong>Total extra DB ops vs Mode 1</strong></td>
+          <td><strong>Baseline</strong></td>
+          <td><strong>+0</strong> (same)</td>
+          <td><strong>+1,000 writes/hr</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px">1,000 extra writes per hour is <strong>~0.28 writes/second</strong> — completely negligible for MongoDB. Mode 3 is not meaningfully more expensive at this scale.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ RECOMMENDATION -->
+  <div class="verdict" id="recommendation">
+    <h2>Recommendation for Your SaaS LMS</h2>
+    <div class="verdict-grid">
+      <div class="verdict-card">
+        <h3>Build Now (Already Done)</h3>
+        <p>Mode 1 with admin duration control. Add <code>sessionDurationDays</code> to Settings model. This covers 90% of your users perfectly. Zero extra burden.</p>
+      </div>
+      <div class="verdict-card">
+        <h3>Build in Sprint 2 (~2 days)</h3>
+        <p>Mode 2 — single session. Add <code>sessionVersion</code> to User model and a version check in the refresh endpoint. Gives you the "only one session" selling feature for strict-access plans.</p>
+      </div>
+      <div class="verdict-card">
+        <h3>Build When Customer Asks</h3>
+        <p>Mode 3 — device-limited. This is the most work (new collection, admin device management UI, device fingerprinting). Build it for your first enterprise customer who needs it — don't build it speculatively.</p>
+      </div>
+      <div class="verdict-card">
+        <h3>SaaS Tier Mapping</h3>
+        <p><strong>Free tier:</strong> Mode 1, 365 days<br/><strong>Standard:</strong> Mode 1, 547 days<br/><strong>Premium:</strong> Mode 2 or 3, admin choice<br/>Admin controls which tier each institution gets.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,6 +1,8 @@
 // File: controllers/mcqController.js
 const MCQ = require('../models/McqModel');
 const Test = require('../models/TestModel');
+const mongoose = require('mongoose');
+const { syncTestClassification } = require('./testController');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
@@ -30,6 +32,8 @@ exports.createMCQ = async (req, res) => {
     test.totalQuestions = test.mcqs.length;
     await test.save();
 
+    syncTestClassification(test._id).catch(console.error);
+
     res.status(201).json({
       success: true,
       data: mcq
@@ -43,21 +47,30 @@ exports.createMCQ = async (req, res) => {
 };
 
 // Get all MCQs for a test
+// Supports both test-owned MCQs (testId field) and QB-sourced MCQs (test.mcqs array)
 exports.getMCQsForTest = async (req, res) => {
   try {
     const { testId } = req.params;
-    const mcqs = await MCQ.find({ testId }).sort({ createdAt: -1 });
-    
+
+    // Primary: find MCQs that have testId pointing to this test
+    let mcqs = await MCQ.find({ testId }).sort({ createdAt: 1 });
+
+    // Fallback: auto-generated tests store MCQ refs in test.mcqs but MCQs don't
+    // have the testId set. Populate from the test's mcqs array instead.
+    if (mcqs.length === 0) {
+      const test = await Test.findById(testId).populate('mcqs');
+      if (test && Array.isArray(test.mcqs) && test.mcqs.length > 0) {
+        mcqs = test.mcqs.filter(m => m && m._id); // populated objects only
+      }
+    }
+
     res.status(200).json({
       success: true,
       count: mcqs.length,
-      data: mcqs
+      data: mcqs,
     });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message
-    });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -238,57 +251,74 @@ exports.uploadDocument = (req, res) => {
       });
     }
     
-    const { testId } = req.body;
-    if (!testId) {
-      // Clean up the uploaded file
+    const { testId, questionBankId, qbSubjectId, qbChapterId, qbTopicId } = req.body;
+
+    // Parse multi-classification list (optional, sent as JSON string)
+    let classifications = [];
+    if (req.body.classifications) {
+      try { classifications = JSON.parse(req.body.classifications); } catch (_) {}
+    }
+
+    // Primary QB fields: explicit params → first classification → test's existing QB
+    const primaryCls = classifications[0] || {};
+    const primaryQbId      = questionBankId      || primaryCls.questionBankId || null;
+    const primarySubjectId = qbSubjectId         || primaryCls.qbSubjectId    || null;
+    const primaryChapterId = qbChapterId         || primaryCls.qbChapterId    || null;
+    const primaryTopicId   = qbTopicId           || primaryCls.qbTopicId      || null;
+
+    // testId is sufficient on its own; QB required only if no testId
+    if (!testId && !primaryQbId) {
       fs.unlinkSync(req.file.path);
-      
       return res.status(400).json({
         success: false,
-        message: 'Test ID is required'
+        message: 'Either testId or a Question Bank selection is required',
       });
     }
-    
+
     try {
-      // Check if test exists
-      const test = await Test.findById(testId);
-      if (!test) {
-        // Clean up the uploaded file
-        fs.unlinkSync(req.file.path);
-        
-        return res.status(404).json({
-          success: false,
-          message: 'Test not found'
-        });
+      let test = null;
+      if (testId) {
+        test = await Test.findById(testId);
+        if (!test) {
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ success: false, message: 'Test not found' });
+        }
       }
-      
+
       // Generate a unique import ID
       const importId = uuidv4();
-      
+
       // Get additional MCQ information from request body
       const mcqInfo = {
         author: req.body.author || req.user.fullName || 'Document Import',
-        subject: req.body.subject || test.subject || '',
-        unit: req.body.unit || test.unit || '',
-        topic: req.body.topic || test.topic || '',
-        subTopic: req.body.subTopic || test.subTopic || '',
-        session: req.body.session || test.session || '',
+        subject: req.body.subject || '',
+        unit: req.body.unit || '',
+        topic: req.body.topic || '',
+        subTopic: req.body.subTopic || '',
+        session: req.body.session || '',
         difficulty: req.body.difficulty || 'Medium',
         isPublic: true,
+        // Primary QB fields (for MCQ storage)
+        questionBankId: primaryQbId   || (test && test.questionBankId) || null,
+        qbSubjectId:    primarySubjectId || (test && test.qbSubjectId) || null,
+        qbChapterId:    primaryChapterId || (test && test.qbChapterId) || null,
+        qbTopicId:      primaryTopicId   || (test && test.qbTopicId)   || null,
+        // All classifications (for test tagging)
+        classifications,
       };
-      
+
       // Store import operation info
       importOperations[importId] = {
         status: 'processing',
         file: req.file.path,
-        testId,
+        testId: testId || null,
         mcqInfo,
         startTime: new Date(),
-        importedCount: 0
+        importedCount: 0,
       };
-      
+
       // Start extraction process in the background
-      processDocument(importId, req.file.path, testId, test, mcqInfo);
+      processDocument(importId, req.file.path, testId || null, test, mcqInfo);
       
       // Return import ID for status checking
       return res.status(200).json({
@@ -333,12 +363,34 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
     
     // Insert MCQs to database
     const importedMcqs = await MCQ.insertMany(mcqsToImport);
-    
-    // Update test with new MCQs
-    const mcqIds = importedMcqs.map(mcq => mcq._id);
-    test.mcqs.push(...mcqIds);
-    test.totalQuestions = test.mcqs.length;
-    await test.save();
+
+    // Update test with new MCQs (only if a test was provided)
+    const mcqIds = importedMcqs.map((mcq) => mcq._id);
+    if (test) {
+      test.mcqs.push(...mcqIds);
+      test.totalQuestions = test.mcqs.length;
+      await test.save();
+
+      // Sync QB-resolved classification from MCQs
+      await syncTestClassification(testId);
+
+      // Also merge any extra classifications supplied by the user
+      if (Array.isArray(mcqInfo.classifications) && mcqInfo.classifications.length) {
+        const extraSubjects = mcqInfo.classifications.map((c) => c.subjectTitle).filter(Boolean);
+        const extraChapters = mcqInfo.classifications.map((c) => c.chapterTitle).filter(Boolean);
+        const extraTopics   = mcqInfo.classifications.map((c) => c.topicTitle).filter(Boolean);
+        if (extraSubjects.length || extraChapters.length || extraTopics.length) {
+          const cur = await Test.findById(testId);
+          if (cur) {
+            await Test.findByIdAndUpdate(testId, {
+              subjects: [...new Set([...(cur.subjects || []), ...extraSubjects])].filter(Boolean),
+              chapters: [...new Set([...(cur.chapters || []), ...extraChapters])].filter(Boolean),
+              topics:   [...new Set([...(cur.topics   || []), ...extraTopics  ])].filter(Boolean),
+            });
+          }
+        }
+      }
+    }
     
     // Update import operation status
     importOperations[importId] = {
@@ -381,6 +433,42 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
     }
   }
 }
+
+// GET /api/mcqs/question-bank/:qbId
+// Query: subjectId, chapterId, topicId (all optional — progressively narrower)
+exports.getMCQsForQuestionBank = async (req, res) => {
+  try {
+    const { qbId } = req.params;
+    const { subjectId, chapterId, topicId } = req.query;
+
+    const filter = { questionBankId: new mongoose.Types.ObjectId(qbId) };
+    if (topicId)        filter.qbTopicId   = new mongoose.Types.ObjectId(topicId);
+    else if (chapterId) filter.qbChapterId = new mongoose.Types.ObjectId(chapterId);
+    else if (subjectId) filter.qbSubjectId = new mongoose.Types.ObjectId(subjectId);
+
+    const mcqs = await MCQ.find(filter).sort({ createdAt: 1 });
+    res.status(200).json({ success: true, count: mcqs.length, data: mcqs });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/mcqs/question-bank/:qbId/topic-counts
+// Returns { [topicId]: count } for every topic in the QB
+exports.getTopicCounts = async (req, res) => {
+  try {
+    const { qbId } = req.params;
+    const agg = await MCQ.aggregate([
+      { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
+      { $group: { _id: '$qbTopicId', count: { $sum: 1 } } },
+    ]);
+    const counts = {};
+    agg.forEach((r) => { if (r._id) counts[r._id.toString()] = r.count; });
+    res.json({ success: true, data: counts });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
 
 exports.getImportStatus = (req, res) => {
   const { importId } = req.params;

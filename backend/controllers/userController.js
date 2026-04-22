@@ -228,12 +228,13 @@ exports.updateProfile = async (req, res) => {
     const userId = req.user.id;
     
     // Only allow updating specific fields for regular users
-    const { fullName, contactNumber, password } = req.body;
-    
+    const { fullName, contactNumber, password, profilePicture } = req.body;
+
     // Create update object with permitted fields
     const updateData = {};
     if (fullName) updateData.fullName = fullName;
     if (contactNumber) updateData.contactNumber = contactNumber;
+    if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
     
     // Handle password update if provided
     if (password && password.trim() !== '') {
@@ -251,7 +252,8 @@ exports.updateProfile = async (req, res) => {
       user.fullName = fullName || user.fullName;
       user.contactNumber = contactNumber || user.contactNumber;
       user.password = password;
-      
+      if (profilePicture !== undefined) user.profilePicture = profilePicture;
+
       await user.save();
       
       return res.status(200).json({

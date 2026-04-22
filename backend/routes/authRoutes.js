@@ -35,7 +35,7 @@ const loginValidation = [
 // Routes
 router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
-router.get('/logout', logout);
+router.post('/logout', logout);
 router.get('/me', protect, getMe);
 router.post('/refresh-token', refreshToken);
 
