@@ -23,6 +23,9 @@ const courseRoutes       = require('./routes/courseRoutes');
 const questionBankRoutes = require('./routes/questionBankRoutes');
 const settingsRoutes     = require('./routes/settingsRoutes');
 const mcqReportRoutes    = require('./routes/mcqReportRoutes');
+const messageRoutes      = require('./routes/messageRoutes');
+const communityRoutes    = require('./routes/communityRoutes');
+const { openStream }     = require('./controllers/streamController');
 const app = express();
 
 // Body parser
@@ -79,11 +82,19 @@ app.use('/api/users', userRoutes);
 app.use('/api/mcqs', mcqRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/user-tests',userTestRoutes );
+// SSE stream mounted directly on app — BEFORE uploadRoutes.
+// uploadRoutes uses router.use(protect) which runs for every /api/* request,
+// which would intercept and reject the SSE connection before it reaches the
+// stream handler (EventSource cannot send an Authorization header).
+// Mounting directly on app bypasses all router-level middleware entirely.
+app.get('/api/stream', openStream);
 app.use('/api', uploadRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/question-banks', questionBankRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/mcq-reports', mcqReportRoutes);
+app.use('/api/messages',   messageRoutes);
+app.use('/api/community',  communityRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });

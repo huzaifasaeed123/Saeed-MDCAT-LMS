@@ -42,8 +42,29 @@ const UserSchema = new mongoose.Schema({
 
   resetPasswordToken: String,
   resetPasswordExpire: Date,
+
+  // Brute-force protection — sliding 5-min window, lock after 10 failures.
+  // firstFailedAt = start of the current window; loginAttempts = count in window;
+  // lockUntil = if set and in the future, login is rejected.
+  loginAttempts:  { type: Number, default: 0 },
+  firstFailedAt:  Date,
+  lockUntil:      Date,
+
+  communityPoints: { type: Number, default: 0 },
+
   createdAt: { type: Date, default: Date.now }
 });
+
+// ── Indexes ───────────────────────────────────────────────────────────────────
+// email already indexed via unique:true above.
+// These cover: role filter, date sort, google login lookup,
+// forgot-password token lookup, and text search on name+email.
+UserSchema.index({ role: 1 });
+UserSchema.index({ createdAt: -1 });
+UserSchema.index({ googleId: 1 }, { sparse: true });          // sparse = skip docs without googleId
+UserSchema.index({ resetPasswordToken: 1 }, { sparse: true }); // sparse = skip docs without token
+UserSchema.index({ fullName: 'text', email: 'text' });         // text search for admin user search
+UserSchema.index({ communityPoints: -1 });                     // leaderboard sort
 
 // ── Password hashing ──────────────────────────────────────────────────────────
 UserSchema.pre('save', async function(next) {
@@ -63,7 +84,7 @@ UserSchema.pre('save', async function(next) {
 // can re-validate Mode 2 without an extra query.
 UserSchema.methods.getSignedAccessToken = function({ sm = 'multi', sv = 0 } = {}) {
   return jwt.sign(
-    { id: this._id, role: this.role, fullName: this.fullName, sm, sv },
+    { id: this._id, role: this.role, fullName: this.fullName, profilePicture: this.profilePicture || null, sm, sv },
     process.env.JWT_ACCESS_SECRET,
     { expiresIn: '1h' }
   );
@@ -81,7 +102,11 @@ UserSchema.methods.getSignedRefreshToken = function({ sm = 'multi', sv = 0, dura
 };
 
 // ── Password comparison ───────────────────────────────────────────────────────
+// Returns false (never throws) when the user has no password — i.e. a pure
+// Google-OAuth account that hasn't set one yet. This prevents bcrypt from
+// throwing on undefined and lets the login controller return a normal 401.
 UserSchema.methods.matchPassword = async function(enteredPassword) {
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

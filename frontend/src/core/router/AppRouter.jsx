@@ -15,6 +15,8 @@ import HomePage from '../../modules/home/pages/HomePage';
 import GoogleOneTap from '../../modules/auth/components/GoogleOneTap';
 import LoginPage from '../../modules/auth/pages/LoginPage';
 import RegisterPage from '../../modules/auth/pages/RegisterPage';
+import ForgotPasswordPage from '../../modules/auth/pages/ForgotPasswordPage';
+import ResetPasswordPage from '../../modules/auth/pages/ResetPasswordPage';
 
 // Dashboard module
 import DashboardPage from '../../modules/dashboard/pages/DashboardPage';
@@ -50,6 +52,12 @@ import CourseFormPage from '../../modules/courses/pages/CourseFormPage';
 import CourseCatalogPage from '../../modules/courses/pages/student/CourseCatalogPage';
 import CourseDetailPage from '../../modules/courses/pages/student/CourseDetailPage';
 
+// Messages module
+import MessagesPage from '../../modules/messages/pages/MessagesPage';
+
+// Community module
+import CommunityPage from '../../modules/community/pages/CommunityPage';
+
 // Settings module
 import SettingsPage from '../../modules/settings/pages/SettingsPage';
 
@@ -77,6 +85,8 @@ const AppRouter = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
         {/* Protected Routes with Dashboard Layout */}
         <Route element={<PrivateRoute />}>
@@ -93,6 +103,22 @@ const AppRouter = () => {
             element={
               <DashboardLayout>
                 <ProfilePage />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/messages"
+            element={
+              <DashboardLayout>
+                <MessagesPage />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/community"
+            element={
+              <DashboardLayout>
+                <CommunityPage />
               </DashboardLayout>
             }
           />

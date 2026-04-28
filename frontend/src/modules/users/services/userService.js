@@ -34,3 +34,12 @@ export const updateProfile = async (userData) => {
   const response = await apiClient.put('/users/profile', userData);
   return response.data;
 };
+
+export const bulkUploadUsers = async (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await apiClient.post('/users/bulk-upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};

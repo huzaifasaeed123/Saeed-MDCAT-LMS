@@ -9,7 +9,11 @@ const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
 
-  const { user, updateUser, clearUser, loading } = context;
+  const {
+    user, updateUser, clearUser, loading,
+    msgUnreadCount, notifUnreadCount,
+    notifications, setNotifications,
+  } = context;
 
   const login = async (credentials) => {
     const response = await loginUser(credentials);
@@ -43,9 +47,13 @@ const useAuth = () => {
     register,
     logout,
     isAuthenticated: !!user,
-    isAdmin:    hasRole('admin'),
-    isTeacher:  hasRole('teacher'),
-    isStudent:  hasRole('student'),
+    isAdmin:          hasRole('admin'),
+    isTeacher:        hasRole('teacher'),
+    isStudent:        hasRole('student'),
+    msgUnreadCount,
+    notifUnreadCount,
+    notifications,
+    setNotifications,
   };
 };
 

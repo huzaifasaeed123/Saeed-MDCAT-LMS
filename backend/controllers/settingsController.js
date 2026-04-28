@@ -37,7 +37,7 @@ exports.getSettings = async (req, res) => {
  */
 exports.updateSettings = async (req, res) => {
   try {
-    const { maxMcqsPerAutoTest, defaultQuestionBankId, sessionMode, sessionDurationDays } = req.body;
+    const { maxMcqsPerAutoTest, defaultQuestionBankId, sessionMode, sessionDurationDays, communityPoints } = req.body;
     const update = {};
 
     if (maxMcqsPerAutoTest !== undefined) {
@@ -56,6 +56,15 @@ exports.updateSettings = async (req, res) => {
       if (!d || d < 1 || d > 3650)
         return res.status(400).json({ success: false, message: 'sessionDurationDays must be between 1 and 3650' });
       update.sessionDurationDays = d;
+    }
+    if (communityPoints !== undefined) {
+      const { post, reply, helpful, answer } = communityPoints;
+      if (post    !== undefined) update['communityPoints.post']    = Math.max(0, Number(post)    || 0);
+      if (reply   !== undefined) update['communityPoints.reply']   = Math.max(0, Number(reply)   || 0);
+      if (helpful !== undefined) update['communityPoints.helpful'] = Math.max(0, Number(helpful) || 0);
+      if (answer  !== undefined) update['communityPoints.answer']  = Math.max(0, Number(answer)  || 0);
+      // Bust the in-memory points cache
+      require('../utils/pointsService').invalidatePointsCache();
     }
 
     const settings = await SystemSettings.findOneAndUpdate(

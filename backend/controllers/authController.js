@@ -1,4 +1,6 @@
 const jwt             = require('jsonwebtoken');
+const crypto          = require('crypto');
+const nodemailer      = require('nodemailer');
 const User            = require('../models/User');
 const SystemSettings  = require('../models/SystemSettings');
 const { validationResult } = require('express-validator');
@@ -85,6 +87,11 @@ exports.register = async (req, res) => {
   }
 };
 
+// ─── Lockout config — 10 failures within 5 minutes locks for 5 minutes ───────
+const LOCKOUT_WINDOW_MS    = 5 * 60 * 1000;
+const LOCKOUT_THRESHOLD    = 20;
+const LOCKOUT_DURATION_MS  = 5 * 60 * 1000;
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 exports.login = async (req, res) => {
   const errors = validationResult(req);
@@ -100,16 +107,57 @@ exports.login = async (req, res) => {
       getSessionSettings(),
     ]);
 
-    if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    // Generic message for both "no user" and "wrong password" — don't leak which.
+    const invalidCredentials = () =>
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
+
+    if (!user) return invalidCredentials();
+
+    // ── Account-lockout gate ────────────────────────────────────────────────
+    const now = Date.now();
+    if (user.lockUntil && user.lockUntil.getTime() > now) {
+      const minsLeft = Math.ceil((user.lockUntil.getTime() - now) / 60000);
+      return res.status(429).json({
+        success: false,
+        message: `Too many failed attempts. Try again in ${minsLeft} minute${minsLeft === 1 ? '' : 's'}.`,
+        lockedUntil: user.lockUntil,
+      });
+    }
+
+    if (!(await user.matchPassword(password))) {
+      // Track the failure inside a sliding 5-minute window.
+      const windowStart = user.firstFailedAt?.getTime();
+      const inWindow    = windowStart && (now - windowStart) < LOCKOUT_WINDOW_MS;
+
+      if (inWindow) {
+        user.loginAttempts = (user.loginAttempts || 0) + 1;
+      } else {
+        user.loginAttempts = 1;
+        user.firstFailedAt = new Date(now);
+      }
+
+      if (user.loginAttempts >= LOCKOUT_THRESHOLD) {
+        user.lockUntil = new Date(now + LOCKOUT_DURATION_MS);
+      }
+
+      await user.save();
+      return invalidCredentials();
+    }
+
+    // ── Successful login — clear any failure tracking ───────────────────────
+    if (user.loginAttempts || user.firstFailedAt || user.lockUntil) {
+      user.loginAttempts = 0;
+      user.firstFailedAt = undefined;
+      user.lockUntil     = undefined;
     }
 
     // Mode 2: each new login invalidates all previous sessions by bumping the version.
     // The old refresh tokens carry the previous sv; they'll fail on their next refresh.
     if (settings.sessionMode === 'single') {
       user.sessionVersion = (user.sessionVersion ?? 0) + 1;
-      await user.save();
     }
+
+    await user.save();
 
     sendTokenResponse(user, settings, 200, res);
   } catch (error) {
@@ -251,6 +299,151 @@ exports.getMe = async (req, res) => {
     res.status(200).json({ success: true, data: user });
   } catch (error) {
     console.error('getMe error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// ─── Persistent pooled nodemailer transporter ────────────────────────────────
+// Built once at module load. `pool: true` keeps SMTP connections alive between
+// sends — no fresh TCP+TLS handshake per email. Verified once on startup.
+let _transporter = null;
+const getTransporter = () => {
+  if (_transporter) return _transporter;
+
+  const missing = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS'].filter((k) => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`SMTP not configured — missing env vars: ${missing.join(', ')}`);
+  }
+
+  _transporter = nodemailer.createTransport({
+    host:           process.env.SMTP_HOST,
+    port:           Number(process.env.SMTP_PORT) || 587,
+    secure:         process.env.SMTP_SECURE === 'true',
+    pool:           true,
+    maxConnections: 5,
+    maxMessages:    100,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  // Fire-and-forget verification on first use; logs but does not crash.
+  _transporter.verify()
+    .then(() => console.log('[SMTP] pool ready ✓'))
+    .catch((err) => console.error('[SMTP] verify failed:', err.message));
+
+  return _transporter;
+};
+
+const renderResetEmail = (user, resetUrl) => `
+  <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px">
+    <h2 style="color:#1e3a5f;margin-bottom:8px">Reset Your Password</h2>
+    <p style="color:#4b5563">Hi ${user.fullName},</p>
+    <p style="color:#4b5563">We received a request to reset your password. Click the button below. This link expires in <strong>10 minutes</strong>.</p>
+    <a href="${resetUrl}"
+       style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">
+      Reset Password
+    </a>
+    <p style="color:#9ca3af;font-size:13px">If you didn't request this, ignore this email.</p>
+    <p style="color:#9ca3af;font-size:13px">Or copy this link:<br><a href="${resetUrl}" style="color:#2563eb">${resetUrl}</a></p>
+  </div>
+`;
+
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+// Fire-and-forget: respond to the user the moment the token is saved, then send
+// the email in the background. If the send fails, we clear the token so the
+// user can request a fresh one — no half-state left behind.
+exports.forgotPassword = async (req, res) => {
+  const okMsg = 'If that email is registered you will receive a reset link shortly.';
+
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address. Please check your email or register a new account.',
+      });
+    }
+
+    // Cheap pre-flight: make sure SMTP env is configured before persisting a token.
+    let transporter;
+    try {
+      transporter = getTransporter();
+    } catch (smtpErr) {
+      console.error('[forgotPassword] SMTP not configured:', smtpErr.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Email service is not configured. Please contact the administrator.',
+      });
+    }
+
+    // Generate raw token, store SHA-256 hash in DB
+    const rawToken  = crypto.randomBytes(32).toString('hex');
+    const hashToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    user.resetPasswordToken  = hashToken;
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${rawToken}`;
+
+    // Respond immediately — the user no longer waits on SMTP.
+    res.status(200).json({ success: true, message: okMsg });
+
+    // Background send — failures clear the saved token so the user can retry.
+    transporter.sendMail({
+      from:    `"${process.env.SMTP_FROM_NAME || 'Saeed MDCAT LMS'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+      to:      user.email,
+      subject: 'Password Reset Request',
+      html:    renderResetEmail(user, resetUrl),
+    })
+      .then(() => console.log(`[forgotPassword] reset email sent to ${user.email} ✓`))
+      .catch(async (err) => {
+        console.error(`[forgotPassword] email send FAILED for ${user.email}:`, err.message);
+        await User.updateOne(
+          { _id: user._id },
+          { $unset: { resetPasswordToken: '', resetPasswordExpire: '' } }
+        ).catch(() => {});
+      });
+  } catch (error) {
+    console.error('[forgotPassword] unexpected error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process request. Please try again.' });
+  }
+};
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+// POST /api/auth/reset-password/:token  { password }
+exports.resetPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    // Hash the URL token and look up the user
+    const hashToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken:  hashToken,
+      resetPasswordExpire: { $gt: Date.now() },
+    }).select('+password');
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Reset link is invalid or has expired. Please request a new one.' });
+    }
+
+    user.password            = password; // pre-save hook hashes it
+    user.resetPasswordToken  = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    res.status(200).json({ success: true, message: 'Password reset successfully. You can now log in.' });
+  } catch (error) {
+    console.error('resetPassword error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };

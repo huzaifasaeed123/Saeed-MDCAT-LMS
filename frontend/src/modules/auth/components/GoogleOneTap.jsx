@@ -1,110 +1,105 @@
-// src/modules/auth/components/GoogleOneTap.jsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import useAuth from '../../../core/auth/useAuth';
 import { loginWithGoogle } from '../services/authService';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+const ALLOWED_PATHS = ['/', '/login', '/register'];
+const GSI_SRC = 'https://accounts.google.com/gsi/client';
+
 const GoogleOneTap = () => {
   const { updateUser, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const promptRef = useRef(null); // track prompt timer so we can cancel it
 
   useEffect(() => {
-    // Only show One Tap on specific pages and when user is not authenticated
-    const allowedPaths = ['/', '/login', '/register'];
-    if (isAuthenticated || !allowedPaths.includes(location.pathname)) {
-      return;
-    }
+    if (isAuthenticated || !ALLOWED_PATHS.includes(location.pathname)) return;
 
-    const loadGoogleScript = () => {
-      if (window.google) {
-        setIsGoogleLoaded(true);
-        initializeGoogleOneTap();
-        return;
-      }
-
-      if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
-
-      script.onload = () => {
-        setIsGoogleLoaded(true);
-        initializeGoogleOneTap();
-      };
-    };
-
-    // Delay loading to avoid conflicts with other Google components
-    const timer = setTimeout(loadGoogleScript, 1000);
-
-    return () => {
-      clearTimeout(timer);
-      if (window.google) {
-        google.accounts.id.cancel();
-      }
-    };
-  }, [isAuthenticated, location.pathname]);
-
-  const initializeGoogleOneTap = () => {
-    if (window.google) {
+    const init = () => {
+      if (!window.google?.accounts?.id) return;
       try {
-        google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
-          auto_select: false,
+        window.google.accounts.id.initialize({
+          client_id:            import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback:             handleGoogleResponse,
+          auto_select:          false,
           cancel_on_tap_outside: true,
-          context: 'signin',
-          ux_mode: 'popup',
-          itp_support: true,
-          use_fedcm_for_prompt: true
+          context:              'signin',
+          itp_support:          true,
+          // ux_mode and use_fedcm_for_prompt intentionally omitted:
+          // ux_mode:'popup' belongs to renderButton, not One Tap;
+          // use_fedcm_for_prompt suppresses the prompt in many browsers.
         });
 
-        // Delay prompt to avoid conflicts
-        setTimeout(() => {
-          google.accounts.id.prompt((notification) => {
-            if (notification.isNotDisplayed()) {
-              console.log('One Tap not displayed:', notification.getNotDisplayedReason());
+        // A short delay lets the page finish painting before the overlay appears.
+        promptRef.current = setTimeout(() => {
+          window.google.accounts.id.prompt((n) => {
+            if (n.isNotDisplayed()) {
+              console.log('[OneTap] not displayed:', n.getNotDisplayedReason());
             }
-            if (notification.isSkippedMoment()) {
-              console.log('One Tap skipped:', notification.getSkippedReason());
+            if (n.isSkippedMoment()) {
+              console.log('[OneTap] skipped:', n.getSkippedReason());
             }
           });
-        }, 1500);
-      } catch (error) {
-        console.error('Error initializing Google One Tap:', error);
+        }, 150);
+      } catch (e) {
+        console.error('[OneTap] init error:', e);
       }
+    };
+
+    // If Google library is already loaded (navigated from another page), init immediately.
+    if (window.google?.accounts?.id) {
+      init();
+      return () => {
+        clearTimeout(promptRef.current);
+        window.google?.accounts?.id?.cancel();
+      };
     }
-  };
+
+    // Script already injected but not yet loaded — wait for it.
+    const existing = document.querySelector(`script[src="${GSI_SRC}"]`);
+    if (existing) {
+      existing.addEventListener('load', init);
+      return () => {
+        clearTimeout(promptRef.current);
+        existing.removeEventListener('load', init);
+        window.google?.accounts?.id?.cancel();
+      };
+    }
+
+    // First time — inject the script now (no artificial delay).
+    const script = document.createElement('script');
+    script.src   = GSI_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = init;
+    document.body.appendChild(script);
+
+    return () => {
+      clearTimeout(promptRef.current);
+      window.google?.accounts?.id?.cancel();
+    };
+  }, [isAuthenticated, location.pathname]);
 
   const handleGoogleResponse = async (response) => {
     try {
       const result = await loginWithGoogle(response.credential);
-
       if (result.success) {
         updateUser(result.user, result.accessToken);
-
-        if (!result.user.contactNumber || result.user.contactNumber === '') {
+        if (!result.user.contactNumber) {
           navigate('/profile?newUser=true');
           toast.info('Please complete your profile by adding your contact number.');
         } else {
           navigate('/dashboard');
-          toast.success('Successfully logged in with Google!');
+          toast.success('Logged in with Google!');
         }
       }
     } catch (error) {
-      console.error('Google authentication error:', error);
-      toast.error(error.response?.data?.message || 'Failed to authenticate with Google');
+      toast.error(error.response?.data?.message || 'Google authentication failed');
     }
   };
 
-  return null; // This component doesn't render anything visible
+  return null;
 };
 
 export default GoogleOneTap;

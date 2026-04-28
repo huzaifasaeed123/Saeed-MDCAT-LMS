@@ -1,5 +1,5 @@
 // shared/utils/fixImageUrls.js
-const getBackendUrl = () => {
+export const getBackendUrl = () => {
   if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
   const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.REACT_APP_API_URL || '';
   if (apiUrl) return apiUrl.replace(/\/api\/?$/, '');

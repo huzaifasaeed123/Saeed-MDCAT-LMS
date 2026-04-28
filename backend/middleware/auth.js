@@ -20,10 +20,11 @@ exports.protect = (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     // Expose both .id and ._id so all controllers work regardless of which they use.
     req.user = {
-      id:       decoded.id,
-      _id:      decoded.id,
-      role:     decoded.role,
-      fullName: decoded.fullName,
+      id:             decoded.id,
+      _id:            decoded.id,
+      role:           decoded.role,
+      fullName:       decoded.fullName,
+      profilePicture: decoded.profilePicture || null,
     };
     next();
   } catch (err) {

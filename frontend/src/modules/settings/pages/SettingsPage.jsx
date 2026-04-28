@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
   FiSave, FiSettings, FiDatabase, FiSliders,
-  FiShield, FiMonitor, FiAlertCircle, FiCheck,
+  FiShield, FiMonitor, FiAlertCircle, FiCheck, FiAward,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 
@@ -46,6 +46,7 @@ const SettingsPage = () => {
     defaultQuestionBankId: '',
     sessionMode:           'multi',
     sessionDurationDays:   547,
+    communityPoints: { post: 2, reply: 1, helpful: 1, answer: 15 },
   });
   const [banks,   setBanks]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +69,12 @@ const SettingsPage = () => {
           defaultQuestionBankId: s.defaultQuestionBankId?._id || s.defaultQuestionBankId || '',
           sessionMode:           s.sessionMode           ?? 'multi',
           sessionDurationDays:   dur,
+          communityPoints: {
+            post:    s.communityPoints?.post    ?? 2,
+            reply:   s.communityPoints?.reply   ?? 1,
+            helpful: s.communityPoints?.helpful ?? 1,
+            answer:  s.communityPoints?.answer  ?? 15,
+          },
         });
         // Show custom input if saved value is not one of the presets
         if (!DURATION_PRESETS.some((p) => p.value === dur)) setCustomDuration(true);
@@ -99,6 +106,12 @@ const SettingsPage = () => {
         defaultQuestionBankId: settings.defaultQuestionBankId || null,
         sessionMode:           settings.sessionMode,
         sessionDurationDays:   days,
+        communityPoints: {
+          post:    Math.max(0, Number(settings.communityPoints.post)    || 0),
+          reply:   Math.max(0, Number(settings.communityPoints.reply)   || 0),
+          helpful: Math.max(0, Number(settings.communityPoints.helpful) || 0),
+          answer:  Math.max(0, Number(settings.communityPoints.answer)  || 0),
+        },
       });
       toast.success('Settings saved successfully');
     } catch {
@@ -333,6 +346,55 @@ const SettingsPage = () => {
               <span className="font-semibold text-gray-600">Changes apply to new logins only.</span>{' '}
               Users who are already logged in will not be affected until their current session
               expires or they log in again.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Community Points ─────────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <FiAward className="w-5 h-5 text-purple-600" />
+            <h2 className="text-base font-semibold text-gray-800">Community Points</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-5">
+            How many points users earn for community activity. Affects leaderboard ranking and badges.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { key: 'post',    label: 'Create a post',           desc: 'Awarded once per new post' },
+              { key: 'reply',   label: 'Write a reply',           desc: 'Awarded once per reply' },
+              { key: 'helpful', label: 'Reply marked helpful',    desc: 'Awarded to reply author (max 10/reply)' },
+              { key: 'answer',  label: 'Reply marked as answer',  desc: 'Awarded to reply author when staff marks it' },
+            ].map(({ key, label, desc }) => (
+              <div key={key}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                <p className="text-xs text-gray-400 mb-2">{desc}</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={settings.communityPoints[key]}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        communityPoints: { ...s.communityPoints, [key]: e.target.value },
+                      }))
+                    }
+                    className="w-24 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                  <span className="text-xs text-gray-400">points</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex gap-2 bg-purple-50 border border-purple-200 rounded-xl p-3">
+            <FiAlertCircle className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-purple-700">
+              <span className="font-semibold">Live updates:</span> Changes take effect immediately for all
+              new community activity. Existing user points are not retroactively recalculated.
             </p>
           </div>
         </div>
