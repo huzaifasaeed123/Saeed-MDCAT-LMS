@@ -25,6 +25,8 @@ const settingsRoutes     = require('./routes/settingsRoutes');
 const mcqReportRoutes    = require('./routes/mcqReportRoutes');
 const messageRoutes      = require('./routes/messageRoutes');
 const communityRoutes    = require('./routes/communityRoutes');
+const notesRoutes        = require('./routes/notesRoutes');
+const videosRoutes       = require('./routes/videosRoutes');
 const { openStream }     = require('./controllers/streamController');
 const app = express();
 
@@ -88,6 +90,12 @@ app.use('/api/user-tests',userTestRoutes );
 // stream handler (EventSource cannot send an Authorization header).
 // Mounting directly on app bypasses all router-level middleware entirely.
 app.get('/api/stream', openStream);
+// Notes stream — has its own auth (view token in query string). Must be mounted
+// directly on app BEFORE uploadRoutes, for the same reason as /api/stream above:
+// uploadRoutes carries a global router.use(protect) that catches all /api/* requests.
+const { streamFile } = require('./controllers/notesController');
+app.get('/api/notes/files/:id/stream',  streamFile);
+app.get('/api/videos/files/:id/stream', streamFile);
 app.use('/api', uploadRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/question-banks', questionBankRoutes);
@@ -95,6 +103,8 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/mcq-reports', mcqReportRoutes);
 app.use('/api/messages',   messageRoutes);
 app.use('/api/community',  communityRoutes);
+app.use('/api/notes',      notesRoutes);
+app.use('/api/videos',     videosRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });

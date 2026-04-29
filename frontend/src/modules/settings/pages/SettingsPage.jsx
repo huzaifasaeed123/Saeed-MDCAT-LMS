@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import {
   FiSave, FiSettings, FiDatabase, FiSliders,
-  FiShield, FiMonitor, FiAlertCircle, FiCheck, FiAward,
+  FiShield, FiMonitor, FiAlertCircle, FiCheck, FiAward, FiKey, FiLock, FiCopy,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 
@@ -47,7 +47,15 @@ const SettingsPage = () => {
     sessionMode:           'multi',
     sessionDurationDays:   547,
     communityPoints: { post: 2, reply: 1, helpful: 1, answer: 15 },
+    googleDriveApiKey: '',
+    // Service account key — write-only on the form (never pre-populated).
+    // Leaving it empty on save means "don't change the existing key".
+    googleServiceAccountKey: '',
   });
+  // Derived from API — not editable directly
+  const [hasServiceAccountKey,  setHasServiceAccountKey]  = useState(false);
+  const [serviceAccountEmail,   setServiceAccountEmail]   = useState('');
+  const [showSaKeyInput,        setShowSaKeyInput]        = useState(false);
   const [banks,   setBanks]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
@@ -75,7 +83,11 @@ const SettingsPage = () => {
             helpful: s.communityPoints?.helpful ?? 1,
             answer:  s.communityPoints?.answer  ?? 15,
           },
+          googleDriveApiKey:        s.googleDriveApiKey ?? '',
+          googleServiceAccountKey:  '',  // never pre-filled from server
         });
+        setHasServiceAccountKey(!!s.hasServiceAccountKey);
+        setServiceAccountEmail(s.serviceAccountEmail || '');
         // Show custom input if saved value is not one of the presets
         if (!DURATION_PRESETS.some((p) => p.value === dur)) setCustomDuration(true);
         if (banksRes.data.success) setBanks(banksRes.data.data);
@@ -112,8 +124,16 @@ const SettingsPage = () => {
           helpful: Math.max(0, Number(settings.communityPoints.helpful) || 0),
           answer:  Math.max(0, Number(settings.communityPoints.answer)  || 0),
         },
+        googleDriveApiKey: settings.googleDriveApiKey.trim(),
+        // Only include SA key if admin typed something — empty = "leave unchanged"
+        ...(settings.googleServiceAccountKey.trim()
+          ? { googleServiceAccountKey: settings.googleServiceAccountKey.trim() }
+          : {}),
       });
       toast.success('Settings saved successfully');
+      // Refresh SA key status after save
+      setSettings((s) => ({ ...s, googleServiceAccountKey: '' }));
+      setShowSaKeyInput(false);
     } catch {
       toast.error('Failed to save settings');
     } finally {
@@ -397,6 +417,117 @@ const SettingsPage = () => {
               new community activity. Existing user points are not retroactively recalculated.
             </p>
           </div>
+        </div>
+
+        {/* ── Integrations: Google Drive ───────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <FiKey className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-base font-semibold text-gray-800">Google Drive Integration</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">
+            Required for the Notes module's "Import from Drive" feature. Provide a Google Drive API key with Drive API enabled.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">API key</label>
+            <input
+              type="password"
+              value={settings.googleDriveApiKey}
+              onChange={(e) => setSettings((s) => ({ ...s, googleDriveApiKey: e.target.value }))}
+              placeholder="AIza…"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono"
+              autoComplete="off"
+            />
+            <p className="text-xs text-gray-400 mt-2">
+              Source folders must be shared as <span className="font-semibold">"Anyone with the link can view"</span>.
+              Without a key, admins can still add individual files manually but bulk import is disabled.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Service Account (Protected PDFs) ────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <FiLock className="w-5 h-5 text-red-500" />
+            <h2 className="text-base font-semibold text-gray-800">Service Account (Protected PDFs)</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">
+            Enables the <span className="font-semibold">Protected mode</span> in Notes — files stay private on Google Drive and are
+            streamed securely through the LMS server. Students never see the Drive URL.
+          </p>
+
+          {/* Current status */}
+          {hasServiceAccountKey ? (
+            <div className="mb-4 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-3">
+              <FiCheck className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-green-700">Service Account is configured</p>
+                {serviceAccountEmail && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="text-xs text-green-600 font-mono truncate">{serviceAccountEmail}</p>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(serviceAccountEmail); toast.success('Email copied'); }}
+                      className="flex-shrink-0 p-1 hover:bg-green-100 rounded"
+                      title="Copy service account email"
+                    >
+                      <FiCopy className="w-3.5 h-3.5 text-green-600" />
+                    </button>
+                  </div>
+                )}
+                <p className="text-xs text-green-600 mt-1">
+                  Share your private Drive folders with this email as <span className="font-semibold">Viewer</span> to use Protected mode.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-4 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <FiAlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">
+                No service account configured. Protected PDF mode is disabled. Paste a service account JSON key below to enable it.
+              </p>
+            </div>
+          )}
+
+          {/* Toggle paste area */}
+          {!showSaKeyInput ? (
+            <button
+              type="button"
+              onClick={() => setShowSaKeyInput(true)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 underline"
+            >
+              {hasServiceAccountKey ? 'Replace service account key' : 'Add service account key'}
+            </button>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Paste Service Account JSON key
+              </label>
+              <p className="text-xs text-gray-400 mb-2">
+                Download from Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON.
+              </p>
+              <textarea
+                rows={6}
+                value={settings.googleServiceAccountKey}
+                onChange={(e) => setSettings((s) => ({ ...s, googleServiceAccountKey: e.target.value }))}
+                placeholder={'{\n  "type": "service_account",\n  "project_id": "...",\n  "private_key": "...",\n  "client_email": "..."\n}'}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowSaKeyInput(false); setSettings((s) => ({ ...s, googleServiceAccountKey: '' })); }}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+                <p className="text-xs text-gray-400 ml-auto">Saved when you click <span className="font-semibold">Save Settings</span> below.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Save ────────────────────────────────────────────────────────── */}

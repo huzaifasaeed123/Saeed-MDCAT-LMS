@@ -2,22 +2,41 @@ const SystemSettings = require('../models/SystemSettings');
 
 /**
  * GET /api/settings
- * Any authenticated user — needed for maxMcqs display, default QB, and
- * frontend awareness of session mode (e.g. show "single session" warning).
+ * Any authenticated user. The service account JSON key is NEVER returned —
+ * only hasServiceAccountKey (bool) and serviceAccountEmail (string) are exposed.
  */
 exports.getSettings = async (req, res) => {
   try {
     const settings = await SystemSettings.findOne({ key: 'global' })
       .populate('defaultQuestionBankId', 'title');
-    res.status(200).json({
-      success: true,
-      data: settings || {
-        maxMcqsPerAutoTest: 100,
-        defaultQuestionBankId: null,
-        sessionMode: 'multi',
-        sessionDurationDays: 547,
-      },
-    });
+
+    const data = settings
+      ? settings.toObject()
+      : {
+          maxMcqsPerAutoTest: 100,
+          defaultQuestionBankId: null,
+          sessionMode: 'multi',
+          sessionDurationDays: 547,
+          googleDriveApiKey: '',
+          googleServiceAccountKey: '',
+        };
+
+    // Strip the raw key; expose only safe derived fields.
+    const rawKey = data.googleServiceAccountKey || '';
+    data.hasServiceAccountKey = rawKey.length > 0;
+    if (rawKey) {
+      try {
+        const creds = JSON.parse(rawKey);
+        data.serviceAccountEmail = creds.client_email || null;
+      } catch {
+        data.serviceAccountEmail = null;
+      }
+    } else {
+      data.serviceAccountEmail = null;
+    }
+    delete data.googleServiceAccountKey;
+
+    res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('getSettings error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
@@ -28,16 +47,21 @@ exports.getSettings = async (req, res) => {
  * PUT /api/settings
  * Admin only.
  *
- * Session mode notes:
- *  - Changing sessionMode only affects NEW logins. Users already logged in
- *    keep their current session until their refresh token expires or they
- *    log in again (which picks up the new mode).
- *  - Changing sessionDurationDays only affects tokens issued AFTER the change.
- *    Existing refresh tokens retain their original expiry (baked into the JWT).
+ * googleServiceAccountKey — only saved when non-empty (passing empty string
+ * does NOT clear an existing key; use a dedicated clear action if needed).
  */
 exports.updateSettings = async (req, res) => {
   try {
-    const { maxMcqsPerAutoTest, defaultQuestionBankId, sessionMode, sessionDurationDays, communityPoints } = req.body;
+    const {
+      maxMcqsPerAutoTest,
+      defaultQuestionBankId,
+      sessionMode,
+      sessionDurationDays,
+      communityPoints,
+      googleDriveApiKey,
+      googleServiceAccountKey,
+    } = req.body;
+
     const update = {};
 
     if (maxMcqsPerAutoTest !== undefined) {
@@ -63,8 +87,28 @@ exports.updateSettings = async (req, res) => {
       if (reply   !== undefined) update['communityPoints.reply']   = Math.max(0, Number(reply)   || 0);
       if (helpful !== undefined) update['communityPoints.helpful'] = Math.max(0, Number(helpful) || 0);
       if (answer  !== undefined) update['communityPoints.answer']  = Math.max(0, Number(answer)  || 0);
-      // Bust the in-memory points cache
       require('../utils/pointsService').invalidatePointsCache();
+    }
+    if (googleDriveApiKey !== undefined) {
+      update.googleDriveApiKey = String(googleDriveApiKey || '').trim();
+    }
+    // Only save if non-empty — empty means "leave existing key unchanged".
+    if (googleServiceAccountKey && String(googleServiceAccountKey).trim()) {
+      const trimmed = String(googleServiceAccountKey).trim();
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!parsed.client_email || !parsed.private_key) {
+          return res.status(400).json({
+            success: false,
+            message: 'Service Account JSON must contain client_email and private_key fields',
+          });
+        }
+      } catch {
+        return res.status(400).json({ success: false, message: 'Service Account key must be valid JSON' });
+      }
+      update.googleServiceAccountKey = trimmed;
+      // Bust the in-memory token cache in driveService
+      require('../utils/driveService').invalidateTokenCache();
     }
 
     const settings = await SystemSettings.findOneAndUpdate(
@@ -73,7 +117,19 @@ exports.updateSettings = async (req, res) => {
       { upsert: true, new: true, runValidators: true }
     ).populate('defaultQuestionBankId', 'title');
 
-    res.status(200).json({ success: true, data: settings });
+    // Build safe response (same as getSettings logic)
+    const data = settings.toObject();
+    const rawKey = data.googleServiceAccountKey || '';
+    data.hasServiceAccountKey = rawKey.length > 0;
+    if (rawKey) {
+      try { data.serviceAccountEmail = JSON.parse(rawKey).client_email || null; }
+      catch { data.serviceAccountEmail = null; }
+    } else {
+      data.serviceAccountEmail = null;
+    }
+    delete data.googleServiceAccountKey;
+
+    res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('updateSettings error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });

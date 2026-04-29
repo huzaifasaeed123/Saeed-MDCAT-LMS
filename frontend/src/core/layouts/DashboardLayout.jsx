@@ -1,7 +1,7 @@
 // src/core/layouts/DashboardLayout.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo } from 'react-icons/fi';
 import useAuth from '../auth/useAuth';
 import apiClient from '../api/axiosConfig';
 
@@ -203,6 +203,20 @@ const DashboardLayout = ({ children }) => {
     name: 'Community',
     icon: <FiMessageCircle className="w-5 h-5" />,
     path: '/community',
+  });
+
+  // Notes — available to all roles (managed by admin/teacher)
+  navigationItems.push({
+    name: 'Notes',
+    icon: <FiFolder className="w-5 h-5" />,
+    path: '/notes',
+  });
+
+  // Videos — available to all roles
+  navigationItems.push({
+    name: 'Videos',
+    icon: <FiVideo className="w-5 h-5" />,
+    path: '/videos',
   });
 
   // Messages — available to all roles

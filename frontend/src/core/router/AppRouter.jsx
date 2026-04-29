@@ -58,6 +58,12 @@ import MessagesPage from '../../modules/messages/pages/MessagesPage';
 // Community module
 import CommunityPage from '../../modules/community/pages/CommunityPage';
 
+// Notes module
+import NotesPage  from '../../modules/notes/pages/NotesPage';
+
+// Videos module
+import VideosPage from '../../modules/videos/pages/VideosPage';
+
 // Settings module
 import SettingsPage from '../../modules/settings/pages/SettingsPage';
 
@@ -119,6 +125,22 @@ const AppRouter = () => {
             element={
               <DashboardLayout>
                 <CommunityPage />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/notes"
+            element={
+              <DashboardLayout>
+                <NotesPage />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/videos"
+            element={
+              <DashboardLayout>
+                <VideosPage />
               </DashboardLayout>
             }
           />

@@ -20,6 +20,15 @@ const systemSettingsSchema = new mongoose.Schema({
     helpful: { type: Number, default: 1 },
     answer:  { type: Number, default: 15 },
   },
+
+  // Google Drive API key — used by the Notes module to import folder trees
+  // from a public Drive folder. Set by admin via SettingsPage.
+  googleDriveApiKey: { type: String, default: '' },
+
+  // Google Service Account JSON key (stringified) — used to access private Drive
+  // files for the "Protected" notes mode. Never returned to clients; only
+  // hasServiceAccountKey + serviceAccountEmail are exposed via the settings API.
+  googleServiceAccountKey: { type: String, default: '' },
 }, { timestamps: true });
 
 module.exports = mongoose.model('SystemSettings', systemSettingsSchema);
