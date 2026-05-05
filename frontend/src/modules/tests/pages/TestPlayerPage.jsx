@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   FiChevronLeft, FiChevronRight, FiBookmark, FiHeart, FiMaximize2, FiMinimize2,
-  FiGrid, FiFlag, FiX, FiCheck, FiSend
+  FiGrid, FiFlag, FiX, FiCheck, FiSend, FiPause
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
@@ -56,7 +56,6 @@ const NavigatorPanel = ({ questionAttempts, currentIndex, mode, localAnswers, on
           </button>
         ))}
       </div>
-      {/* Legend */}
       <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-1 text-xs text-gray-500">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-white border border-gray-300 inline-block" /> Not answered</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" /> Answered</span>
@@ -174,30 +173,33 @@ const TestPlayerPage = () => {
   const { testId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const attemptId = searchParams.get('attemptId');
-  const durationOverride = searchParams.get('duration'); // seconds, set by TestStartPage for timer mode
+  const durationOverride = searchParams.get('duration');
 
   const [attempt, setAttempt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Local state for fast UI (answers, marks, saves)
-  const [localAnswers, setLocalAnswers] = useState({});       // { idx: 'A'|'B'... }
-  const [localMarks, setLocalMarks] = useState({});           // { idx: bool }
-  const [localSaved, setLocalSaved] = useState({});           // { idx: bool }
-  const [tutorFeedback, setTutorFeedback] = useState({});     // { idx: { isCorrect } }
+  // Local state for fast UI — no per-answer API calls during the test
+  const [localAnswers, setLocalAnswers]         = useState({});  // { idx: 'A'|'B'... }
+  const [localMarks, setLocalMarks]             = useState({});  // { idx: bool }
+  const [localSaved, setLocalSaved]             = useState({});  // { idx: bool }
+  const [tutorFeedback, setTutorFeedback]       = useState({});  // { idx: { isCorrect } }
+  // Correct option per question index — populated from attempt.questionAttempts on load
+  const [localCorrectOptions, setLocalCorrectOptions] = useState({}); // { idx: 'A'|... }
 
-  // Timer
-  const [timeLeft, setTimeLeft] = useState(null);             // seconds remaining (timer mode)
+  const [timeLeft, setTimeLeft]               = useState(null);
+  const [totalDurationSec, setTotalDurationSec] = useState(null); // full timer duration for pause/submit calc
 
   // UI state
-  const [showNavigator, setShowNavigator] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showReport, setShowReport] = useState(false);
+  const [showNavigator, setShowNavigator]     = useState(true);
+  const [isFullscreen, setIsFullscreen]       = useState(false);
+  const [showReport, setShowReport]           = useState(false);
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [savingAnswer, setSavingAnswer] = useState(false);
+  const [submitting, setSubmitting]           = useState(false);
+  const [pausing, setPausing]                 = useState(false);
 
   // ── Load attempt ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -207,7 +209,12 @@ const TestPlayerPage = () => {
     }
     const fetchAttempt = async () => {
       try {
-        const res = await apiClient.get(`/user-tests/${attemptId}`);
+        // Prefer attempt data passed via navigation state (avoids an extra round-trip).
+        // Fall back to fetching when navigating directly (e.g., browser refresh, history page).
+        const stateAttempt = location.state?.attemptData;
+        const res = stateAttempt
+          ? { data: { data: stateAttempt } }
+          : await apiClient.get(`/user-tests/${attemptId}`);
         const a = res.data.data;
         if (a.status === 'completed') {
           navigate(`/student/tests/${testId}/result/${attemptId}`);
@@ -217,8 +224,9 @@ const TestPlayerPage = () => {
         setCurrentIndex(a.currentQuestionIndex || 0);
 
         // Initialise local state from DB
-        const answers = {}, marks = {}, saved = {}, feedback = {};
+        const answers = {}, marks = {}, saved = {}, feedback = {}, correctOpts = {};
         a.questionAttempts.forEach((qa, i) => {
+          if (qa.correctOption) correctOpts[i] = qa.correctOption;
           if (qa.selectedOption) answers[i] = qa.selectedOption;
           if (qa.markedForReview) marks[i] = true;
           if (qa.saved) saved[i] = true;
@@ -228,17 +236,20 @@ const TestPlayerPage = () => {
         setLocalMarks(marks);
         setLocalSaved(saved);
         setTutorFeedback(feedback);
+        setLocalCorrectOptions(correctOpts);
 
-        // Timer mode countdown — use wall-clock elapsed since startTime.
-        // durationOverride is in seconds (set by TestStartPage).
-        // Fallback: 60 seconds per question (standard pace).
         if (a.mode === 'timer') {
-          const totalQ  = a.questionAttempts?.length || 0;
-          const totalSec = durationOverride
-            ? parseInt(durationOverride, 10)
-            : totalQ * 60;
-          const elapsedSec = Math.floor((Date.now() - new Date(a.startTime).getTime()) / 1000);
-          setTimeLeft(Math.max(0, totalSec - elapsedSec));
+          const totalQ   = a.questionAttempts?.length || 0;
+          // Prefer stored duration (set at start) → URL param (old flow) → default 60s/Q
+          const totalSec = a.totalDurationSec
+            || (durationOverride ? parseInt(durationOverride, 10) : null)
+            || totalQ * 60;
+          // If test was paused, totalTimeSpent holds seconds already used (more accurate than wall-clock)
+          const timeUsed = a.totalTimeSpent > 0
+            ? a.totalTimeSpent
+            : Math.floor((Date.now() - new Date(a.startTime).getTime()) / 1000);
+          setTotalDurationSec(totalSec);
+          setTimeLeft(Math.max(0, totalSec - timeUsed));
         }
       } catch {
         toast.error('Failed to load test');
@@ -248,7 +259,7 @@ const TestPlayerPage = () => {
       }
     };
     fetchAttempt();
-  }, [attemptId, testId, navigate]);
+  }, [attemptId, testId, navigate, location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Timer countdown (timer mode) ─────────────────────────────────────────
   useEffect(() => {
@@ -261,80 +272,69 @@ const TestPlayerPage = () => {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [timeLeft, attempt?.mode]);
+  }, [timeLeft, attempt?.mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveQuestionData = useCallback(async (idx, option) => {
-    try {
-      await apiClient.put(`/user-tests/${attemptId}/question/${idx}`, {
-        selectedOption: option ?? localAnswers[idx] ?? null,
-      });
-    } catch {
-      // silent — don't block user
-    }
-  }, [attemptId, localAnswers]);
-
-  // ── Navigate ──────────────────────────────────────────────────────────────
-  const goToQuestion = useCallback(async (newIdx) => {
+  // ── Navigate — no per-navigation save API call ────────────────────────────
+  const goToQuestion = useCallback((newIdx) => {
     if (!attempt || newIdx < 0 || newIdx >= attempt.questionAttempts.length) return;
-    await saveQuestionData(currentIndex, undefined);
     setCurrentIndex(newIdx);
-  }, [attempt, currentIndex, saveQuestionData]);
+  }, [attempt]);
 
-  // ── Answer selection ──────────────────────────────────────────────────────
-  const handleSelectOption = async (optionLetter) => {
+  // ── Answer selection — computed locally, zero API calls during test ───────
+  const handleSelectOption = (optionLetter) => {
     if (!attempt) return;
     const mode = attempt.mode;
 
-    // In tutor mode, lock answer once submitted
+    // In tutor mode, lock answer once feedback shown
     if (mode === 'tutor' && tutorFeedback[currentIndex] !== undefined) return;
 
     setLocalAnswers((prev) => ({ ...prev, [currentIndex]: optionLetter }));
 
     if (mode === 'tutor') {
-      setSavingAnswer(true);
-      try {
-        const res = await apiClient.put(`/user-tests/${attemptId}/question/${currentIndex}`, {
-          selectedOption: optionLetter,
-        });
-        const { isCorrect } = res.data.data;
+      const correctOpt = localCorrectOptions[currentIndex];
+      if (correctOpt) {
+        // Compute feedback locally — no API call
+        const isCorrect = optionLetter === correctOpt;
         setTutorFeedback((prev) => ({ ...prev, [currentIndex]: { isCorrect } }));
-      } catch {
-        toast.error('Failed to save answer');
-      } finally {
-        setSavingAnswer(false);
-      }
-    } else {
-      // Timer mode: save silently
-      try {
-        await apiClient.put(`/user-tests/${attemptId}/question/${currentIndex}`, {
-          selectedOption: optionLetter,
+        // Mirror isCorrect back into attempt so NavigatorPanel colours correctly
+        setAttempt((prev) => {
+          if (!prev) return prev;
+          const qa = [...prev.questionAttempts];
+          qa[currentIndex] = { ...qa[currentIndex], selectedOption: optionLetter, isCorrect };
+          return { ...prev, questionAttempts: qa };
         });
-      } catch {
-        // silent
+      } else {
+        // Legacy attempt without correctOption — fall back to API
+        apiClient.put(`/user-tests/${attemptId}/question/${currentIndex}`, { selectedOption: optionLetter })
+          .then((res) => {
+            const { isCorrect } = res.data.data;
+            setTutorFeedback((prev) => ({ ...prev, [currentIndex]: { isCorrect } }));
+            setAttempt((prev) => {
+              if (!prev) return prev;
+              const qa = [...prev.questionAttempts];
+              qa[currentIndex] = { ...qa[currentIndex], selectedOption: optionLetter, isCorrect };
+              return { ...prev, questionAttempts: qa };
+            });
+          })
+          .catch(() => toast.error('Failed to save answer'));
       }
     }
+    // Timer mode: purely local — submitted in batch at completeTest
   };
 
-  // ── Mark for review ───────────────────────────────────────────────────────
-  const handleToggleMark = async () => {
+  // ── Mark for review — purely local during test ────────────────────────────
+  const handleToggleMark = () => {
     const newVal = !localMarks[currentIndex];
     setLocalMarks((prev) => ({ ...prev, [currentIndex]: newVal }));
-    // sync attempt state for navigator
     setAttempt((prev) => {
       if (!prev) return prev;
       const qa = [...prev.questionAttempts];
       qa[currentIndex] = { ...qa[currentIndex], markedForReview: newVal };
       return { ...prev, questionAttempts: qa };
     });
-    try {
-      await apiClient.put(`/user-tests/${attemptId}/mark/${currentIndex}`);
-    } catch {
-      // revert
-      setLocalMarks((prev) => ({ ...prev, [currentIndex]: !newVal }));
-    }
   };
 
-  // ── Favourite (save) ──────────────────────────────────────────────────────
+  // ── Favourite (save) — creates SavedQuestion immediately ─────────────────
   const handleToggleSave = async () => {
     const isSaved = localSaved[currentIndex];
     setLocalSaved((prev) => ({ ...prev, [currentIndex]: !isSaved }));
@@ -351,7 +351,7 @@ const TestPlayerPage = () => {
     }
   };
 
-  // ── Report ─────────────────────────────────────────────────────────────────
+  // ── Report — creates MCQReport immediately ────────────────────────────────
   const handleReport = async (reason, details) => {
     setReportSubmitting(true);
     try {
@@ -373,20 +373,58 @@ const TestPlayerPage = () => {
     }
   };
 
-  // ── Submit test ───────────────────────────────────────────────────────────
-  const handleSubmitTest = async () => {
+  // ── Submit test — batch submit all answers in one request ─────────────────
+  const handleSubmitTest = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
     setShowSubmitConfirm(false);
+
+    // Build answers array from local state
+    const answers = attempt?.questionAttempts.map((_, i) => ({
+      questionIndex:   i,
+      selectedOption:  localAnswers[i] ?? null,
+      markedForReview: localMarks[i]   ?? false,
+    })) ?? [];
+
+    const totalTimeSpent = attempt?.mode === 'timer' && totalDurationSec
+      ? totalDurationSec - (timeLeft ?? 0)
+      : undefined;
+
     try {
-      await saveQuestionData(currentIndex, undefined);
-      await apiClient.put(`/user-tests/${attemptId}/complete`, {});
+      await apiClient.put(`/user-tests/${attemptId}/complete`, { answers, totalTimeSpent });
       navigate(`/student/tests/${testId}/result/${attemptId}`);
     } catch {
       toast.error('Failed to submit test');
       setSubmitting(false);
     }
-  };
+  }, [submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, totalDurationSec, timeLeft]);
+
+  // ── Pause test — batch save all local state, stay in-progress ─────────────
+  const handlePauseTest = useCallback(async () => {
+    if (pausing || submitting) return;
+    setPausing(true);
+
+    const answers = attempt?.questionAttempts.map((_, i) => ({
+      questionIndex:   i,
+      selectedOption:  localAnswers[i] ?? null,
+      markedForReview: localMarks[i]   ?? false,
+    })) ?? [];
+
+    const timeSpent = totalDurationSec !== null ? totalDurationSec - (timeLeft ?? 0) : undefined;
+
+    try {
+      await apiClient.put(`/user-tests/${attemptId}/pause`, {
+        answers,
+        currentQuestionIndex: currentIndex,
+        timeSpent,
+      });
+      toast.success('Test paused — progress saved');
+      navigate(`/student/tests/${testId}`);
+    } catch {
+      toast.error('Failed to pause test');
+      setPausing(false);
+    }
+  }, [pausing, submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, currentIndex, totalDurationSec, timeLeft]);
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
   const toggleFullscreen = () => {
@@ -426,13 +464,13 @@ const TestPlayerPage = () => {
 
   if (!attempt) return null;
 
-  const qas = attempt.questionAttempts;
-  const currentQA = qas[currentIndex];
-  const currentMcq = currentQA?.mcqId;
-  const mode = attempt.mode;
-  const hasFeedback = tutorFeedback[currentIndex] !== undefined;
-  const correctOptionLetter = currentMcq?.options?.find((o) => o.isCorrect)?.optionLetter;
-  const totalUnanswered = qas.filter((_, i) => !localAnswers[i]).length;
+  const qas              = attempt.questionAttempts;
+  const currentQA        = qas[currentIndex];
+  const currentMcq       = currentQA?.mcqId;
+  const mode             = attempt.mode;
+  const hasFeedback      = tutorFeedback[currentIndex] !== undefined;
+  const correctOptLetter = localCorrectOptions[currentIndex] ?? currentMcq?.options?.find((o) => o.isCorrect)?.optionLetter;
+  const totalUnanswered  = qas.filter((_, i) => !localAnswers[i]).length;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -459,8 +497,19 @@ const TestPlayerPage = () => {
             {isFullscreen ? <FiMinimize2 className="w-5 h-5" /> : <FiMaximize2 className="w-5 h-5" />}
           </button>
           <button
+            onClick={handlePauseTest}
+            disabled={pausing || submitting}
+            title="Save progress and exit"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            {pausing
+              ? <div className="animate-spin h-4 w-4 rounded-full border-b-2 border-gray-500" />
+              : <FiPause className="w-4 h-4" />}
+            Pause
+          </button>
+          <button
             onClick={() => setShowSubmitConfirm(true)}
-            disabled={submitting}
+            disabled={submitting || pausing}
             className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 disabled:opacity-50"
           >
             Submit Test
@@ -508,7 +557,6 @@ const TestPlayerPage = () => {
                 Question {currentIndex + 1} of {qas.length}
               </span>
               <div className="flex items-center gap-2">
-                {/* Mark for review */}
                 <button
                   onClick={handleToggleMark}
                   title={localMarks[currentIndex] ? 'Remove bookmark' : 'Bookmark for review'}
@@ -516,7 +564,6 @@ const TestPlayerPage = () => {
                 >
                   <FiBookmark className={`w-4 h-4 ${localMarks[currentIndex] ? 'fill-blue-600' : ''}`} />
                 </button>
-                {/* Favourite */}
                 <button
                   onClick={handleToggleSave}
                   title="Save to favourites"
@@ -524,13 +571,12 @@ const TestPlayerPage = () => {
                 >
                   <FiHeart className={`w-4 h-4 ${localSaved[currentIndex] ? 'fill-red-500' : ''}`} />
                 </button>
-                {/* Report */}
                 <button
                   onClick={() => setShowReport(true)}
-                  title="Report an issue"
-                  className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-500 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition-colors"
                 >
-                  <FiFlag className="w-4 h-4" />
+                  <FiFlag className="w-3.5 h-3.5" />
+                  Report
                 </button>
               </div>
             </div>
@@ -549,53 +595,84 @@ const TestPlayerPage = () => {
 
             {/* Options */}
             <div className="space-y-3 mb-6">
-              {currentMcq?.options?.map((opt) => {
-                const isSelected = localAnswers[currentIndex] === opt.optionLetter;
-                const isCorrect = opt.isCorrect;
-                let cls = 'bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50 cursor-pointer';
+              {(() => {
+                const optStats  = currentMcq?.statistics?.optionsSelections || {};
+                const baseTotal = optStats.total || 0;
+                // In tutor mode the user's pick isn't in DB yet (fire-and-forget on submit).
+                // Add it client-side so stats render immediately on click, even on first-ever attempt.
+                const userPick  = hasFeedback ? (localAnswers[currentIndex] || null) : null;
+                const dispTotal = hasFeedback ? baseTotal + 1 : 0;
 
-                if (hasFeedback) {
-                  if (isCorrect) cls = 'bg-green-50 border-green-400 cursor-default';
-                  else if (isSelected && !isCorrect) cls = 'bg-red-50 border-red-400 cursor-default';
-                  else cls = 'bg-white border-gray-200 cursor-default opacity-70';
-                } else if (isSelected) {
-                  cls = 'bg-orange-50 border-orange-400 cursor-pointer';
-                }
+                const getPct = (letter) => {
+                  if (!hasFeedback || dispTotal === 0) return null;
+                  const base  = optStats[letter] || 0;
+                  const bonus = userPick === letter ? 1 : 0;
+                  return Math.round(((base + bonus) / dispTotal) * 100);
+                };
 
-                return (
-                  <button
-                    key={opt._id}
-                    onClick={() => !hasFeedback && !savingAnswer && handleSelectOption(opt.optionLetter)}
-                    disabled={savingAnswer}
-                    className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${cls}`}
-                  >
-                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5 ${
-                      hasFeedback
-                        ? isCorrect
-                          ? 'bg-green-500 text-white'
-                          : isSelected
-                          ? 'bg-red-400 text-white'
-                          : 'bg-gray-200 text-gray-600'
-                        : isSelected
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {opt.optionLetter}
-                    </span>
-                    <div className="flex-1">
+                return currentMcq?.options?.map((opt) => {
+                  const isSelected   = localAnswers[currentIndex] === opt.optionLetter;
+                  const isCorrectOpt = opt.optionLetter === correctOptLetter;
+                  const pct          = getPct(opt.optionLetter);
+
+                  let cls = 'bg-white border-gray-200 hover:border-orange-300 hover:bg-orange-50 cursor-pointer';
+                  if (hasFeedback) {
+                    if (isCorrectOpt)      cls = 'bg-green-50 border-green-400 cursor-default';
+                    else if (isSelected)   cls = 'bg-red-50 border-red-400 cursor-default';
+                    else                   cls = 'bg-white border-gray-200 cursor-default opacity-70';
+                  } else if (isSelected) {
+                    cls = 'bg-orange-50 border-orange-400 cursor-pointer';
+                  }
+
+                  const pctBadgeCls = isCorrectOpt
+                    ? 'bg-green-100 text-green-700'
+                    : isSelected
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-gray-100 text-gray-500';
+
+                  return (
+                    <button
+                      key={opt._id}
+                      onClick={() => !hasFeedback && handleSelectOption(opt.optionLetter)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-center gap-3 relative overflow-hidden ${cls}`}
+                    >
+                      {/* Subtle popularity fill — absolute so it doesn't shift layout */}
+                      {pct !== null && (
+                        <div
+                          className="absolute left-0 top-0 h-full bg-black/[0.05] pointer-events-none"
+                          style={{ width: `${pct}%`, transition: 'width 0.6s ease-out' }}
+                        />
+                      )}
+
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative z-10 ${
+                        hasFeedback
+                          ? isCorrectOpt ? 'bg-green-500 text-white'
+                            : isSelected  ? 'bg-red-400 text-white'
+                                          : 'bg-gray-200 text-gray-600'
+                          : isSelected    ? 'bg-orange-500 text-white'
+                                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {opt.optionLetter}
+                      </span>
+
                       <span
-                        className="text-sm text-gray-800"
+                        className="flex-1 text-sm text-gray-800 relative z-10"
                         dangerouslySetInnerHTML={{ __html: fixImageUrls(opt.optionText) }}
                       />
-                      {/* Per-option explanation in tutor mode */}
-                      {hasFeedback && isCorrect && opt.explanationText && (
-                        <p className="text-xs text-green-700 mt-1 italic">{opt.explanationText}</p>
-                      )}
-                    </div>
-                    {hasFeedback && isCorrect && <FiCheck className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />}
-                  </button>
-                );
-              })}
+
+                      {/* Right side: percentage badge + correct tick */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0 relative z-10">
+                        {pct !== null && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${pctBadgeCls}`}>
+                            {pct}%
+                          </span>
+                        )}
+                        {hasFeedback && isCorrectOpt && <FiCheck className="w-5 h-5 text-green-500" />}
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
             </div>
 
             {/* Tutor mode: overall explanation */}
@@ -614,7 +691,7 @@ const TestPlayerPage = () => {
               <div className={`rounded-xl px-4 py-3 mb-4 flex items-center gap-2 ${tutorFeedback[currentIndex]?.isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                 {tutorFeedback[currentIndex]?.isCorrect
                   ? <><FiCheck className="w-5 h-5" /><span className="font-semibold">Correct! Well done.</span></>
-                  : <><FiX className="w-5 h-5" /><span className="font-semibold">Incorrect. Correct answer: <strong>{correctOptionLetter}</strong></span></>
+                  : <><FiX className="w-5 h-5" /><span className="font-semibold">Incorrect. Correct answer: <strong>{correctOptLetter}</strong></span></>
                 }
               </div>
             )}
@@ -675,7 +752,7 @@ const TestPlayerPage = () => {
       {showSubmitConfirm && (
         <SubmitConfirmModal
           unanswered={totalUnanswered}
-          onConfirm={() => handleSubmitTest(false)}
+          onConfirm={handleSubmitTest}
           onCancel={() => setShowSubmitConfirm(false)}
           submitting={submitting}
         />

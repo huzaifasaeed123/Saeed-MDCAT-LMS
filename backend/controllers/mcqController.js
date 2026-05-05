@@ -434,8 +434,7 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
   }
 }
 
-// GET /api/mcqs/question-bank/:qbId
-// Query: subjectId, chapterId, topicId (all optional — progressively narrower)
+// GET /api/mcqs/question-bank/:qbId?page=1&limit=20&subjectId=&chapterId=&topicId=
 exports.getMCQsForQuestionBank = async (req, res) => {
   try {
     const { qbId } = req.params;
@@ -446,8 +445,41 @@ exports.getMCQsForQuestionBank = async (req, res) => {
     else if (chapterId) filter.qbChapterId = new mongoose.Types.ObjectId(chapterId);
     else if (subjectId) filter.qbSubjectId = new mongoose.Types.ObjectId(subjectId);
 
-    const mcqs = await MCQ.find(filter).sort({ createdAt: 1 });
-    res.status(200).json({ success: true, count: mcqs.length, data: mcqs });
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip  = (page - 1) * limit;
+
+    const [mcqs, total, statsAgg] = await Promise.all([
+      MCQ.find(filter).sort({ createdAt: 1 }).skip(skip).limit(limit),
+      MCQ.countDocuments(filter),
+      MCQ.aggregate([
+        { $match: filter },
+        { $group: {
+          _id:     null,
+          easy:    { $sum: { $cond: [{ $eq: ['$difficulty', 'Easy'] },  1, 0] } },
+          hard:    { $sum: { $cond: [{ $eq: ['$difficulty', 'Hard'] },  1, 0] } },
+          private: { $sum: { $cond: [{ $eq: ['$isPublic', false] }, 1, 0] } },
+        }},
+      ]),
+    ]);
+
+    const agg = statsAgg[0] || { easy: 0, hard: 0, private: 0 };
+    const stats = {
+      easy:    agg.easy,
+      medium:  total - agg.easy - agg.hard,
+      hard:    agg.hard,
+      private: agg.private,
+    };
+
+    res.status(200).json({
+      success: true,
+      count:   mcqs.length,
+      total,
+      page,
+      pages:   Math.ceil(total / limit) || 1,
+      stats,
+      data:    mcqs,
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

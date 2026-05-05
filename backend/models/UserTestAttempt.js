@@ -10,7 +10,13 @@ const questionAttemptSchema = new Schema({
   },
   selectedOption: {
     type: String,
-    enum: ['A', 'B', 'C', 'D', 'E', null], // Option letter, null if not answered
+    enum: ['A', 'B', 'C', 'D', 'E', null],
+    default: null
+  },
+  // Stored at attempt-creation time so frontend can validate answers locally
+  correctOption: {
+    type: String,
+    enum: ['A', 'B', 'C', 'D', 'E', null],
     default: null
   },
   isCorrect: {
@@ -67,6 +73,10 @@ const userTestAttemptSchema = new Schema({
     type: Number,
     default: 0
   },
+  totalDurationSec: { // Full timer duration in seconds (timer mode only; stored at start so resume restores correct remaining time)
+    type: Number,
+    default: null,
+  },
   currentQuestionIndex: {
     type: Number,
     default: 0
@@ -84,15 +94,7 @@ const userTestAttemptSchema = new Schema({
   questionAttempts: [questionAttemptSchema]
 }, { timestamps: true });
 
-// Calculate score before saving
-userTestAttemptSchema.pre('save', function(next) {
-  if (this.isModified('questionAttempts')) {
-    const correctAnswers = this.questionAttempts.filter(attempt => attempt.isCorrect).length;
-    this.score = correctAnswers;
-    this.maxScore = this.questionAttempts.length;
-    this.scorePercentage = this.maxScore > 0 ? (correctAnswers / this.maxScore) * 100 : 0;
-  }
-  next();
-});
+// Compound index for fast lookup of a user's in-progress attempt for a given test
+userTestAttemptSchema.index({ user: 1, test: 1, status: 1 });
 
 module.exports = mongoose.model('UserTestAttempt', userTestAttemptSchema);

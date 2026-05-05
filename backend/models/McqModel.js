@@ -108,7 +108,7 @@ mcqSchema.pre('save', function(next) {
   }
 });
 
-// Fix for the update hook - removing the problematic pre findOneAndUpdate hook
-// We'll handle revision tracking in the controller instead
+mcqSchema.index({ testId: 1 });
+mcqSchema.index({ questionBankId: 1, qbTopicId: 1 });
 
 module.exports = mongoose.model('MCQ', mcqSchema);

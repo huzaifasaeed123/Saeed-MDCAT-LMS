@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -43,110 +43,62 @@ const StatusBadge = ({ status, scorePercent }) => {
 
 const TestHistoryPage = () => {
   const navigate = useNavigate();
-  const [attempts, setAttempts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showFilters, setShowFilters] = useState(true);
 
-  // Filters
-  const [searchText, setSearchText]     = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [modeFilter, setModeFilter]     = useState('all');
+  const [attempts, setAttempts]         = useState([]);
+  const [total, setTotal]               = useState(0);
+  const [pages, setPages]               = useState(1);
+  const [stats, setStats]               = useState({ total: 0, completed: 0, avgScore: 0 });
+  const [filterOptions, setFilterOptions] = useState({ subjects: [], chapters: [], topics: [], qbs: [] });
+  const [loading, setLoading]           = useState(true);
+  const [showFilters, setShowFilters]   = useState(true);
+
+  // Filter state
+  const [searchText, setSearchText]       = useState('');
+  const [statusFilter, setStatusFilter]   = useState('all');
+  const [modeFilter, setModeFilter]       = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [chapterFilter, setChapterFilter] = useState('all');
   const [topicFilter, setTopicFilter]     = useState('all');
   const [qbFilter, setQbFilter]           = useState('all');
   const [dateFilter, setDateFilter]       = useState('all');
-  const [page, setPage] = useState(1);
+  const [page, setPage]                   = useState(1);
 
+  // Debounce search to avoid calling the API on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimer = useRef(null);
   useEffect(() => {
-    apiClient.get('/user-tests/history')
-      .then((res) => setAttempts(res.data.data || []))
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(searchText), 400);
+    return () => clearTimeout(searchTimer.current);
+  }, [searchText]);
+
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, modeFilter, subjectFilter, chapterFilter, topicFilter, qbFilter, dateFilter]);
+
+  // Fetch from server when page or any filter changes
+  useEffect(() => {
+    const params = new URLSearchParams({ page, limit: PAGE_SIZE });
+    if (debouncedSearch)           params.set('search',  debouncedSearch);
+    if (statusFilter !== 'all')    params.set('status',  statusFilter);
+    if (modeFilter   !== 'all')    params.set('mode',    modeFilter);
+    if (subjectFilter !== 'all')   params.set('subject', subjectFilter);
+    if (chapterFilter !== 'all')   params.set('chapter', chapterFilter);
+    if (topicFilter   !== 'all')   params.set('topic',   topicFilter);
+    if (qbFilter      !== 'all')   params.set('qbId',    qbFilter);
+    if (dateFilter    !== 'all')   params.set('date',    dateFilter);
+
+    setLoading(true);
+    apiClient.get(`/user-tests/history?${params}`)
+      .then((res) => {
+        setAttempts(res.data.data || []);
+        setTotal(res.data.total || 0);
+        setPages(res.data.pages || 1);
+        if (res.data.stats)         setStats(res.data.stats);
+        if (res.data.filterOptions) setFilterOptions(res.data.filterOptions);
+      })
       .catch(() => toast.error('Failed to load history'))
       .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { setPage(1); }, [searchText, statusFilter, modeFilter, subjectFilter, chapterFilter, topicFilter, qbFilter, dateFilter]);
-
-  // Derive unique filter values from attempts data
-  const uniqueSubjects = useMemo(() => {
-    const s = new Set();
-    attempts.forEach((a) => {
-      (a.test?.subjects || []).forEach((v) => v && s.add(v));
-      if (a.test?.subject) s.add(a.test.subject);
-    });
-    return [...s].sort();
-  }, [attempts]);
-
-  const uniqueChapters = useMemo(() => {
-    const s = new Set();
-    attempts.forEach((a) => {
-      (a.test?.chapters || []).forEach((v) => v && s.add(v));
-      if (a.test?.unit) s.add(a.test.unit);
-    });
-    return [...s].sort();
-  }, [attempts]);
-
-  const uniqueTopics = useMemo(() => {
-    const s = new Set();
-    attempts.forEach((a) => {
-      (a.test?.topics || []).forEach((v) => v && s.add(v));
-      if (a.test?.topic) s.add(a.test.topic);
-    });
-    return [...s].sort();
-  }, [attempts]);
-
-  const uniqueQBs = useMemo(() => {
-    const map = {};
-    attempts.forEach((a) => {
-      const qb = a.test?.questionBankId;
-      if (!qb) return;
-      const id = qb._id || qb;
-      const title = qb.title || id;
-      map[id] = title;
-    });
-    return Object.entries(map).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [attempts]);
-
-  const now = new Date();
-
-  const filtered = useMemo(() => {
-    return attempts.filter((a) => {
-      if (searchText && !a.test?.title?.toLowerCase().includes(searchText.toLowerCase())) return false;
-      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
-      if (modeFilter !== 'all' && a.mode !== modeFilter) return false;
-
-      if (subjectFilter !== 'all') {
-        const arr = a.test?.subjects?.length ? a.test.subjects : (a.test?.subject ? [a.test.subject] : []);
-        if (!arr.includes(subjectFilter)) return false;
-      }
-      if (chapterFilter !== 'all') {
-        const arr = a.test?.chapters?.length ? a.test.chapters : (a.test?.unit ? [a.test.unit] : []);
-        if (!arr.includes(chapterFilter)) return false;
-      }
-      if (topicFilter !== 'all') {
-        const arr = a.test?.topics?.length ? a.test.topics : (a.test?.topic ? [a.test.topic] : []);
-        if (!arr.includes(topicFilter)) return false;
-      }
-
-      if (qbFilter !== 'all') {
-        const qbId = a.test?.questionBankId?._id?.toString() || a.test?.questionBankId?.toString();
-        if (qbId !== qbFilter) return false;
-      }
-
-      if (dateFilter !== 'all') {
-        const created = new Date(a.createdAt);
-        if (dateFilter === 'today') {
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          if (created < today) return false;
-        } else if (dateFilter === 'week') {
-          if (created < new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)) return false;
-        } else if (dateFilter === 'month') {
-          if (created < new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)) return false;
-        }
-      }
-      return true;
-    });
-  }, [attempts, searchText, statusFilter, modeFilter, subjectFilter, chapterFilter, topicFilter, qbFilter, dateFilter]);
+  }, [page, debouncedSearch, statusFilter, modeFilter, subjectFilter, chapterFilter, topicFilter, qbFilter, dateFilter]);
 
   const hasActiveFilter = searchText || statusFilter !== 'all' || modeFilter !== 'all' ||
     subjectFilter !== 'all' || chapterFilter !== 'all' || topicFilter !== 'all' ||
@@ -158,15 +110,7 @@ const TestHistoryPage = () => {
     setQbFilter('all'); setDateFilter('all');
   };
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const completedCount = attempts.filter((a) => a.status === 'completed').length;
-  const avgScore = completedCount > 0
-    ? Math.round(attempts.filter((a) => a.status === 'completed').reduce((s, a) => s + (a.scorePercentage || 0), 0) / completedCount)
-    : 0;
-
-  if (loading) {
+  if (loading && attempts.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-64">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500" />
@@ -180,7 +124,7 @@ const TestHistoryPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Test History</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{attempts.length} total attempt{attempts.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500 mt-0.5">{stats.total} total attempt{stats.total !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => navigate('/auto-test')}
@@ -191,18 +135,18 @@ const TestHistoryPage = () => {
       </div>
 
       {/* Summary stats */}
-      {attempts.length > 0 && (
+      {stats.total > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-gray-900">{attempts.length}</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
             <p className="text-xs text-gray-400 mt-1">Total Tests</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{completedCount}</p>
+            <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
             <p className="text-xs text-gray-400 mt-1">Completed</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-orange-500">{avgScore}%</p>
+            <p className="text-2xl font-bold text-orange-500">{stats.avgScore}%</p>
             <p className="text-xs text-gray-400 mt-1">Avg Score</p>
           </div>
         </div>
@@ -210,7 +154,6 @@ const TestHistoryPage = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
-        {/* Header row */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
             <FiFilter className="w-4 h-4" /> Filters
@@ -225,7 +168,6 @@ const TestHistoryPage = () => {
 
         {showFilters && (
           <>
-            {/* Search */}
             <div className="relative mb-3">
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
@@ -237,7 +179,6 @@ const TestHistoryPage = () => {
               />
             </div>
 
-            {/* Row 1: Status / Mode / Date */}
             <div className="flex flex-wrap gap-2 mb-3">
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
@@ -262,61 +203,62 @@ const TestHistoryPage = () => {
               </select>
             </div>
 
-            {/* Row 2: Subject / Chapter / Topic / QB */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {uniqueSubjects.length > 0 && (
+              {filterOptions.subjects.length > 0 && (
                 <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)}
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
                   <option value="all">All Subjects</option>
-                  {uniqueSubjects.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {filterOptions.subjects.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               )}
 
-              {uniqueChapters.length > 0 && (
+              {filterOptions.chapters.length > 0 && (
                 <select value={chapterFilter} onChange={(e) => setChapterFilter(e.target.value)}
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
                   <option value="all">All Chapters</option>
-                  {uniqueChapters.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {filterOptions.chapters.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
 
-              {uniqueTopics.length > 0 && (
+              {filterOptions.topics.length > 0 && (
                 <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)}
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
                   <option value="all">All Topics</option>
-                  {uniqueTopics.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {filterOptions.topics.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               )}
 
-              {uniqueQBs.length > 0 && (
+              {filterOptions.qbs.length > 0 && (
                 <select value={qbFilter} onChange={(e) => setQbFilter(e.target.value)}
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
                   <option value="all">All QBs</option>
-                  {uniqueQBs.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+                  {filterOptions.qbs.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
                 </select>
               )}
             </div>
 
-            {/* Clear + count */}
             {hasActiveFilter && (
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-400">Showing {filtered.length} of {attempts.length} attempts</p>
+                <p className="text-xs text-gray-400">Showing {total} result{total !== 1 ? 's' : ''}</p>
                 <button onClick={clearFilters}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-red-500 border border-red-200 hover:bg-red-50">
                   <FiX className="w-3 h-3" /> Clear filters
                 </button>
               </div>
             )}
-
-            {!hasActiveFilter && filtered.length !== attempts.length && (
-              <p className="text-xs text-gray-400 mt-2">Showing {filtered.length} of {attempts.length} attempts</p>
-            )}
           </>
         )}
       </div>
 
+      {/* Loading overlay for filter changes */}
+      {loading && attempts.length > 0 && (
+        <div className="flex justify-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500" />
+        </div>
+      )}
+
       {/* Empty state */}
-      {filtered.length === 0 && (
+      {!loading && attempts.length === 0 && (
         <div className="text-center py-16">
           <div className="text-5xl mb-4">📝</div>
           <h3 className="text-lg font-semibold text-gray-700 mb-2">No tests found</h3>
@@ -328,137 +270,135 @@ const TestHistoryPage = () => {
       )}
 
       {/* Attempt cards */}
-      <div className="space-y-3">
-        {paginated.map((attempt) => {
-          const testId     = attempt.test?._id || attempt.test;
-          const total      = attempt.questionAttempts?.length || attempt.maxScore || 0;
-          const answered   = attempt.questionAttempts?.filter((q) => q.selectedOption).length || 0;
-          const scorePercent = attempt.scorePercentage ? Math.round(attempt.scorePercentage) : 0;
+      {!loading && (
+        <div className="space-y-3">
+          {attempts.map((attempt) => {
+            const testId       = attempt.test?._id || attempt.test;
+            const total        = attempt.maxScore || 0;
+            const answered     = attempt.answeredCount || 0;
+            const scorePercent = attempt.scorePercentage ? Math.round(attempt.scorePercentage) : 0;
 
-          // Subjects to display on card
-          const displaySubjects = attempt.test?.subjects?.length
-            ? attempt.test.subjects
-            : (attempt.test?.subject ? [attempt.test.subject] : []);
+            const displaySubjects = attempt.test?.subjects?.length
+              ? attempt.test.subjects
+              : (attempt.test?.subject ? [attempt.test.subject] : []);
+            const displayChapters = attempt.test?.chapters?.length
+              ? attempt.test.chapters
+              : (attempt.test?.unit ? [attempt.test.unit] : []);
+            const qbTitle = attempt.test?.questionBankId?.title;
 
-          const displayChapters = attempt.test?.chapters?.length
-            ? attempt.test.chapters
-            : (attempt.test?.unit ? [attempt.test.unit] : []);
-
-          const qbTitle = attempt.test?.questionBankId?.title;
-
-          return (
-            <div key={attempt._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-3">
-                {attempt.status === 'completed' && <ScoreBadge pct={scorePercent} />}
-                {attempt.status === 'in-progress' && (
-                  <div className="w-11 h-11 rounded-full border-4 border-yellow-300 flex items-center justify-center flex-shrink-0">
-                    <FiPlayCircle className="w-5 h-5 text-yellow-500" />
-                  </div>
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center flex-wrap gap-1.5 mb-0.5">
-                    <StatusBadge status={attempt.status} scorePercent={scorePercent} />
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                      {attempt.mode === 'tutor' ? '🎓 Tutor' : '⏱️ Timed'}
-                    </span>
-                    {displaySubjects.slice(0, 2).map((s) => (
-                      <span key={s} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                        <FiBook className="w-2.5 h-2.5" />{s}
-                      </span>
-                    ))}
-                    {displayChapters.slice(0, 1).map((c) => (
-                      <span key={c} className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                        <FiLayers className="w-2.5 h-2.5" />{c}
-                      </span>
-                    ))}
-                    {qbTitle && (
-                      <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">QB: {qbTitle}</span>
-                    )}
-                  </div>
-
-                  <h3 className="font-semibold text-gray-900 truncate text-sm">
-                    {attempt.test?.title || 'Untitled Test'}
-                  </h3>
-
-                  <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <FiCalendar className="w-3 h-3" /> {formatDate(attempt.createdAt)}
-                    </span>
-                    {attempt.status === 'completed' && (
-                      <span className="font-medium text-gray-600">{attempt.score}/{total} correct</span>
-                    )}
-                    {attempt.status === 'in-progress' && (
-                      <span>{answered}/{total} answered</span>
-                    )}
-                  </div>
-
-                  {attempt.status === 'in-progress' && total > 0 && (
-                    <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-orange-400 rounded-full" style={{ width: `${(answered / total) * 100}%` }} />
+            return (
+              <div key={attempt._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  {attempt.status === 'completed' && <ScoreBadge pct={scorePercent} />}
+                  {attempt.status === 'in-progress' && (
+                    <div className="w-11 h-11 rounded-full border-4 border-yellow-300 flex items-center justify-center flex-shrink-0">
+                      <FiPlayCircle className="w-5 h-5 text-yellow-500" />
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Action buttons */}
-              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-                {attempt.status === 'in-progress' && (
-                  <button
-                    onClick={() => navigate(`/student/tests/${testId}/play?attemptId=${attempt._id}`)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
-                  >
-                    <FiPlayCircle className="w-4 h-4" /> Resume
-                  </button>
-                )}
-                {attempt.status === 'completed' && (
-                  <>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-1.5 mb-0.5">
+                      <StatusBadge status={attempt.status} scorePercent={scorePercent} />
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                        {attempt.mode === 'tutor' ? '🎓 Tutor' : '⏱️ Timed'}
+                      </span>
+                      {displaySubjects.slice(0, 2).map((s) => (
+                        <span key={s} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                          <FiBook className="w-2.5 h-2.5" />{s}
+                        </span>
+                      ))}
+                      {displayChapters.slice(0, 1).map((c) => (
+                        <span key={c} className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                          <FiLayers className="w-2.5 h-2.5" />{c}
+                        </span>
+                      ))}
+                      {qbTitle && (
+                        <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">QB: {qbTitle}</span>
+                      )}
+                    </div>
+
+                    <h3 className="font-semibold text-gray-900 truncate text-sm">
+                      {attempt.test?.title || 'Untitled Test'}
+                    </h3>
+
+                    <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <FiCalendar className="w-3 h-3" /> {formatDate(attempt.createdAt)}
+                      </span>
+                      {attempt.status === 'completed' && (
+                        <span className="font-medium text-gray-600">{attempt.score}/{total} correct</span>
+                      )}
+                      {attempt.status === 'in-progress' && (
+                        <span>{answered}/{total} answered</span>
+                      )}
+                    </div>
+
+                    {attempt.status === 'in-progress' && total > 0 && (
+                      <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-orange-400 rounded-full" style={{ width: `${(answered / total) * 100}%` }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                  {attempt.status === 'in-progress' && (
                     <button
-                      onClick={() => navigate(`/student/tests/${testId}/result/${attempt._id}`)}
+                      onClick={() => navigate(`/student/tests/${testId}/play?attemptId=${attempt._id}`)}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
                     >
-                      <FiBarChart2 className="w-4 h-4" /> Results
+                      <FiPlayCircle className="w-4 h-4" /> Resume
                     </button>
-                    <button
-                      onClick={() => navigate(`/student/tests/${testId}/review/${attempt._id}`)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50"
-                    >
-                      <FiEye className="w-4 h-4" /> Review
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => navigate(`/student/tests/${testId}`)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 ml-auto"
-                >
-                  Retake
-                </button>
+                  )}
+                  {attempt.status === 'completed' && (
+                    <>
+                      <button
+                        onClick={() => navigate(`/student/tests/${testId}/result/${attempt._id}`)}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
+                      >
+                        <FiBarChart2 className="w-4 h-4" /> Results
+                      </button>
+                      <button
+                        onClick={() => navigate(`/student/tests/${testId}/review/${attempt._id}`)}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50"
+                      >
+                        <FiEye className="w-4 h-4" /> Review
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => navigate(`/student/tests/${testId}`)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 ml-auto"
+                  >
+                    Retake
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {pages > 1 && (
         <div className="flex items-center justify-between mt-6">
-          <p className="text-sm text-gray-400">Page {page} of {totalPages} ({filtered.length} results)</p>
+          <p className="text-sm text-gray-400">Page {page} of {pages} ({total} results)</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
               className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
               <FiChevronLeft className="w-4 h-4" />
             </button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+            {Array.from({ length: Math.min(5, pages) }, (_, i) => {
+              const start = Math.max(1, Math.min(page - 2, pages - 4));
               const p = start + i;
-              return p <= totalPages ? (
+              return p <= pages ? (
                 <button key={p} onClick={() => setPage(p)}
                   className={`w-9 h-9 rounded-lg text-sm font-medium ${p === page ? 'bg-orange-500 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                   {p}
                 </button>
               ) : null;
             })}
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page === pages}
               className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
               <FiChevronRight className="w-4 h-4" />
             </button>

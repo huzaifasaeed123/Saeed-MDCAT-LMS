@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
@@ -14,6 +14,8 @@ const TIME_MULTIPLIERS = [
 const TestStartPage = () => {
   const { testId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [test, setTest] = useState(null);
   const [selectedMode, setSelectedMode] = useState('tutor');
   const [timeMultiplier, setTimeMultiplier] = useState(1.0);
@@ -22,25 +24,31 @@ const TestStartPage = () => {
   const [existingAttempt, setExistingAttempt] = useState(null);
 
   useEffect(() => {
-    apiClient.get(`/tests/${testId}`)
-      .then((res) => setTest(res.data.data))
-      .catch(() => { toast.error('Test not found'); navigate('/student/tests'); })
-      .finally(() => setLoading(false));
-  }, [testId, navigate]);
+    const stateData = location.state?.testData;
 
-  useEffect(() => {
-    apiClient.get('/user-tests/history')
-      .then((res) => {
-        const inProgress = res.data.data?.find(
-          (a) => (a.test?._id || a.test) === testId && a.status === 'in-progress'
-        );
-        if (inProgress) {
-          setExistingAttempt(inProgress);
-          setSelectedMode(inProgress.mode);
+    const fetchTest = stateData
+      // Came from AutoTestGenerator — test data already in navigation state, skip API call
+      ? Promise.resolve({ data: { success: true, data: stateData } })
+      // Direct navigation — fetch summary only (no MCQ objects, much lighter)
+      : apiClient.get(`/tests/${testId}?summary=1`);
+
+    // Check for in-progress attempt via targeted endpoint — does NOT load full history
+    const fetchActive = apiClient.get(`/user-tests/active?testId=${testId}`);
+
+    Promise.all([fetchTest, fetchActive])
+      .then(([testRes, activeRes]) => {
+        if (!testRes.data.success) throw new Error('Test not found');
+        setTest(testRes.data.data);
+
+        const active = activeRes.data.data;
+        if (active) {
+          setExistingAttempt(active);
+          setSelectedMode(active.mode);
         }
       })
-      .catch(() => {});
-  }, [testId]);
+      .catch(() => { toast.error('Test not found'); navigate('/student/tests'); })
+      .finally(() => setLoading(false));
+  }, [testId, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -50,9 +58,8 @@ const TestStartPage = () => {
     );
   }
 
-  // ── Derived values (declared BEFORE any usage) ────────────────────────────
-  const totalQuestions = test?.mcqs?.length || test?.totalQuestions || 0;
-  // Total seconds = totalQuestions * (60 / speedMultiplier)
+  // ── Derived values ────────────────────────────────────────────────────────
+  const totalQuestions = test?.totalQuestions || 0;
   const selectedMultiplier = TIME_MULTIPLIERS.find((m) => m.value === timeMultiplier);
   const calculatedDurationSec = selectedMode === 'timer'
     ? totalQuestions * (selectedMultiplier?.secsPerQ ?? 60)
@@ -62,11 +69,17 @@ const TestStartPage = () => {
   const handleStart = async () => {
     setStarting(true);
     try {
-      const res = await apiClient.post('/user-tests/start', { testId, mode: selectedMode });
+      const res = await apiClient.post('/user-tests/start', {
+        testId,
+        mode: selectedMode,
+        totalDurationSec: calculatedDurationSec || null,
+      });
       const attempt = res.data.data;
-      // Pass total seconds so the player knows the exact time budget
-      const durationParam = calculatedDurationSec ? `&duration=${calculatedDurationSec}` : '';
-      navigate(`/student/tests/${testId}/play?attemptId=${attempt._id}${durationParam}`);
+      // Pass attempt data via state so TestPlayerPage skips an extra GET /user-tests/:id call
+      navigate(
+        `/student/tests/${testId}/play?attemptId=${attempt._id}`,
+        { state: { attemptData: attempt } }
+      );
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to start test');
     } finally {
@@ -74,8 +87,21 @@ const TestStartPage = () => {
     }
   };
 
-  const handleResume = () => {
-    navigate(`/student/tests/${testId}/play?attemptId=${existingAttempt._id}`);
+  // Resume: call start which returns the existing attempt with full MCQ data
+  const handleResume = async () => {
+    setStarting(true);
+    try {
+      const res = await apiClient.post('/user-tests/start', { testId, mode: existingAttempt.mode });
+      const attempt = res.data.data;
+      navigate(
+        `/student/tests/${testId}/play?attemptId=${attempt._id}`,
+        { state: { attemptData: attempt } }
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resume test');
+    } finally {
+      setStarting(false);
+    }
   };
 
   return (
@@ -119,14 +145,16 @@ const TestStartPage = () => {
             <div>
               <p className="text-sm font-semibold text-blue-800">You have an unfinished attempt</p>
               <p className="text-xs text-blue-600">
-                {existingAttempt.questionAttempts?.filter((q) => q.selectedOption).length || 0}
-                {' / '}
-                {existingAttempt.questionAttempts?.length || 0} answered
+                {existingAttempt.answeredCount} / {existingAttempt.totalCount} answered
               </p>
             </div>
           </div>
-          <button onClick={handleResume} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-            Resume
+          <button
+            onClick={handleResume}
+            disabled={starting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {starting ? '…' : 'Resume'}
           </button>
         </div>
       )}
@@ -203,7 +231,8 @@ const TestStartPage = () => {
         {existingAttempt && (
           <button
             onClick={handleResume}
-            className="flex-1 py-3 px-6 rounded-xl border-2 border-blue-300 text-blue-600 font-semibold hover:bg-blue-50"
+            disabled={starting}
+            className="flex-1 py-3 px-6 rounded-xl border-2 border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 disabled:opacity-50"
           >
             Resume Test
           </button>

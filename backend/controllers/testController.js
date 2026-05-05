@@ -91,8 +91,18 @@ exports.createTest = async (req, res) => {
 // Get all tests
 exports.getTests = async (req, res) => {
   try {
+    // Lightweight metadata-only mode for populating filter dropdowns (no pagination, minimal fields)
+    if (req.query.metaOnly === '1') {
+      const metaTests = await Test.find({})
+        .select('_id subjects chapters topics subject unit questionBankId')
+        .populate('questionBankId', 'title')
+        .lean();
+      return res.json({ success: true, data: metaTests });
+    }
+
     const query = {};
 
+    if (req.query.search) query.title = { $regex: req.query.search, $options: 'i' };
     if (req.query.status) query.status = req.query.status;
 
     if (req.query.subject) query.subjects = req.query.subject;
@@ -116,16 +126,27 @@ exports.getTests = async (req, res) => {
       }
     }
 
-    const tests = await Test.find(query)
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(200, parseInt(req.query.limit) || 0); // 0 = no limit (backward compat)
+    const skip  = limit > 0 ? (page - 1) * limit : 0;
+
+    let q = Test.find(query)
       .populate('createdBy', 'fullName')
       .populate('questionBankId', 'title')
       .populate('courseId', 'title')
       .sort({ createdAt: -1 });
 
+    if (limit > 0) q = q.skip(skip).limit(limit);
+
+    const [tests, total] = await Promise.all([q, limit > 0 ? Test.countDocuments(query) : null]);
+
     res.status(200).json({
       success: true,
       count: tests.length,
-      data: tests
+      total: total ?? tests.length,
+      page,
+      pages: limit > 0 ? Math.ceil((total ?? tests.length) / limit) : 1,
+      data: tests,
     });
   } catch (error) {
     res.status(400).json({
@@ -135,31 +156,26 @@ exports.getTests = async (req, res) => {
   }
 };
 
-// Get single test with MCQs
+// Get single test — ?summary=1 returns metadata only (no MCQ objects, much lighter)
 exports.getTest = async (req, res) => {
   try {
-    const test = await Test.findById(req.params.id)
+    let q = Test.findById(req.params.id)
       .populate('createdBy', 'fullName')
       .populate('questionBankId', 'title')
-      .populate('courseId', 'title')
-      .populate('mcqs');
-    
-    if (!test) {
-      return res.status(404).json({
-        success: false,
-        message: 'Test not found'
-      });
+      .populate('courseId', 'title');
+
+    if (req.query.summary !== '1') {
+      q = q.populate('mcqs');
     }
-    
-    res.status(200).json({
-      success: true,
-      data: test
-    });
+
+    const test = await q;
+    if (!test) {
+      return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+
+    res.status(200).json({ success: true, data: test });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message
-    });
+    res.status(400).json({ success: false, message: error.message });
   }
 };
 

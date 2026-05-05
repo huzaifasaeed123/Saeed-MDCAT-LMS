@@ -5,6 +5,7 @@ import { FiChevronLeft, FiChevronRight, FiCheck, FiX, FiBarChart2, FiBookmark, F
 import apiClient from '../../../core/api/axiosConfig';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
 
+
 const TestAttemptReviewPage = () => {
   const { testId, attemptId } = useParams();
   const navigate = useNavigate();
@@ -137,39 +138,63 @@ const TestAttemptReviewPage = () => {
 
         {/* Options */}
         <div className="space-y-2.5">
-          {mcq?.options?.map((opt) => {
-            const isCorrectOpt = opt.isCorrect;
-            const isUserPick = userLetter === opt.optionLetter;
-            let cls = 'border-gray-200 bg-gray-50';
-            let labelCls = 'bg-gray-200 text-gray-600';
-            let icon = null;
+          {(() => {
+            const optStats  = mcq?.statistics?.optionsSelections;
+            const statTotal = optStats?.total || 0;
+            const getPct    = (letter) => statTotal > 0
+              ? Math.round(((optStats[letter] || 0) / statTotal) * 100)
+              : null;
 
-            if (isCorrectOpt) {
-              cls = 'border-green-400 bg-green-50';
-              labelCls = 'bg-green-500 text-white';
-              icon = <FiCheck className="w-4 h-4 text-green-500 flex-shrink-0" />;
-            } else if (isUserPick) {
-              cls = 'border-red-400 bg-red-50';
-              labelCls = 'bg-red-400 text-white';
-              icon = <FiX className="w-4 h-4 text-red-400 flex-shrink-0" />;
-            }
+            return mcq?.options?.map((opt) => {
+              const isCorrectOpt = opt.isCorrect;
+              const isUserPick   = userLetter === opt.optionLetter;
+              const pct          = getPct(opt.optionLetter);
 
-            return (
-              <div key={opt._id} className={`flex items-start gap-3 p-3.5 rounded-xl border-2 ${cls}`}>
-                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5 ${labelCls}`}>
-                  {opt.optionLetter}
-                </span>
-                <div className="flex-1">
-                  <span className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: fixImageUrls(opt.optionText) }} />
-                  {/* Per-option explanation */}
-                  {isCorrectOpt && opt.explanationText && (
-                    <p className="text-xs text-green-700 mt-1.5 italic">{opt.explanationText}</p>
+              let cls      = 'border-gray-200 bg-gray-50';
+              let labelCls = 'bg-gray-200 text-gray-600';
+              let icon     = null;
+              let pctCls   = 'bg-gray-100 text-gray-500';
+
+              if (isCorrectOpt) {
+                cls      = 'border-green-400 bg-green-50';
+                labelCls = 'bg-green-500 text-white';
+                pctCls   = 'bg-green-100 text-green-700';
+                icon     = <FiCheck className="w-4 h-4 text-green-500 flex-shrink-0" />;
+              } else if (isUserPick) {
+                cls      = 'border-red-400 bg-red-50';
+                labelCls = 'bg-red-400 text-white';
+                pctCls   = 'bg-red-100 text-red-600';
+                icon     = <FiX className="w-4 h-4 text-red-400 flex-shrink-0" />;
+              }
+
+              return (
+                <div key={opt._id} className={`flex items-center gap-3 p-3.5 rounded-xl border-2 relative overflow-hidden ${cls}`}>
+                  {/* Popularity fill bar */}
+                  {pct !== null && (
+                    <div
+                      className="absolute left-0 top-0 h-full bg-black/[0.05] pointer-events-none"
+                      style={{ width: `${pct}%`, transition: 'width 0.6s ease-out' }}
+                    />
                   )}
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative z-10 ${labelCls}`}>
+                    {opt.optionLetter}
+                  </span>
+                  <span
+                    className="flex-1 text-sm text-gray-800 relative z-10"
+                    dangerouslySetInnerHTML={{ __html: fixImageUrls(opt.optionText) }}
+                  />
+                  <div className="flex items-center gap-1.5 flex-shrink-0 relative z-10">
+                    {pct !== null && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${pctCls}`}>
+                        {pct}%
+                      </span>
+                    )}
+                    {icon}
+                  </div>
                 </div>
-                {icon && <div className="mt-0.5">{icon}</div>}
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
 
         {/* Answer summary for wrong answers */}
