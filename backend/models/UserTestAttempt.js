@@ -88,13 +88,21 @@ const userTestAttemptSchema = new Schema({
   maxScore: {
     type: Number
   },
+  answeredCount: {        // questions where selectedOption !== null (skipped excluded)
+    type: Number,
+    default: 0
+  },
   scorePercentage: {
     type: Number
   },
   questionAttempts: [questionAttemptSchema]
 }, { timestamps: true });
 
-// Compound index for fast lookup of a user's in-progress attempt for a given test
+// Fast lookup of a user's in-progress attempt for a given test
 userTestAttemptSchema.index({ user: 1, test: 1, status: 1 });
+// Leaderboard recompute: date-filtered scans across all completed attempts
+userTestAttemptSchema.index({ status: 1, createdAt: -1 });
+// Per-user personal stats fallback (users outside top 50)
+userTestAttemptSchema.index({ user: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('UserTestAttempt', userTestAttemptSchema);

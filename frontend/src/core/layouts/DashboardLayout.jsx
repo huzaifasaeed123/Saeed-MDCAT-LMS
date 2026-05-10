@@ -1,7 +1,7 @@
 // src/core/layouts/DashboardLayout.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo, FiAward, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import useAuth from '../auth/useAuth';
 import apiClient from '../api/axiosConfig';
 
@@ -25,6 +25,9 @@ const DashboardLayout = ({ children }) => {
     notifications, setNotifications,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
+  });
   const [notifOpen,   setNotifOpen]   = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore,     setHasMore]     = useState(true);   // we don't know yet — let user try
@@ -34,6 +37,13 @@ const DashboardLayout = ({ children }) => {
   const navigate = useNavigate();
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  const toggleCollapse = () => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      try { localStorage.setItem('sidebar-collapsed', String(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -198,6 +208,13 @@ const DashboardLayout = ({ children }) => {
     });
   }
 
+  // Leaderboard — available to all roles
+  navigationItems.push({
+    name: 'Leaderboard',
+    icon: <FiAward className="w-5 h-5" />,
+    path: '/leaderboard',
+  });
+
   // Community — available to all roles
   navigationItems.push({
     name: 'Community',
@@ -236,12 +253,29 @@ const DashboardLayout = ({ children }) => {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar for larger screens */}
-      <div className={`fixed inset-y-0 left-0 z-30 w-64 transform bg-white shadow-lg transition duration-300 md:translate-x-0 md:static md:inset-auto md:h-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center space-x-2">
-            <img src="/logo.png" alt="Saeed MDCAT" className="w-8 h-8" />
-            <span className="text-xl font-semibold text-primary-700">Saeed MDCAT</span>
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-30 transform bg-white shadow-lg transition-all duration-300 md:translate-x-0 md:static md:inset-auto md:h-auto md:flex md:flex-col ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } ${
+        sidebarCollapsed ? 'w-64 md:w-[76px]' : 'w-64'
+      } relative`}>
+
+        {/* Desktop collapse toggle — floating tab on right edge */}
+        <button
+          onClick={toggleCollapse}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="hidden md:flex absolute -right-3 top-20 z-40 w-6 h-6 items-center justify-center rounded-full bg-white border border-gray-200 shadow-md hover:shadow-lg text-gray-500 hover:text-primary-600 hover:border-primary-300 transition-all"
+        >
+          {sidebarCollapsed ? <FiChevronRight className="w-3.5 h-3.5" /> : <FiChevronLeft className="w-3.5 h-3.5" />}
+        </button>
+
+        {/* Logo bar */}
+        <div className={`flex items-center border-b border-gray-100 ${sidebarCollapsed ? 'md:justify-center md:px-2 md:py-4 px-4 py-4 justify-between' : 'p-4 justify-between'}`}>
+          <div className={`flex items-center space-x-2 min-w-0 ${sidebarCollapsed ? 'md:space-x-0' : ''}`}>
+            <img src="/logo.png" alt="Saeed MDCAT" className="w-8 h-8 flex-shrink-0" />
+            <span className={`text-xl font-semibold text-primary-700 truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+              Saeed MDCAT
+            </span>
           </div>
           <button
             className="p-1 rounded-md md:hidden focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -251,45 +285,60 @@ const DashboardLayout = ({ children }) => {
           </button>
         </div>
 
-        <div className="p-4 border-b">
-          <div className="flex items-center space-x-3">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-primary-500 rounded-full flex items-center justify-center text-white font-semibold text-xl">
-                {user?.fullName?.charAt(0) || 'U'}
-              </div>
+        {/* User card */}
+        <div className={`border-b border-gray-100 ${sidebarCollapsed ? 'md:px-2 md:py-3 p-4' : 'p-4'}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'md:justify-center space-x-3' : 'space-x-3'}`}>
+            <div
+              className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm ring-2 ring-white"
+              title={sidebarCollapsed ? `${user?.fullName || 'User'}\n${user?.email || ''}` : undefined}
+            >
+              {user?.fullName?.charAt(0) || 'U'}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
+            <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+              <p className="text-sm font-semibold text-gray-900 truncate">
                 {user?.fullName || 'User'}
               </p>
-              <p className="text-sm text-gray-500 truncate">
+              <p className="text-xs text-gray-500 truncate">
                 {user?.email || 'user@example.com'}
               </p>
             </div>
           </div>
         </div>
 
-        <nav className="mt-4 px-2 space-y-1">
+        {/* Nav */}
+        <nav className={`mt-3 space-y-1 overflow-y-auto flex-1 ${sidebarCollapsed ? 'md:px-2 px-2' : 'px-3'}`}>
           {navigationItems.map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             return (
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex items-center justify-between px-4 py-3 text-sm font-medium rounded-md group ${
-                  isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-700 hover:bg-gray-100'
+                title={sidebarCollapsed ? item.name : undefined}
+                className={`relative flex items-center text-sm font-medium rounded-lg group transition-colors ${
+                  sidebarCollapsed ? 'md:justify-center md:px-2 md:py-2.5 px-3 py-2.5 justify-between' : 'justify-between px-3 py-2.5'
+                } ${
+                  isActive
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                 }`}
               >
-                <div className="flex items-center">
-                  <div className={`mr-3 ${isActive ? 'text-primary-700' : 'text-gray-500 group-hover:text-gray-700'}`}>
+                <div className={`flex items-center ${sidebarCollapsed ? 'md:justify-center' : ''}`}>
+                  <div className={`flex-shrink-0 ${isActive ? 'text-primary-600' : 'text-gray-500 group-hover:text-gray-700'} ${sidebarCollapsed ? 'md:mr-0 mr-3' : 'mr-3'}`}>
                     {item.icon}
                   </div>
-                  {item.name}
+                  <span className={sidebarCollapsed ? 'md:hidden' : ''}>{item.name}</span>
                 </div>
-                {item.badge && (
+                {item.badge && !sidebarCollapsed && (
                   <span className="bg-blue-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                     {item.badge}
                   </span>
+                )}
+                {item.badge && sidebarCollapsed && (
+                  <span className="hidden md:block absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
+                )}
+                {/* Active indicator bar */}
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary-500 rounded-r-full" />
                 )}
               </Link>
             );
@@ -297,10 +346,13 @@ const DashboardLayout = ({ children }) => {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center px-4 py-3 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100 group"
+            title={sidebarCollapsed ? 'Logout' : undefined}
+            className={`w-full flex items-center text-sm font-medium text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-600 group transition-colors ${
+              sidebarCollapsed ? 'md:justify-center md:px-2 md:py-2.5 px-3 py-2.5' : 'px-3 py-2.5'
+            }`}
           >
-            <FiLogOut className="mr-3 w-5 h-5 text-gray-500 group-hover:text-gray-700" />
-            Logout
+            <FiLogOut className={`w-5 h-5 text-gray-500 group-hover:text-red-500 flex-shrink-0 ${sidebarCollapsed ? 'md:mr-0 mr-3' : 'mr-3'}`} />
+            <span className={sidebarCollapsed ? 'md:hidden' : ''}>Logout</span>
           </button>
         </nav>
       </div>

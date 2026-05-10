@@ -72,6 +72,9 @@ import StudentMCQReportsPage from '../../modules/reports/pages/StudentMCQReports
 import TeacherMCQReportsPage from '../../modules/reports/pages/TeacherMCQReportsPage';
 import AdminMCQReportsPage   from '../../modules/reports/pages/AdminMCQReportsPage';
 
+// Leaderboard module
+import LeaderboardPage from '../../modules/leaderboard/pages/LeaderboardPage';
+
 // Question Bank module
 import QuestionBankListPage       from '../../modules/questionbank/pages/QuestionBankListPage';
 import QuestionBankFormPage       from '../../modules/questionbank/pages/QuestionBankFormPage';
@@ -398,6 +401,16 @@ const AppRouter = () => {
               }
             />
           </Route>
+
+          {/* Leaderboard — accessible to all authenticated users */}
+          <Route
+            path="/leaderboard"
+            element={
+              <DashboardLayout>
+                <LeaderboardPage />
+              </DashboardLayout>
+            }
+          />
 
           {/* Auto Test Generator — accessible to all authenticated users */}
           <Route

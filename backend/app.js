@@ -27,6 +27,7 @@ const messageRoutes      = require('./routes/messageRoutes');
 const communityRoutes    = require('./routes/communityRoutes');
 const notesRoutes        = require('./routes/notesRoutes');
 const videosRoutes       = require('./routes/videosRoutes');
+const leaderboardRoutes  = require('./routes/leaderboardRoutes');
 const { openStream }     = require('./controllers/streamController');
 const app = express();
 
@@ -103,8 +104,9 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/mcq-reports', mcqReportRoutes);
 app.use('/api/messages',   messageRoutes);
 app.use('/api/community',  communityRoutes);
-app.use('/api/notes',      notesRoutes);
-app.use('/api/videos',     videosRoutes);
+app.use('/api/notes',       notesRoutes);
+app.use('/api/videos',      videosRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });

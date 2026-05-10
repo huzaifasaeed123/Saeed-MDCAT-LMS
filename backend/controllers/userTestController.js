@@ -642,9 +642,10 @@ exports.completeTest = async (req, res) => {
     }
 
     // Compute score inline — no pre-save hook required
-    const correctAnswers = attempt.questionAttempts.filter((qa) => qa.isCorrect).length;
-    attempt.score           = correctAnswers;
-    attempt.maxScore        = attempt.questionAttempts.length;
+    const correctAnswers  = attempt.questionAttempts.filter((qa) => qa.isCorrect).length;
+    attempt.score         = correctAnswers;
+    attempt.maxScore      = attempt.questionAttempts.length;
+    attempt.answeredCount = attempt.questionAttempts.filter((qa) => qa.selectedOption !== null).length;
     attempt.scorePercentage = attempt.maxScore > 0 ? (correctAnswers / attempt.maxScore) * 100 : 0;
 
     attempt.status  = 'completed';

@@ -103,6 +103,11 @@ const cleanResource = (r) => {
     fileUrl: r.fileUrl || '',
     fileName: r.fileName || '',
     youtubeUrl: r.youtubeUrl || '',
+    externalUrl: r.externalUrl || '',
+    driveFileId: r.driveFileId || '',
+    availability: r.availability || 'public',
+    unlockAt: r.unlockAt || null,
+    lockAt: r.lockAt || null,
     order: typeof r.order === 'number' ? r.order : 0,
   };
   if (isRealId(r._id)) out._id = r._id;
@@ -134,9 +139,13 @@ const cleanChapter = (c) => {
 const cleanSubjects = (subjects = []) =>
   subjects.map((s) => {
     const out = {
-      title: s.title || '',
-      order: typeof s.order === 'number' ? s.order : 0,
-      chapters: (s.chapters || []).map(cleanChapter),
+      title:        s.title || '',
+      order:        typeof s.order === 'number' ? s.order : 0,
+      unlockAt:     s.unlockAt     || null,
+      lockAt:       s.lockAt       || null,
+      useSubGroups: Boolean(s.useSubGroups),
+      resources:    (s.resources || []).map(cleanResource),
+      chapters:     (s.chapters  || []).map(cleanChapter),
     };
     if (isRealId(s._id)) out._id = s._id;
     return out;
@@ -163,8 +172,9 @@ exports.getCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id)
       .populate('createdBy', 'fullName')
-      .populate('subjects.chapters.topics.resources.testId', 'title subjects chapters topics')
-      .populate('subjects.chapters.resources.testId', 'title subjects chapters topics');
+      .populate('subjects.resources.testId',                'title subjects chapters topics')
+      .populate('subjects.chapters.resources.testId',       'title subjects chapters topics')
+      .populate('subjects.chapters.topics.resources.testId','title subjects chapters topics');
 
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
