@@ -52,6 +52,11 @@ const UserSchema = new mongoose.Schema({
 
   communityPoints: { type: Number, default: 0 },
 
+  // Last time the user opened the Announcements panel. Used to compute the
+  // unread badge as count(announcement.createdAt > announcementsSeenAt) — no
+  // per-user announcement-read documents needed.
+  announcementsSeenAt: { type: Date, default: null },
+
   createdAt: { type: Date, default: Date.now }
 });
 

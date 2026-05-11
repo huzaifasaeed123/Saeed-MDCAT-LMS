@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo, FiAward, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { HiOutlineSpeakerphone } from 'react-icons/hi';
 import useAuth from '../auth/useAuth';
 import apiClient from '../api/axiosConfig';
+import AnnouncementsSidebar from '../../modules/announcements/components/AnnouncementsSidebar';
 
 // Collapsed helpful notifications carry a `count > 1` — render accordingly.
 const NOTIF_LABELS = {
@@ -23,12 +25,14 @@ const DashboardLayout = ({ children }) => {
     user, isAdmin, isTeacher, isStudent, logout,
     msgUnreadCount, notifUnreadCount,
     notifications, setNotifications,
+    announcementUnreadCount,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
   });
   const [notifOpen,   setNotifOpen]   = useState(false);
+  const [announceOpen, setAnnounceOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore,     setHasMore]     = useState(true);   // we don't know yet — let user try
   const [olderPage,   setOlderPage]   = useState(1);
@@ -50,6 +54,15 @@ const DashboardLayout = ({ children }) => {
     const handler = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Cross-component opener: the dashboard widget's "View all" button fires this.
+  // CustomEvent avoids prop-drilling and keeps the layout the single mount point
+  // for the sidebar (only one instance ever exists in the DOM).
+  useEffect(() => {
+    const open = () => setAnnounceOpen(true);
+    window.addEventListener('announcements:open', open);
+    return () => window.removeEventListener('announcements:open', open);
   }, []);
 
   // Bell click: NO API call in the common case. The notifications list is
@@ -102,6 +115,15 @@ const DashboardLayout = ({ children }) => {
     icon: <FiHome className="w-5 h-5" />,
     path: '/dashboard',
   });
+
+  // Announcements admin — admin AND teacher can author
+  if (isAdmin || isTeacher) {
+    navigationItems.push({
+      name: 'Announcements',
+      icon: <HiOutlineSpeakerphone className="w-5 h-5" />,
+      path: '/admin/announcements',
+    });
+  }
 
   // Admin-specific navigation
   if (isAdmin) {
@@ -244,12 +266,8 @@ const DashboardLayout = ({ children }) => {
     badge: msgUnreadCount > 0 ? (msgUnreadCount > 99 ? '99+' : String(msgUnreadCount)) : null,
   });
 
-  // Common navigation items for all roles
-  navigationItems.push({
-    name: 'Profile',
-    icon: <FiSettings className="w-5 h-5" />,
-    path: '/profile',
-  });
+  // Profile is no longer in the nav list — the user card at the bottom of
+  // the sidebar links to /profile, so a separate entry would be redundant.
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -283,26 +301,6 @@ const DashboardLayout = ({ children }) => {
           >
             <FiX className="w-6 h-6" />
           </button>
-        </div>
-
-        {/* User card */}
-        <div className={`border-b border-gray-100 ${sidebarCollapsed ? 'md:px-2 md:py-3 p-4' : 'p-4'}`}>
-          <div className={`flex items-center ${sidebarCollapsed ? 'md:justify-center space-x-3' : 'space-x-3'}`}>
-            <div
-              className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm ring-2 ring-white"
-              title={sidebarCollapsed ? `${user?.fullName || 'User'}\n${user?.email || ''}` : undefined}
-            >
-              {user?.fullName?.charAt(0) || 'U'}
-            </div>
-            <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
-              <p className="text-sm font-semibold text-gray-900 truncate">
-                {user?.fullName || 'User'}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {user?.email || 'user@example.com'}
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Nav */}
@@ -355,13 +353,39 @@ const DashboardLayout = ({ children }) => {
             <span className={sidebarCollapsed ? 'md:hidden' : ''}>Logout</span>
           </button>
         </nav>
+
+        {/* User card pinned to the BOTTOM of the sidebar — replaces the old
+            top card and the separate "Profile" nav entry. Clicking it
+            navigates to /profile (active highlight when already there). */}
+        <Link
+          to="/profile"
+          title={sidebarCollapsed ? `${user?.fullName || 'Profile'}\n${user?.email || ''}` : undefined}
+          className={`mt-auto border-t border-gray-100 hover:bg-gray-50 transition-colors ${
+            location.pathname.startsWith('/profile') ? 'bg-primary-50' : ''
+          } ${sidebarCollapsed ? 'md:px-2 md:py-3 p-4' : 'p-4'}`}
+        >
+          <div className={`flex items-center ${sidebarCollapsed ? 'md:justify-center space-x-3' : 'space-x-3'}`}>
+            <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-sm ring-2 ring-white">
+              {user?.fullName?.charAt(0) || 'U'}
+            </div>
+            <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'md:hidden' : ''}`}>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {user?.fullName || 'User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.email || 'user@example.com'}
+              </p>
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Top header */}
         <header className="bg-white shadow-sm z-20">
-          <div className="flex items-center justify-between h-16 px-4">
+          <div className="flex items-center h-16 px-4">
+            {/* LEFT cluster — only the mobile-menu toggle (md:hidden on desktop) */}
             <button
               onClick={toggleSidebar}
               className="p-1 text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 md:hidden"
@@ -369,10 +393,28 @@ const DashboardLayout = ({ children }) => {
               <FiMenu className="w-6 h-6" />
             </button>
 
-            <div className="flex items-center space-x-4">
+            {/* RIGHT cluster — date + announcement + bell.
+                ml-auto pushes us to the right edge regardless of whether the
+                mobile-menu button is rendered (it's md:hidden on desktop, so
+                without ml-auto we'd be the only child and snap to the left). */}
+            <div className="flex items-center space-x-4 ml-auto">
               <div className="text-sm font-medium text-gray-500 hidden sm:block">
                 {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
+
+              {/* Announcements Megaphone */}
+              <button
+                onClick={() => setAnnounceOpen(true)}
+                className="relative p-1.5 text-gray-500 hover:text-gray-700 focus:outline-none"
+                title="Announcements"
+              >
+                <HiOutlineSpeakerphone className="w-5 h-5" />
+                {announcementUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-0.5">
+                    {announcementUnreadCount > 99 ? '99+' : announcementUnreadCount}
+                  </span>
+                )}
+              </button>
 
               {/* Notification Bell */}
               <div className="relative" ref={notifRef}>
@@ -389,6 +431,7 @@ const DashboardLayout = ({ children }) => {
                   )}
                 </button>
 
+                {/* Dropdown anchored RIGHT — bell sits on the right edge of the header. */}
                 {notifOpen && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
                     <div className="px-4 py-3 border-b font-semibold text-gray-800 text-sm">Notifications</div>
@@ -456,6 +499,10 @@ const DashboardLayout = ({ children }) => {
           onClick={toggleSidebar}
         ></div>
       )}
+
+      {/* Announcements slide-in panel — single mount point, opened from header
+          megaphone or via the 'announcements:open' window event (Dashboard widget). */}
+      <AnnouncementsSidebar open={announceOpen} onClose={() => setAnnounceOpen(false)} />
     </div>
   );
 };

@@ -279,6 +279,28 @@ exports.startTest = async (req, res) => {
       });
     }
 
+    // ── Attempt-limit enforcement ─────────────────────────────────────────
+    // Skipped for staff so they can keep QA-testing their own tests. Also
+    // skipped when maxAttempts is null/undefined (the default "unlimited"),
+    // so we only run countDocuments when a limit is actually configured.
+    // Reached only on the NEW-attempt path — resumes returned earlier above.
+    if (req.user.role === 'student' && test.maxAttempts != null) {
+      const usedAttempts = await UserTestAttempt.countDocuments({
+        user:   req.user.id,
+        test:   testId,
+        status: 'completed',
+      });
+      if (usedAttempts >= test.maxAttempts) {
+        return res.status(403).json({
+          success: false,
+          message: `You have used all ${test.maxAttempts} allowed attempts for this test.`,
+          attemptLimitReached: true,
+          usedAttempts,
+          maxAttempts: test.maxAttempts,
+        });
+      }
+    }
+
     // Fall back to legacy testId-field MCQs if test.mcqs is empty
     const mcqs = test.mcqs?.length > 0 ? test.mcqs : await MCQ.find({ testId });
 
@@ -336,13 +358,32 @@ exports.getActiveAttempt = async (req, res) => {
     const { testId } = req.query;
     if (!testId) return res.status(400).json({ success: false, message: 'testId query param required' });
 
-    const attempt = await UserTestAttempt.findOne({
-      user:   req.user.id,
-      test:   testId,
-      status: 'in-progress',
-    }).select('_id mode status questionAttempts startTime').lean();
+    // Two parallel reads only:
+    //   1. The in-progress attempt (existing query, unchanged).
+    //   2. completedAttempts — students only. Skipped entirely for staff so
+    //      we add ZERO reads on the staff path. Indexed by {user,test,status}.
+    // We do NOT fetch the Test here for maxAttempts — the frontend already
+    // calls /tests/:id?summary=1 in the same Promise.all on the start page,
+    // so it already has maxAttempts. Returning only the count keeps this
+    // endpoint at one extra indexed read (or zero for staff).
+    const [attempt, completedAttempts] = await Promise.all([
+      UserTestAttempt.findOne({
+        user:   req.user.id,
+        test:   testId,
+        status: 'in-progress',
+      }).select('_id mode status questionAttempts startTime').lean(),
+      req.user.role === 'student'
+        ? UserTestAttempt.countDocuments({ user: req.user.id, test: testId, status: 'completed' })
+        : Promise.resolve(0),
+    ]);
 
-    if (!attempt) return res.json({ success: true, data: null });
+    if (!attempt) {
+      return res.json({
+        success: true,
+        data: null,
+        attemptInfo: { completedAttempts },
+      });
+    }
 
     const answeredCount = attempt.questionAttempts.filter((qa) => qa.selectedOption).length;
     const totalCount    = attempt.questionAttempts.length;
@@ -357,6 +398,7 @@ exports.getActiveAttempt = async (req, res) => {
         answeredCount,
         totalCount,
       },
+      attemptInfo: { completedAttempts },
     });
   } catch (error) {
     console.error('getActiveAttempt error:', error);

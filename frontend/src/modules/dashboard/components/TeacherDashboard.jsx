@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import useAuth from '../../../core/auth/useAuth';
+import LatestAnnouncementsWidget from '../../announcements/components/LatestAnnouncementsWidget';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
@@ -51,6 +52,17 @@ const TeacherDashboard = () => {
           <Link to="/teacher/analytics" className="btn btn-primary btn-sm">
             View Analytics
           </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <LatestAnnouncementsWidget />
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h3>
+          <p className="text-gray-600 text-sm">
+            Open the Announcements panel from the megaphone in the header. You
+            can create new announcements from the Announcements admin page.
+          </p>
         </div>
       </div>
 

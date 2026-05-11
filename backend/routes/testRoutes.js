@@ -12,6 +12,8 @@ const {
   deleteTest,
   publishTest,
   addMcqsToTest,
+  getTestStats,
+  exportTestStats,
 } = require('../controllers/testController');
 
 // All routes require authentication
@@ -25,5 +27,9 @@ router.put('/:id', authorize('admin', 'teacher'), updateTest);
 router.delete('/:id', authorize('admin', 'teacher'), deleteTest);
 router.put('/:id/publish', authorize('admin', 'teacher'), publishTest);
 router.post('/:id/add-mcqs', authorize('admin', 'teacher'), addMcqsToTest);
+
+// Admin/teacher analytics — cold paths, no impact on student hot APIs.
+router.get('/:id/stats',         authorize('admin', 'teacher'), getTestStats);
+router.get('/:id/stats/export',  authorize('admin', 'teacher'), exportTestStats);
 
 module.exports = router;

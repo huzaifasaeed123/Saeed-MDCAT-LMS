@@ -33,6 +33,7 @@ import EditUserPage from '../../modules/users/pages/EditUserPage';
 import TestListPage from '../../modules/tests/pages/TestListPage';
 import TestFormPage from '../../modules/tests/pages/TestFormPage';
 import TestDetailPage from '../../modules/tests/pages/TestDetailPage';
+import TestStatsPage from '../../modules/tests/pages/TestStatsPage';
 // Student test-taking
 import TestStartPage from '../../modules/tests/pages/TestStartPage';
 import TestPlayerPage from '../../modules/tests/pages/TestPlayerPage';
@@ -74,6 +75,9 @@ import AdminMCQReportsPage   from '../../modules/reports/pages/AdminMCQReportsPa
 
 // Leaderboard module
 import LeaderboardPage from '../../modules/leaderboard/pages/LeaderboardPage';
+
+// Announcements module
+import AnnouncementsAdminPage from '../../modules/announcements/pages/AnnouncementsAdminPage';
 
 // Question Bank module
 import QuestionBankListPage       from '../../modules/questionbank/pages/QuestionBankListPage';
@@ -316,6 +320,15 @@ const AppRouter = () => {
                 </DashboardLayout>
               }
             />
+            {/* Announcements admin — admin & teacher both can author */}
+            <Route
+              path="/admin/announcements"
+              element={
+                <DashboardLayout>
+                  <AnnouncementsAdminPage />
+                </DashboardLayout>
+              }
+            />
           </Route>
 
           {/* Test Management Routes - For Admin and Teachers */}
@@ -342,6 +355,15 @@ const AppRouter = () => {
               element={
                 <DashboardLayout>
                   <TestDetailPage />
+                </DashboardLayout>
+              }
+            />
+            {/* Admin/teacher analytics for a single test */}
+            <Route
+              path="/tests/:id/stats"
+              element={
+                <DashboardLayout>
+                  <TestStatsPage />
                 </DashboardLayout>
               }
             />

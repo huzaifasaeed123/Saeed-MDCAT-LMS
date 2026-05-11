@@ -19,6 +19,9 @@ const TestFormPage = () => {
     passingScore: 50,
     difficultyLevel: 'Medium',
     instructions: '',
+    // null = unlimited (default). When the admin flips the toggle off, this
+    // becomes a positive integer that startTest enforces against students.
+    maxAttempts: null,
   });
 
   useEffect(() => {
@@ -37,6 +40,7 @@ const TestFormPage = () => {
           passingScore: d.passingScore ?? 50,
           difficultyLevel: d.difficultyLevel || 'Medium',
           instructions: d.instructions || '',
+          maxAttempts: d.maxAttempts ?? null,
         });
       }
     } catch {
@@ -139,6 +143,47 @@ const TestFormPage = () => {
                 <option value="Hard">Hard</option>
               </select>
             </div>
+          </div>
+
+          {/* Attempt limit — toggle "Unlimited" on/off; show number input when off */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Attempts</label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData((p) => ({
+                  ...p,
+                  maxAttempts: p.maxAttempts == null ? 1 : null,
+                }))}
+                className={`relative inline-block w-11 h-6 rounded-full transition-colors ${
+                  formData.maxAttempts == null ? 'bg-emerald-500' : 'bg-gray-300'
+                }`}
+                title="Toggle unlimited attempts"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                  formData.maxAttempts == null ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </button>
+              <span className="text-sm text-gray-700">
+                {formData.maxAttempts == null ? 'Unlimited attempts' : 'Limit attempts to'}
+              </span>
+              {formData.maxAttempts != null && (
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formData.maxAttempts}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setFormData((p) => ({ ...p, maxAttempts: Number.isFinite(v) && v > 0 ? v : 1 }));
+                  }}
+                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                />
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Admins/teachers are always exempt — this limit applies to students only.
+            </p>
           </div>
 
           <div>

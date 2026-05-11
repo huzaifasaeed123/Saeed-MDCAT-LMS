@@ -280,6 +280,43 @@ const MessagesPage = () => {
   const selectedConvRef = useRef(null);
   useEffect(() => { selectedConvRef.current = selectedConv; }, [selectedConv]);
 
+  // Debounced markConversationRead. Without this, every incoming SSE frame
+  // triggers another PUT /read on the recipient (= one extra Mongo write
+  // per message), causing the message-burst chatter you saw in the logs.
+  //
+  // Debounce collapses bursts into a single /read call:
+  //   • While messages keep arriving, the timer keeps resetting.
+  //   • After 800ms of quiet (or on conv change / unmount), one /read fires.
+  //   • That sync also fires AuthContext's 'messages_read' which decrements
+  //     the global Messages badge by the entire burst at once — so badge
+  //     state stays correct.
+  const markReadTimerRef = useRef({});                // convId → timeout id
+  const flushMarkRead = useCallback((convId) => {
+    if (!convId) return;
+    if (markReadTimerRef.current[convId]) {
+      clearTimeout(markReadTimerRef.current[convId]);
+      delete markReadTimerRef.current[convId];
+    }
+    svc.markConversationRead(convId).catch(() => {});
+  }, []);
+  const scheduleMarkRead = useCallback((convId) => {
+    if (!convId) return;
+    clearTimeout(markReadTimerRef.current[convId]);
+    markReadTimerRef.current[convId] = setTimeout(() => {
+      delete markReadTimerRef.current[convId];
+      svc.markConversationRead(convId).catch(() => {});
+    }, 800);
+  }, []);
+  // On unmount, flush any pending /read so we don't leave stale counts on
+  // the server when the user navigates away mid-conversation.
+  useEffect(() => () => {
+    Object.entries(markReadTimerRef.current).forEach(([id, t]) => {
+      clearTimeout(t);
+      svc.markConversationRead(id).catch(() => {});
+    });
+    markReadTimerRef.current = {};
+  }, []);
+
   // ── Fetch page 1 of conversations (poll + initial load) ──────────────────
   const fetchPage1 = useCallback(async (silent = false) => {
     try {
@@ -343,7 +380,9 @@ const MessagesPage = () => {
             if (prev.some((m) => m._id === message._id)) return prev;
             return [...prev, message];
           });
-          svc.markConversationRead(conversationId).catch(() => {});
+          // Debounced — see scheduleMarkRead above. Collapses message
+          // bursts into a single PUT /read after 800ms of quiet.
+          scheduleMarkRead(conversationId);
         }
 
         // Update conversation list: preview text + unread badge
@@ -431,6 +470,11 @@ const MessagesPage = () => {
 
   // ── Select a conversation ─────────────────────────────────────────────────
   const handleSelectConv = (conv) => {
+    // Flush any pending /read for the conv we're leaving so the server's
+    // unread tally doesn't go stale. (No-op if nothing pending.)
+    if (selectedConvRef.current && selectedConvRef.current._id !== conv._id) {
+      flushMarkRead(selectedConvRef.current._id);
+    }
     setSelectedConv(conv);
     setMobileShowChat(true);
     setInput('');

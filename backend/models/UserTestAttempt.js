@@ -104,5 +104,9 @@ userTestAttemptSchema.index({ user: 1, test: 1, status: 1 });
 userTestAttemptSchema.index({ status: 1, createdAt: -1 });
 // Per-user personal stats fallback (users outside top 50)
 userTestAttemptSchema.index({ user: 1, status: 1, createdAt: -1 });
+// Admin/teacher Test-Stats page: aggregates all attempts of one test by status.
+// Cold path (admin tooling) but cheap to add and turns a coll-scan into an
+// index range scan for very-popular tests with tens of thousands of attempts.
+userTestAttemptSchema.index({ test: 1, status: 1 });
 
 module.exports = mongoose.model('UserTestAttempt', userTestAttemptSchema);

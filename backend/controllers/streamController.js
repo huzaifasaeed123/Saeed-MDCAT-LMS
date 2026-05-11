@@ -2,6 +2,10 @@ const jwt          = require('jsonwebtoken');
 const mongoose     = require('mongoose');
 const Conversation = require('../models/Conversation');
 const Notification = require('../models/Notification');
+const Announcement = require('../models/Announcement');
+const User         = require('../models/User');
+const { _helpers: { visibleFilter: announcementVisibleFilter } } = require('./announcementController');
+const { getLatestForRole: getCachedAnnouncements } = require('../utils/announcementsCache');
 const { addClient, removeClient, clientCount } = require('../utils/sseManager');
 const { updateLeaderboardCache } = require('../utils/leaderboardCache');
 
@@ -57,6 +61,8 @@ exports.openStream = (req, res) => {
   // run a separate countDocuments when there might be MORE than 10 unread
   // (since we capped the inline list to 10).
   const oid = new mongoose.Types.ObjectId(userId);
+  const role = decoded.role; // packed into the access token at issue time
+
   Promise.all([
     Conversation.aggregate([
       { $match: { participants: oid } },
@@ -67,13 +73,34 @@ exports.openStream = (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
+    // Latest 15 announcements visible to this user. Served from the per-role
+    // in-memory cache → 0 DB hits on the hot SSE-connect path. Cache rebuilds
+    // only when an admin/teacher mutates, or every 60s as a TTL safety net.
+    getCachedAnnouncements(role),
+    // The user's last-seen timestamp powers the unread badge below.
+    User.findById(oid).select('announcementsSeenAt').lean(),
   ])
-    .then(async ([msgResult, unreadNotifs]) => {
+    .then(async ([msgResult, unreadNotifs, recentAnnouncements, userDoc]) => {
       // If we got fewer than 10 unread notifications, that's the full count.
       // Otherwise we need a separate countDocuments to know the true total.
       const notifUnreadTotal = unreadNotifs.length < 10
         ? unreadNotifs.length
         : await Notification.countDocuments({ recipient: oid, isRead: false });
+
+      // Unread announcements = those newer than announcementsSeenAt. Derived
+      // from the inlined list when len < 15, otherwise one countDocuments.
+      const seenAt = userDoc?.announcementsSeenAt || new Date(0);
+      let announcementUnreadCount;
+      if (recentAnnouncements.length < 15) {
+        announcementUnreadCount = recentAnnouncements.filter(
+          (a) => new Date(a.createdAt) > seenAt
+        ).length;
+      } else {
+        announcementUnreadCount = await Announcement.countDocuments({
+          ...announcementVisibleFilter(role),
+          createdAt: { $gt: seenAt },
+        });
+      }
 
       try {
         res.write(`data: ${JSON.stringify({
@@ -81,7 +108,9 @@ exports.openStream = (req, res) => {
           userId,
           unreadTotal:      msgResult[0]?.total || 0,
           notifUnreadTotal,
-          notifications:    unreadNotifs,   // up to 10 full unread notification bodies
+          notifications:    unreadNotifs,         // up to 10 full unread notification bodies
+          announcements:    recentAnnouncements,  // up to 15 visible announcements
+          announcementUnreadCount,
         })}\n\n`);
       } catch { /* connection closed before queries finished */ }
       // Prime leaderboard cache on first connection if empty
@@ -92,6 +121,7 @@ exports.openStream = (req, res) => {
         res.write(`data: ${JSON.stringify({
           type: 'connected', userId,
           unreadTotal: 0, notifUnreadTotal: 0, notifications: [],
+          announcements: [], announcementUnreadCount: 0,
         })}\n\n`);
       } catch {}
     });

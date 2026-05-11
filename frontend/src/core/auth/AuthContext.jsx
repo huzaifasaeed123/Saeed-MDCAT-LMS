@@ -16,6 +16,12 @@ export const AuthProvider = ({ children }) => {
   // updated on incoming 'notification' events. Capped at 30 in memory; older
   // ones are loaded on-demand by the dropdown's "Load older" button.
   const [notifications, setNotifications]     = useState([]);
+  // Same pattern for announcements: hydrated from SSE 'connected', mutated by
+  // 'announcement_new'/'announcement_update'/'announcement_delete' events. The
+  // dashboard widget renders the first 5 from this list; the slide-in panel
+  // renders all of them and lazy-loads more.
+  const [announcements, setAnnouncements]     = useState([]);
+  const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
   const sseSourceRef                      = useRef(null);
   const sseRetryRef                       = useRef(null);
 
@@ -76,6 +82,10 @@ export const AuthProvider = ({ children }) => {
             // Hydrate the notifications list from the inlined SSE payload —
             // the bell dropdown can now render without any API call.
             setNotifications(data.notifications || []);
+            // Same hydration for announcements — covers dashboard widget AND
+            // the slide-in panel up to its first page (15) without any API call.
+            setAnnouncements(data.announcements || []);
+            setAnnouncementUnreadCount(data.announcementUnreadCount || 0);
           } else if (data.type === 'new_message') {
             setMsgUnreadCount((n) => n + 1);
           } else if (data.type === 'messages_read') {
@@ -101,6 +111,47 @@ export const AuthProvider = ({ children }) => {
           } else if (data.type === 'notifications_read') {
             setNotifUnreadCount(0);
             setNotifications((list) => list.map((n) => ({ ...n, isRead: true })));
+          } else if (data.type === 'announcement_new' && data.announcement) {
+            // Server broadcasts to all sockets; client-side audience filter
+            // drops events that don't apply to this user (cheap, no DB hit).
+            const a = data.announcement;
+            const r = user?.role;
+            const audOk = a.audience === 'everyone'
+              || (a.audience === 'students' && r === 'student')
+              || (a.audience === 'teachers' && r === 'teacher')
+              || (a.audience === 'admins'   && r === 'admin');
+            if (!audOk) return;
+            setAnnouncements((list) => {
+              if (list.some((x) => x._id === a._id)) return list;
+              // Pinned-first sort is preserved by re-sorting on insert. Cap at 30.
+              const next = [a, ...list];
+              next.sort((x, y) => {
+                if (!!y.pinned !== !!x.pinned) return (y.pinned ? 1 : 0) - (x.pinned ? 1 : 0);
+                return new Date(y.createdAt) - new Date(x.createdAt);
+              });
+              return next.slice(0, 30);
+            });
+            // The creator shouldn't see their own announcement as unread.
+            // Skip the badge bump — race-free, regardless of HTTP/SSE order.
+            const createdById = a.createdBy && (a.createdBy._id || a.createdBy);
+            if (String(createdById) !== String(user?.id)) {
+              setAnnouncementUnreadCount((n) => n + 1);
+            }
+          } else if (data.type === 'announcement_update' && data.announcement) {
+            const a = data.announcement;
+            setAnnouncements((list) => {
+              const idx = list.findIndex((x) => x._id === a._id);
+              if (idx === -1) return list;
+              const next = list.slice();
+              next[idx] = a;
+              next.sort((x, y) => {
+                if (!!y.pinned - !!x.pinned !== 0) return (y.pinned ? 1 : 0) - (x.pinned ? 1 : 0);
+                return new Date(y.createdAt) - new Date(x.createdAt);
+              });
+              return next;
+            });
+          } else if (data.type === 'announcement_delete' && data.id) {
+            setAnnouncements((list) => list.filter((x) => x._id !== data.id));
           }
 
           // Dispatch to all other interested components (MessagesPage, etc.)
@@ -146,6 +197,8 @@ export const AuthProvider = ({ children }) => {
       user, updateUser, clearUser, loading,
       msgUnreadCount, notifUnreadCount,
       notifications, setNotifications,
+      announcements, setAnnouncements,
+      announcementUnreadCount, setAnnouncementUnreadCount,
     }}>
       {children}
     </AuthContext.Provider>

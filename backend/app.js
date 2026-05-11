@@ -28,6 +28,7 @@ const communityRoutes    = require('./routes/communityRoutes');
 const notesRoutes        = require('./routes/notesRoutes');
 const videosRoutes       = require('./routes/videosRoutes');
 const leaderboardRoutes  = require('./routes/leaderboardRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
 const { openStream }     = require('./controllers/streamController');
 const app = express();
 
@@ -44,12 +45,15 @@ app.use((req, res, next) => {
   const now = new Date().toISOString();
   console.log(`[${now}] ${req.method} ${req.originalUrl}`);
 
-  // Optional: log request body for POST/PUT
-  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+  // Log request body only when there's actually one — body-less PUTs (like
+  // /messages/.../read) leave req.body undefined which used to print
+  // "Body: undefined" on every keystroke during a chat. Keeps logs readable.
+  if (['POST', 'PUT', 'PATCH'].includes(req.method)
+      && req.body && Object.keys(req.body).length > 0) {
     console.log('Body:', req.body);
   }
 
-  next(); // Move to the next middleware
+  next();
 });
 
 // CORS
@@ -107,6 +111,7 @@ app.use('/api/community',  communityRoutes);
 app.use('/api/notes',       notesRoutes);
 app.use('/api/videos',      videosRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/announcements', announcementRoutes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Saeed MDCAT LMS API' });

@@ -13,6 +13,8 @@ const useAuth = () => {
     user, updateUser, clearUser, loading,
     msgUnreadCount, notifUnreadCount,
     notifications, setNotifications,
+    announcements, setAnnouncements,
+    announcementUnreadCount, setAnnouncementUnreadCount,
   } = context;
 
   const login = async (credentials) => {
@@ -54,6 +56,10 @@ const useAuth = () => {
     notifUnreadCount,
     notifications,
     setNotifications,
+    announcements,
+    setAnnouncements,
+    announcementUnreadCount,
+    setAnnouncementUnreadCount,
   };
 };
 

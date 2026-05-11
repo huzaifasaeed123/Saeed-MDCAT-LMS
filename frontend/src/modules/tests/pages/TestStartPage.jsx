@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle } from 'react-icons/fi';
+import { FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle, FiBookOpen, FiRotateCcw } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 
 // Speed multipliers — 1x = 60s/Q, 1.5x = 40s/Q, 2x = 30s/Q
@@ -22,6 +22,9 @@ const TestStartPage = () => {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [existingAttempt, setExistingAttempt] = useState(null);
+  // From GET /user-tests/active — just { completedAttempts }. maxAttempts is
+  // sourced from the test summary endpoint (no second DB read on the server).
+  const [completedAttempts, setCompletedAttempts] = useState(0);
 
   useEffect(() => {
     const stateData = location.state?.testData;
@@ -45,6 +48,9 @@ const TestStartPage = () => {
           setExistingAttempt(active);
           setSelectedMode(active.mode);
         }
+        if (activeRes.data.attemptInfo?.completedAttempts != null) {
+          setCompletedAttempts(activeRes.data.attemptInfo.completedAttempts);
+        }
       })
       .catch(() => { toast.error('Test not found'); navigate('/student/tests'); })
       .finally(() => setLoading(false));
@@ -66,6 +72,23 @@ const TestStartPage = () => {
     : null;
   const calculatedDurationMin = calculatedDurationSec ? Math.ceil(calculatedDurationSec / 60) : null;
 
+  // Syllabus = subjects/chapters/topics from the test (auto-synced from MCQs)
+  const syllabus = {
+    subjects: test?.subjects?.filter(Boolean) || [],
+    chapters: test?.chapters?.filter(Boolean) || [],
+    topics:   test?.topics?.filter(Boolean)   || [],
+  };
+  const hasSyllabus = syllabus.subjects.length || syllabus.chapters.length || syllabus.topics.length;
+
+  // Attempt-limit derived state. maxAttempts comes from the test summary
+  // we already loaded — NO extra server read for it. attemptsRemaining===0
+  // means the student is locked out; Start is disabled. Resume of an
+  // in-progress attempt is still allowed (already counted server-side).
+  const maxAttempts       = test?.maxAttempts ?? null;
+  const isUnlimited       = maxAttempts == null;
+  const attemptsRemaining = isUnlimited ? null : Math.max(0, maxAttempts - completedAttempts);
+  const limitReached      = !isUnlimited && attemptsRemaining === 0 && !existingAttempt;
+
   const handleStart = async () => {
     setStarting(true);
     try {
@@ -81,6 +104,14 @@ const TestStartPage = () => {
         { state: { attemptData: attempt } }
       );
     } catch (err) {
+      // attemptLimitReached comes back from startTest when a student has used
+      // all allowed attempts. Sync local state so the UI flips into the
+      // locked-out view without another /active round-trip.
+      if (err.response?.data?.attemptLimitReached) {
+        // Sync the local counter so the UI flips into locked-out without
+        // another round-trip. maxAttempts comes from the test object.
+        setCompletedAttempts(err.response.data.usedAttempts ?? completedAttempts);
+      }
       toast.error(err.response?.data?.message || 'Failed to start test');
     } finally {
       setStarting(false);
@@ -135,7 +166,49 @@ const TestStartPage = () => {
             <p className="text-sm text-yellow-700">{test.instructions}</p>
           </div>
         )}
+
+        {/* Attempts row — derived from server-side count + test.maxAttempts.
+            Shows "Unlimited" for the default, or "X of N used" when limited. */}
+        <div className="mt-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200">
+          <FiRotateCcw className="text-gray-500 w-4 h-4 flex-shrink-0" />
+          <div className="flex-1 text-sm">
+            <span className="font-semibold text-gray-800">Attempts: </span>
+            {isUnlimited ? (
+              <span className="text-emerald-600 font-medium">Unlimited</span>
+            ) : (
+              <>
+                <span className={attemptsRemaining === 0 ? 'text-red-600 font-medium' : 'text-gray-800'}>
+                  {completedAttempts} of {maxAttempts} used
+                </span>
+                {attemptsRemaining > 0 && (
+                  <span className="text-gray-500"> · {attemptsRemaining} remaining</span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Syllabus — auto-derived from the MCQs added to this test
+          (Test.subjects/chapters/topics are kept in sync server-side). */}
+      {hasSyllabus && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <FiBookOpen className="text-primary-500 w-5 h-5" /> Test Syllabus
+          </h2>
+          <div className="space-y-3">
+            {syllabus.subjects.length > 0 && (
+              <SyllabusRow label="Subjects" items={syllabus.subjects} color="blue" />
+            )}
+            {syllabus.chapters.length > 0 && (
+              <SyllabusRow label="Chapters" items={syllabus.chapters} color="purple" />
+            )}
+            {syllabus.topics.length > 0 && (
+              <SyllabusRow label="Topics" items={syllabus.topics} color="emerald" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Resume banner */}
       {existingAttempt && (
@@ -226,6 +299,20 @@ const TestStartPage = () => {
         </div>
       )}
 
+      {/* Attempt-limit lockout banner. Resume is still available even when
+          locked out — the in-progress attempt was already counted. */}
+      {limitReached && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+          <FiAlertCircle className="text-red-500 w-5 h-5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">You've used all attempts</p>
+            <p className="text-xs text-red-600">
+              You've completed all {maxAttempts} allowed attempts for this test.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex gap-3">
         {existingAttempt && (
@@ -239,8 +326,8 @@ const TestStartPage = () => {
         )}
         <button
           onClick={handleStart}
-          disabled={starting || totalQuestions === 0}
-          className="flex-1 flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg disabled:opacity-50"
+          disabled={starting || totalQuestions === 0 || limitReached}
+          className="flex-1 flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {starting
             ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
@@ -255,5 +342,24 @@ const TestStartPage = () => {
     </div>
   );
 };
+
+const SYLLABUS_COLORS = {
+  blue:    'bg-blue-50 text-blue-700 border-blue-200',
+  purple:  'bg-purple-50 text-purple-700 border-purple-200',
+  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
+
+const SyllabusRow = ({ label, items, color }) => (
+  <div>
+    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((v) => (
+        <span key={v} className={`px-2.5 py-1 text-xs font-medium rounded-full border ${SYLLABUS_COLORS[color]}`}>
+          {v}
+        </span>
+      ))}
+    </div>
+  </div>
+);
 
 export default TestStartPage;

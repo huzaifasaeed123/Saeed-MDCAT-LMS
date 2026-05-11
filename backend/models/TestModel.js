@@ -9,6 +9,11 @@ const testSchema = new Schema(
     description: String,
     totalQuestions: { type: Number, default: 0 },
     passingScore: { type: Number, default: 50 }, // percentage
+    // Max number of times a student is allowed to take this test.
+    // null = unlimited (the default). Enforced only for role === 'student'
+    // in userTestController.startTest. An in-progress attempt does NOT count
+    // against the limit — it's a resume of an already-counted attempt.
+    maxAttempts: { type: Number, default: null, min: 1 },
     isPublished: { type: Boolean, default: false },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     status: { 
