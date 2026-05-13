@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import useAuth from '../../../core/auth/useAuth';
 import LatestAnnouncementsWidget from '../../announcements/components/LatestAnnouncementsWidget';
+import SyllabusDueWidget from '../../syllabus/components/SyllabusDueWidget';
 
 const StudentDashboard = () => {
   const { user } = useAuth();
@@ -59,7 +60,8 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+        <SyllabusDueWidget />
         <LatestAnnouncementsWidget />
         <div className="dashboard-activity">
           <h3>Recent Activity</h3>

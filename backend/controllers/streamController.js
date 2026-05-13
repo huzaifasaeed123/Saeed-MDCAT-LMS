@@ -6,6 +6,7 @@ const Announcement = require('../models/Announcement');
 const User         = require('../models/User');
 const { _helpers: { visibleFilter: announcementVisibleFilter } } = require('./announcementController');
 const { getLatestForRole: getCachedAnnouncements } = require('../utils/announcementsCache');
+const { getDueCountAndStreak: getSyllabusBadge } = require('./syllabusTodayController');
 const { addClient, removeClient, clientCount } = require('../utils/sseManager');
 const { updateLeaderboardCache } = require('../utils/leaderboardCache');
 
@@ -79,8 +80,11 @@ exports.openStream = (req, res) => {
     getCachedAnnouncements(role),
     // The user's last-seen timestamp powers the unread badge below.
     User.findById(oid).select('announcementsSeenAt').lean(),
+    // Syllabus dashboard tile: due-today count + revision streak. One indexed
+    // countDocuments + one small aggregation on TopicRevisionLog (60-day window).
+    getSyllabusBadge(userId),
   ])
-    .then(async ([msgResult, unreadNotifs, recentAnnouncements, userDoc]) => {
+    .then(async ([msgResult, unreadNotifs, recentAnnouncements, userDoc, syllabusBadge]) => {
       // If we got fewer than 10 unread notifications, that's the full count.
       // Otherwise we need a separate countDocuments to know the true total.
       const notifUnreadTotal = unreadNotifs.length < 10
@@ -111,6 +115,7 @@ exports.openStream = (req, res) => {
           notifications:    unreadNotifs,         // up to 10 full unread notification bodies
           announcements:    recentAnnouncements,  // up to 15 visible announcements
           announcementUnreadCount,
+          syllabus:         syllabusBadge,        // { dueCount, streak }
         })}\n\n`);
       } catch { /* connection closed before queries finished */ }
       // Prime leaderboard cache on first connection if empty
@@ -122,6 +127,7 @@ exports.openStream = (req, res) => {
           type: 'connected', userId,
           unreadTotal: 0, notifUnreadTotal: 0, notifications: [],
           announcements: [], announcementUnreadCount: 0,
+          syllabus: { dueCount: 0, streak: 0 },
         })}\n\n`);
       } catch {}
     });

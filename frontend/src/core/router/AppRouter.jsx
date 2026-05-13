@@ -79,6 +79,10 @@ import LeaderboardPage from '../../modules/leaderboard/pages/LeaderboardPage';
 // Announcements module
 import AnnouncementsAdminPage from '../../modules/announcements/pages/AnnouncementsAdminPage';
 
+// Syllabus module
+import SyllabusPage       from '../../modules/syllabus/pages/SyllabusPage';
+import SyllabusAdminPage  from '../../modules/syllabus/pages/SyllabusAdminPage';
+
 // Question Bank module
 import QuestionBankListPage       from '../../modules/questionbank/pages/QuestionBankListPage';
 import QuestionBankFormPage       from '../../modules/questionbank/pages/QuestionBankFormPage';
@@ -151,6 +155,15 @@ const AppRouter = () => {
               </DashboardLayout>
             }
           />
+
+          {/* Syllabus — SKN-style single page (hero + 4 stats + 4 tabs). All
+              the legacy sub-routes (/today, /browse, /week) redirect here so
+              old bookmarks still work; the page's internal tab state handles
+              which pane is visible. */}
+          <Route path="/syllabus"        element={<DashboardLayout><SyllabusPage /></DashboardLayout>} />
+          <Route path="/syllabus/today"  element={<Navigate to="/syllabus" replace />} />
+          <Route path="/syllabus/browse" element={<Navigate to="/syllabus" replace />} />
+          <Route path="/syllabus/week"   element={<Navigate to="/syllabus" replace />} />
 
           {/* Admin Routes */}
           <Route element={<RoleBasedRoute allowedRoles={['admin']} />}>
@@ -326,6 +339,15 @@ const AppRouter = () => {
               element={
                 <DashboardLayout>
                   <AnnouncementsAdminPage />
+                </DashboardLayout>
+              }
+            />
+            {/* Syllabus admin — admin & teacher manage the topic catalog */}
+            <Route
+              path="/admin/syllabus"
+              element={
+                <DashboardLayout>
+                  <SyllabusAdminPage />
                 </DashboardLayout>
               }
             />

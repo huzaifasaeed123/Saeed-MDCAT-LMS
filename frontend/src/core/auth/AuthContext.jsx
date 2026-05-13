@@ -22,6 +22,11 @@ export const AuthProvider = ({ children }) => {
   // renders all of them and lazy-loads more.
   const [announcements, setAnnouncements]     = useState([]);
   const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
+  // Syllabus badge — driven by SSE. Holds the due-today count + revision
+  // streak so the sidebar pill and dashboard tile render with zero API calls.
+  // Updated on the 'connected' frame and bumped on 'syllabus_progress_update'.
+  const [syllabusDueCount, setSyllabusDueCount] = useState(0);
+  const [syllabusStreak,   setSyllabusStreak]   = useState(0);
   const sseSourceRef                      = useRef(null);
   const sseRetryRef                       = useRef(null);
 
@@ -86,6 +91,17 @@ export const AuthProvider = ({ children }) => {
             // the slide-in panel up to its first page (15) without any API call.
             setAnnouncements(data.announcements || []);
             setAnnouncementUnreadCount(data.announcementUnreadCount || 0);
+            // Syllabus badge — due-count + revision streak.
+            if (data.syllabus) {
+              setSyllabusDueCount(data.syllabus.dueCount || 0);
+              setSyllabusStreak(data.syllabus.streak || 0);
+            }
+          } else if (data.type === 'syllabus_progress_update') {
+            // Server doesn't know the new due-count yet (would cost a DB
+            // hit). We optimistically nudge the badge here; the next
+            // 'connected' frame (on reconnect or refresh) re-syncs from
+            // the source of truth.
+            setSyllabusDueCount((n) => Math.max(0, n - 1));
           } else if (data.type === 'new_message') {
             setMsgUnreadCount((n) => n + 1);
           } else if (data.type === 'messages_read') {
@@ -199,6 +215,8 @@ export const AuthProvider = ({ children }) => {
       notifications, setNotifications,
       announcements, setAnnouncements,
       announcementUnreadCount, setAnnouncementUnreadCount,
+      syllabusDueCount, setSyllabusDueCount,
+      syllabusStreak,   setSyllabusStreak,
     }}>
       {children}
     </AuthContext.Provider>

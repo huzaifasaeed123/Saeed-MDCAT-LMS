@@ -1,7 +1,7 @@
 // src/core/layouts/DashboardLayout.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo, FiAward, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiUsers, FiBook, FiBookOpen, FiFileText, FiSettings, FiLogOut, FiBarChart2, FiCheckSquare, FiDatabase, FiZap, FiSliders, FiFlag, FiMessageSquare, FiBell, FiMessageCircle, FiFolder, FiVideo, FiAward, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { HiOutlineSpeakerphone } from 'react-icons/hi';
 import useAuth from '../auth/useAuth';
 import apiClient from '../api/axiosConfig';
@@ -26,6 +26,7 @@ const DashboardLayout = ({ children }) => {
     msgUnreadCount, notifUnreadCount,
     notifications, setNotifications,
     announcementUnreadCount,
+    syllabusDueCount,
   } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -116,12 +117,28 @@ const DashboardLayout = ({ children }) => {
     path: '/dashboard',
   });
 
-  // Announcements admin — admin AND teacher can author
+  // Syllabus — STUDENTS only. Admin/teacher get the management page instead.
+  if (isStudent) {
+    navigationItems.push({
+      name: 'Syllabus',
+      icon: <FiBookOpen className="w-5 h-5" />,
+      path: '/syllabus',
+      badge: syllabusDueCount > 0 ? (syllabusDueCount > 99 ? '99+' : String(syllabusDueCount)) : null,
+    });
+  }
+
+  // Announcements admin + Syllabus admin — admin AND teacher can manage.
+  // (No student-facing syllabus link for staff — they only manage the catalog.)
   if (isAdmin || isTeacher) {
     navigationItems.push({
       name: 'Announcements',
       icon: <HiOutlineSpeakerphone className="w-5 h-5" />,
       path: '/admin/announcements',
+    });
+    navigationItems.push({
+      name: 'Syllabus Admin',
+      icon: <FiBookOpen className="w-5 h-5" />,
+      path: '/admin/syllabus',
     });
   }
 

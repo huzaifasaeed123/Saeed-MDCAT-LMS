@@ -15,6 +15,8 @@ const useAuth = () => {
     notifications, setNotifications,
     announcements, setAnnouncements,
     announcementUnreadCount, setAnnouncementUnreadCount,
+    syllabusDueCount, setSyllabusDueCount,
+    syllabusStreak,   setSyllabusStreak,
   } = context;
 
   const login = async (credentials) => {
@@ -60,6 +62,10 @@ const useAuth = () => {
     setAnnouncements,
     announcementUnreadCount,
     setAnnouncementUnreadCount,
+    syllabusDueCount,
+    setSyllabusDueCount,
+    syllabusStreak,
+    setSyllabusStreak,
   };
 };
 
