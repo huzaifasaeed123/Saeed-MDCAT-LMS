@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Core
 import DashboardLayout from '../layouts/DashboardLayout';
 import PrivateRoute from '../auth/PrivateRoute';
 import RoleBasedRoute from '../auth/RoleBasedRoute';
+import FeatureGate from '../components/FeatureGate';
 
 // Public pages
 import HomePage from '../../modules/home/pages/HomePage';
@@ -94,6 +95,19 @@ import QBManualPickPage           from '../../modules/questionbank/pages/QBManua
 import AutoTestGeneratorPage      from '../../modules/questionbank/pages/AutoTestGeneratorPage';
 
 const AppRouter = () => {
+  // Surface the Single-Session kick notice on the ToastContainer that's already
+  // mounted at the app shell. AuthContext only fires the CustomEvent — keeps
+  // it decoupled from react-toastify.
+  useEffect(() => {
+    const onReplaced = (e) => {
+      toast.warning(e.detail?.message || 'You were signed out from this device.', {
+        autoClose: 6000,
+      });
+    };
+    window.addEventListener('auth:session-replaced', onReplaced);
+    return () => window.removeEventListener('auth:session-replaced', onReplaced);
+  }, []);
+
   return (
     <Router>
       <GoogleOneTap />
@@ -135,7 +149,9 @@ const AppRouter = () => {
             path="/community"
             element={
               <DashboardLayout>
-                <CommunityPage />
+                <FeatureGate feature="community">
+                  <CommunityPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />
@@ -143,7 +159,9 @@ const AppRouter = () => {
             path="/notes"
             element={
               <DashboardLayout>
-                <NotesPage />
+                <FeatureGate feature="notes">
+                  <NotesPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />
@@ -151,7 +169,9 @@ const AppRouter = () => {
             path="/videos"
             element={
               <DashboardLayout>
-                <VideosPage />
+                <FeatureGate feature="videos">
+                  <VideosPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />
@@ -456,22 +476,28 @@ const AppRouter = () => {
             }
           />
 
-          {/* Auto Test Generator — accessible to all authenticated users */}
+          {/* Auto Test Generator — gated by 'autoTest' feature for students */}
           <Route
             path="/auto-test"
             element={
               <DashboardLayout>
-                <AutoTestGeneratorPage />
+                <FeatureGate feature="autoTest">
+                  <AutoTestGeneratorPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />
 
-          {/* Student Course Routes — all authenticated users */}
+          {/* Student Course Routes — gated by 'courses' feature (master toggle).
+              Per-course access is enforced inside CourseDetailPage via the
+              hasCourseAccess() helper + the backend's requireCourseAccess middleware. */}
           <Route
             path="/student/courses"
             element={
               <DashboardLayout>
-                <CourseCatalogPage />
+                <FeatureGate feature="courses">
+                  <CourseCatalogPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />
@@ -479,7 +505,9 @@ const AppRouter = () => {
             path="/student/courses/:id"
             element={
               <DashboardLayout>
-                <CourseDetailPage />
+                <FeatureGate feature="courses">
+                  <CourseDetailPage />
+                </FeatureGate>
               </DashboardLayout>
             }
           />

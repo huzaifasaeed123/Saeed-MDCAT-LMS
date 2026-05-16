@@ -43,3 +43,58 @@ export const bulkUploadUsers = async (file) => {
   });
   return response.data;
 };
+
+// ── Feature & course access (admin-only) ───────────────────────────────────
+// Each method targets exactly one backend endpoint. The backend invalidates
+// userAccessCache + pushes 'feature_access_updated' over SSE on success, so
+// the affected user's tabs flip lock states without a refresh.
+
+// Partial update: only the keys present in `flags` are touched. Optionally
+// pass `coursesGrantAll` to flip the grant-all sub-toggle in the same call.
+// flags shape: { autoTest?, courses?, community?, videos?, notes? }
+export const updateUserFeatureAccess = async (userId, flags, opts = {}) => {
+  const body = { featureAccess: flags };
+  if (opts.coursesGrantAll !== undefined) body.coursesGrantAll = !!opts.coursesGrantAll;
+  const response = await apiClient.patch(`/users/${userId}/access`, body);
+  return response.data;
+};
+
+// Flip ONLY the coursesGrantAll sub-flag — useful from the per-user panel.
+export const setUserCoursesGrantAll = async (userId, value) => {
+  const response = await apiClient.patch(`/users/${userId}/access`, { coursesGrantAll: !!value });
+  return response.data;
+};
+
+// Apply one feature toggle to every user of `role` (defaults to 'student').
+// One backend DB updateMany + a cache wipe + an SSE nudge to all clients.
+// feature ∈ { autoTest, courses, community, videos, notes }
+export const bulkApplyAccess = async (feature, value, role = 'student') => {
+  const response = await apiClient.patch('/users/access/bulk', { feature, value: !!value, role });
+  return response.data;
+};
+
+// Replace the user's per-course allowlist in one shot.
+export const replaceUserCourseAccess = async (userId, courseIds) => {
+  const response = await apiClient.put(`/users/${userId}/course-access`, { courseIds });
+  return response.data;
+};
+
+// Grant / revoke one course at a time.
+export const grantUserCourse  = async (userId, courseId) => {
+  const response = await apiClient.post(`/users/${userId}/course-access/${courseId}`);
+  return response.data;
+};
+export const revokeUserCourse = async (userId, courseId) => {
+  const response = await apiClient.delete(`/users/${userId}/course-access/${courseId}`);
+  return response.data;
+};
+
+// One-click bulk for the per-user course-access page.
+export const grantAllCoursesToUser  = async (userId) => {
+  const response = await apiClient.post(`/users/${userId}/course-access/grant-all`);
+  return response.data;
+};
+export const revokeAllCoursesFromUser = async (userId) => {
+  const response = await apiClient.post(`/users/${userId}/course-access/revoke-all`);
+  return response.data;
+};

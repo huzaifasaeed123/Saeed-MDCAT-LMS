@@ -51,4 +51,13 @@ mcqReportSchema.index({ status: 1, createdAt: -1 });
 mcqReportSchema.index({ mcqQuestionBankId: 1 });
 mcqReportSchema.index({ mcq: 1 });
 
+// New indexes for the post-$facet getMyReports / getAllReports query paths:
+//   • Student list sort: filter on reportedBy + sort by createdAt DESC.
+//   • Teacher/admin list sort: filter on status (or handledBy) + sort by
+//     updatedAt DESC. The existing `status: 1, createdAt: -1` index was for
+//     createdAt, not updatedAt — so add the updatedAt-sorted variants.
+mcqReportSchema.index({ reportedBy: 1, createdAt: -1 });
+mcqReportSchema.index({ status: 1, updatedAt: -1 });
+mcqReportSchema.index({ handledBy: 1, updatedAt: -1 });
+
 module.exports = mongoose.model('MCQReport', mcqReportSchema);

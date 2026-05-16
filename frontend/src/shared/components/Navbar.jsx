@@ -18,7 +18,7 @@ const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to="/">Saeed MDCAT LMS</Link>
+        <Link to="/">SKN Academy LMS</Link>
       </div>
 
       <div className="navbar-menu">

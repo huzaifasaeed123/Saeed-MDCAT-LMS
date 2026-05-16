@@ -6,6 +6,14 @@ const {
   updateProfile, bulkUploadUsers,
 } = require('../controllers/userController');
 
+const {
+  updateFeatureAccess,
+  replaceCourseAccess,
+  grantCourse, revokeCourse,
+  grantAllCourses, revokeAllCourses,
+  bulkApplyAccess,
+} = require('../controllers/userAccessController');
+
 const { protect }   = require('../middleware/auth');
 const { authorize } = require('../middleware/roleCheck');
 
@@ -60,9 +68,28 @@ router.route('/')
   .get(authorize('admin'), getUsers)
   .post(authorize('admin'), userValidation, createUser);
 
+// ── Bulk access (admin only) — MUST be before /:id routes ──────────────────
+// PATCH /access/bulk  body: { feature, value, role? }
+//   Applies one feature toggle to every user of the given role in one update.
+router.patch('/access/bulk', authorize('admin'), bulkApplyAccess);
+
 router.route('/:id')
   .get(authorize('admin'), getUser)
   .put(authorize('admin'), userUpdateValidation, updateUser)
   .delete(authorize('admin'), deleteUser);
+
+// ── Per-user access management (admin only) ────────────────────────────────
+// PATCH /:id/access        — set one or more feature flags (partial update)
+//                           — body may also include coursesGrantAll (boolean)
+// PUT   /:id/course-access — replace the entire courseAccess array
+// POST  /:id/course-access/grant-all  | revoke-all
+// POST  /:id/course-access/:courseId  — grant a single course
+// DELETE /:id/course-access/:courseId — revoke a single course
+router.patch('/:id/access',                          authorize('admin'), updateFeatureAccess);
+router.put(  '/:id/course-access',                   authorize('admin'), replaceCourseAccess);
+router.post( '/:id/course-access/grant-all',         authorize('admin'), grantAllCourses);
+router.post( '/:id/course-access/revoke-all',        authorize('admin'), revokeAllCourses);
+router.post(  '/:id/course-access/:courseId',        authorize('admin'), grantCourse);
+router.delete('/:id/course-access/:courseId',        authorize('admin'), revokeCourse);
 
 module.exports = router;

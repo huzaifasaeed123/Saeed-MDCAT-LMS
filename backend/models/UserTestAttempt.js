@@ -52,6 +52,27 @@ const userTestAttemptSchema = new Schema({
     ref: 'Test',
     required: true
   },
+
+  // ── Test snapshot fields ──────────────────────────────────────────────────
+  // Denormalised at attempt-creation time (in startTest) so the History
+  // endpoint can render a row without populating Test or QuestionBank. The
+  // History endpoint went from 8-12 DB queries to 1-2 because of this.
+  //
+  // These are SNAPSHOTS — if an admin later renames the test or its QB,
+  // historical attempts still show the original name (correct UX: "what
+  // was this test called when I took it?"). For NEW attempts the latest
+  // names are captured.
+  //
+  // Existing attempts written before this field was added are backfilled
+  // by scripts/backfill-user-test-attempt-snapshots.js.
+  testTitle:         { type: String, default: '' },
+  testSubjects:      { type: [String], default: [] },
+  testChapters:      { type: [String], default: [] },
+  testTopics:        { type: [String], default: [] },
+  questionBankId:    { type: Schema.Types.ObjectId, ref: 'QuestionBank', default: null },
+  questionBankTitle: { type: String, default: '' },
+  totalQuestions:    { type: Number, default: 0 },
+
   mode: {
     type: String,
     enum: ['tutor', 'timer'],
@@ -108,5 +129,13 @@ userTestAttemptSchema.index({ user: 1, status: 1, createdAt: -1 });
 // Cold path (admin tooling) but cheap to add and turns a coll-scan into an
 // index range scan for very-popular tests with tens of thousands of attempts.
 userTestAttemptSchema.index({ test: 1, status: 1 });
+
+// History endpoint filter indexes — these support the post-denormalisation
+// filter paths in getUserTestHistory (subject / chapter / topic / qb dropdowns).
+// Compound with `user` because every filter is always scoped to the current user.
+userTestAttemptSchema.index({ user: 1, testSubjects: 1 });
+userTestAttemptSchema.index({ user: 1, testChapters: 1 });
+userTestAttemptSchema.index({ user: 1, testTopics: 1 });
+userTestAttemptSchema.index({ user: 1, questionBankId: 1 });
 
 module.exports = mongoose.model('UserTestAttempt', userTestAttemptSchema);

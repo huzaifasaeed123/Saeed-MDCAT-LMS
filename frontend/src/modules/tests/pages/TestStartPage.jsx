@@ -41,12 +41,20 @@ const TestStartPage = () => {
     Promise.all([fetchTest, fetchActive])
       .then(([testRes, activeRes]) => {
         if (!testRes.data.success) throw new Error('Test not found');
-        setTest(testRes.data.data);
+        const t = testRes.data.data;
+        setTest(t);
 
         const active = activeRes.data.data;
         if (active) {
           setExistingAttempt(active);
           setSelectedMode(active.mode);
+        } else {
+          // If the test is locked to a single mode, preselect it so the user
+          // doesn't have to make a choice that isn't theirs to make.
+          const allowed = Array.isArray(t?.allowedModes) && t.allowedModes.length > 0
+            ? t.allowedModes
+            : ['tutor', 'timer'];
+          if (allowed.length === 1) setSelectedMode(allowed[0]);
         }
         if (activeRes.data.attemptInfo?.completedAttempts != null) {
           setCompletedAttempts(activeRes.data.attemptInfo.completedAttempts);
@@ -79,6 +87,13 @@ const TestStartPage = () => {
     topics:   test?.topics?.filter(Boolean)   || [],
   };
   const hasSyllabus = syllabus.subjects.length || syllabus.chapters.length || syllabus.topics.length;
+
+  // Allowed modes drive whether the mode picker is shown. Single-entry array
+  // ⇒ that mode is forced (picker hidden). Falls back to both for legacy tests.
+  const allowedModes = Array.isArray(test?.allowedModes) && test.allowedModes.length > 0
+    ? test.allowedModes
+    : ['tutor', 'timer'];
+  const modeLocked = allowedModes.length === 1;
 
   // Attempt-limit derived state. maxAttempts comes from the test summary
   // we already loaded — NO extra server read for it. attemptsRemaining===0
@@ -232,8 +247,55 @@ const TestStartPage = () => {
         </div>
       )}
 
-      {/* Mode selection (hidden when resuming) */}
-      {!existingAttempt && (
+      {/* Locked-mode notice + time multiplier (when the test is locked to
+          timer mode the multiplier sub-picker is still meaningful). */}
+      {!existingAttempt && modeLocked && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <FiCheckCircle className="w-5 h-5 text-orange-500" />
+            <h2 className="text-base font-semibold text-gray-800">
+              {selectedMode === 'tutor' ? 'Tutor mode' : 'Timed mode'}
+            </h2>
+            <span className="text-xs text-gray-500">Set by the test creator</span>
+          </div>
+          {selectedMode === 'timer' && (
+            <>
+              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <FiClock className="w-4 h-4 text-orange-500" /> Time Allocation
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {TIME_MULTIPLIERS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTimeMultiplier(opt.value)}
+                    className={`p-3 rounded-xl border-2 text-center transition-all ${
+                      timeMultiplier === opt.value
+                        ? 'border-orange-400 bg-orange-50'
+                        : 'border-gray-200 hover:border-orange-200'
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-gray-900">{opt.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{opt.description}</p>
+                  </button>
+                ))}
+              </div>
+              {totalQuestions > 0 && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-orange-700 bg-orange-50 rounded-xl px-4 py-2.5">
+                  <FiClock className="w-4 h-4 flex-shrink-0" />
+                  <span>
+                    Total time: <strong>{calculatedDurationMin} min</strong>
+                    {' '}({totalQuestions} questions × {selectedMultiplier?.secsPerQ ?? 60} sec each)
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Mode selection (hidden when resuming, hidden when locked to a single mode) */}
+      {!existingAttempt && !modeLocked && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
           <h2 className="text-base font-semibold text-gray-800 mb-4">Select Test Mode</h2>
           <div className="grid grid-cols-2 gap-4">

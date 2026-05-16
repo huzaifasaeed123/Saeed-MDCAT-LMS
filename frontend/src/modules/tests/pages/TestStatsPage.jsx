@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiArrowLeft, FiDownload, FiRefreshCw, FiAward, FiClock, FiUsers, FiTarget, FiCheckCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiDownload, FiRefreshCw, FiAward, FiClock, FiUsers, FiTarget, FiCheckCircle, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 
 const fmtSecs = (s) => {
@@ -16,6 +16,9 @@ const TestStatsPage = () => {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  // Which top-scorer row's "Student details" panel is currently expanded.
+  // Only one open at a time keeps the table from ballooning.
+  const [expandedRow, setExpandedRow] = useState(null);
 
   const fetchStats = async () => {
     try {
@@ -171,9 +174,9 @@ const TestStatsPage = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-500 border-b">
+                  <th className="py-2 pr-2 w-8" />
                   <th className="py-2 pr-4">#</th>
                   <th className="py-2 pr-4">Student</th>
-                  <th className="py-2 pr-4">Email</th>
                   <th className="py-2 pr-4">Score</th>
                   <th className="py-2 pr-4">%</th>
                   <th className="py-2 pr-4">Time</th>
@@ -181,17 +184,55 @@ const TestStatsPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {topScorers.map((s, i) => (
-                  <tr key={s.attemptId} className="border-b last:border-0">
-                    <td className="py-2 pr-4 text-gray-500">{i + 1}</td>
-                    <td className="py-2 pr-4 font-medium text-gray-800">{s.userName || '—'}</td>
-                    <td className="py-2 pr-4 text-gray-600">{s.userEmail || '—'}</td>
-                    <td className="py-2 pr-4">{s.score}/{s.maxScore}</td>
-                    <td className="py-2 pr-4 font-semibold">{(s.scorePercentage || 0).toFixed(1)}%</td>
-                    <td className="py-2 pr-4">{fmtSecs(s.totalTimeSpent)}</td>
-                    <td className="py-2 pr-4 capitalize">{s.mode}</td>
-                  </tr>
-                ))}
+                {topScorers.map((s, i) => {
+                  const open = expandedRow === s.attemptId;
+                  // Show expand button only if the student has any extra
+                  // profile info worth revealing.
+                  const hasExtra = s.userFatherName || s.userProvince || s.userDistrict || s.userClass || s.userStudentStatus || s.userFscCollege || s.userFscBoard || s.userContact;
+                  return (
+                    <React.Fragment key={s.attemptId}>
+                      <tr className="border-b last:border-0">
+                        <td className="py-2 pr-2 align-top">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRow(open ? null : s.attemptId)}
+                            disabled={!hasExtra}
+                            className="p-1 rounded text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-default"
+                            title={hasExtra ? (open ? 'Hide details' : 'Show details') : 'No extra details'}
+                          >
+                            {open ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
+                          </button>
+                        </td>
+                        <td className="py-2 pr-4 text-gray-500 align-top">{i + 1}</td>
+                        <td className="py-2 pr-4 align-top">
+                          <div className="font-medium text-gray-800 leading-tight">{s.userName || '—'}</div>
+                          {s.userFatherName && <div className="text-xs text-gray-500 leading-tight mt-0.5">s/o {s.userFatherName}</div>}
+                          <div className="text-xs text-gray-500 leading-tight mt-0.5 truncate max-w-[260px]">{s.userEmail || '—'}</div>
+                        </td>
+                        <td className="py-2 pr-4 align-top">{s.score}/{s.maxScore}</td>
+                        <td className="py-2 pr-4 font-semibold align-top">{(s.scorePercentage || 0).toFixed(1)}%</td>
+                        <td className="py-2 pr-4 align-top">{fmtSecs(s.totalTimeSpent)}</td>
+                        <td className="py-2 pr-4 capitalize align-top">{s.mode}</td>
+                      </tr>
+                      {open && hasExtra && (
+                        <tr className="bg-gray-50/70 border-b">
+                          <td />
+                          <td colSpan={6} className="py-3 pr-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-2 text-xs">
+                              {s.userContact && (<DetailCell k="Contact" v={s.userContact} />)}
+                              {s.userProvince && (<DetailCell k="Province" v={s.userProvince} />)}
+                              {s.userDistrict && (<DetailCell k="District" v={s.userDistrict} />)}
+                              {s.userClass && (<DetailCell k="Class" v={s.userClass} />)}
+                              {s.userStudentStatus && (<DetailCell k="Status" v={s.userStudentStatus} />)}
+                              {s.userFscCollege && (<DetailCell k="FSC College" v={s.userFscCollege} />)}
+                              {s.userFscBoard && (<DetailCell k="FSC Board" v={s.userFscBoard} />)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -267,6 +308,14 @@ const Row = ({ k, v }) => (
 // map of "where did students go wrong" obvious at a glance.
 const PickCell = ({ value, highlight }) => (
   <td className={`py-2 pr-2 ${highlight ? 'text-emerald-600 font-semibold' : 'text-gray-700'}`}>{value}%</td>
+);
+
+// Single key/value cell in the "Student details" expand panel.
+const DetailCell = ({ k, v }) => (
+  <div>
+    <div className="text-[10px] font-mono uppercase tracking-wider text-gray-400">{k}</div>
+    <div className="text-gray-800">{v}</div>
+  </div>
 );
 
 export default TestStatsPage;

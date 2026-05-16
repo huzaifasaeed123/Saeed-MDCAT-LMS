@@ -11,12 +11,16 @@ const useAuth = () => {
 
   const {
     user, updateUser, clearUser, loading,
+    featureAccess, setFeatureAccess,
+    coursesGrantAll, setCoursesGrantAll,
+    courseAccess,  setCourseAccess,
     msgUnreadCount, notifUnreadCount,
     notifications, setNotifications,
     announcements, setAnnouncements,
     announcementUnreadCount, setAnnouncementUnreadCount,
     syllabusDueCount, setSyllabusDueCount,
     syllabusStreak,   setSyllabusStreak,
+    activeUsers,
   } = context;
 
   const login = async (credentials) => {
@@ -42,6 +46,32 @@ const useAuth = () => {
   };
 
   const hasRole = (role) => user?.role === role;
+  const isAdmin   = hasRole('admin');
+  const isTeacher = hasRole('teacher');
+  const isStudent = hasRole('student');
+
+  // Staff (admin/teacher) bypass all feature locks — must match the backend
+  // featureGate middleware exactly so client + server agree.
+  const isStaff = isAdmin || isTeacher;
+
+  // hasFeature(key) — true if staff OR the flag is set.
+  // 'courses' is special: derived from grant-all OR per-course allowlist
+  // (there's no separate master flag on the User model).
+  const hasFeature = (key) => {
+    if (isStaff) return true;
+    if (key === 'courses') return !!coursesGrantAll || courseAccess.length > 0;
+    return !!featureAccess?.[key];
+  };
+
+  // hasCourseAccess(courseId) — true if:
+  //   • user is staff, OR
+  //   • coursesGrantAll is on, OR
+  //   • the course id is in the per-course allowlist.
+  const hasCourseAccess = (courseId) => {
+    if (isStaff) return true;
+    if (coursesGrantAll) return true;
+    return !!courseId && courseAccess.includes(String(courseId));
+  };
 
   return {
     user,
@@ -51,9 +81,18 @@ const useAuth = () => {
     register,
     logout,
     isAuthenticated: !!user,
-    isAdmin:          hasRole('admin'),
-    isTeacher:        hasRole('teacher'),
-    isStudent:        hasRole('student'),
+    isAdmin,
+    isTeacher,
+    isStudent,
+    isStaff,
+    featureAccess,
+    setFeatureAccess,
+    coursesGrantAll,
+    setCoursesGrantAll,
+    courseAccess,
+    setCourseAccess,
+    hasFeature,
+    hasCourseAccess,
     msgUnreadCount,
     notifUnreadCount,
     notifications,
@@ -66,6 +105,9 @@ const useAuth = () => {
     setSyllabusDueCount,
     syllabusStreak,
     setSyllabusStreak,
+    // Admin-only: live presence count streamed via SSE. Shape is
+    // { users, connections } or null until the first SSE frame arrives.
+    activeUsers,
   };
 };
 

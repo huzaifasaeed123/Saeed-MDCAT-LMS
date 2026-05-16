@@ -22,6 +22,9 @@ const TestFormPage = () => {
     // null = unlimited (default). When the admin flips the toggle off, this
     // becomes a positive integer that startTest enforces against students.
     maxAttempts: null,
+    // Allowed test modes. Both = student picks at start (default). Pick a
+    // single mode to lock the test to that mode.
+    allowedModes: ['tutor', 'timer'],
   });
 
   useEffect(() => {
@@ -41,6 +44,9 @@ const TestFormPage = () => {
           difficultyLevel: d.difficultyLevel || 'Medium',
           instructions: d.instructions || '',
           maxAttempts: d.maxAttempts ?? null,
+          allowedModes: Array.isArray(d.allowedModes) && d.allowedModes.length > 0
+            ? d.allowedModes
+            : ['tutor', 'timer'],
         });
       }
     } catch {
@@ -143,6 +149,60 @@ const TestFormPage = () => {
                 <option value="Hard">Hard</option>
               </select>
             </div>
+          </div>
+
+          {/* Allowed test modes — multi-select. Both checked (default) lets
+              the student pick at start. Lock to one mode to force it. */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Test Modes</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'tutor', label: 'Tutor mode',  hint: 'Instant feedback per question' },
+                { value: 'timer', label: 'Timed mode',  hint: 'Single time-budgeted attempt' },
+              ].map((opt) => {
+                const checked = formData.allowedModes.includes(opt.value);
+                return (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setFormData((p) => {
+                      // Toggle, but never let the array become empty — at
+                      // least one mode must remain selected.
+                      const next = checked
+                        ? p.allowedModes.filter((m) => m !== opt.value)
+                        : [...p.allowedModes, opt.value];
+                      return { ...p, allowedModes: next.length > 0 ? next : p.allowedModes };
+                    })}
+                    className={`flex-1 min-w-[160px] text-left p-3 rounded-xl border-2 transition-colors ${
+                      checked
+                        ? 'border-primary-400 bg-primary-50 dark:bg-primary-950/30 dark:border-primary-700'
+                        : 'border-gray-200 dark:border-[var(--border)] hover:border-primary-200 dark:hover:border-primary-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-[var(--text-strong)]">{opt.label}</span>
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                        checked
+                          ? 'bg-primary-500 border-primary-500'
+                          : 'border-gray-300 dark:border-[var(--border)]'
+                      }`}>
+                        {checked && (
+                          <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                            <path d="M10 3L5 8.5 2 5.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{opt.hint}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {formData.allowedModes.length === 2
+                ? 'Both modes allowed — student picks at start.'
+                : `Test locked to ${formData.allowedModes[0]} mode.`}
+            </p>
           </div>
 
           {/* Attempt limit — toggle "Unlimited" on/off; show number input when off */}

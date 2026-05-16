@@ -10,12 +10,23 @@ import DrivePdfViewer   from '../../../../shared/components/DrivePdfViewer';
 import DriveVideoPlayer from '../../../../shared/components/DriveVideoPlayer';
 import StructureCourseView from './StructureCourseView';
 import DateCourseView      from './DateCourseView';
+import useAuth from '../../../../core/auth/useAuth';
+import LockedFeaturePage from '../../../access/pages/LockedFeaturePage';
 
 const STATIC_BASE = 'http://localhost:5000';
 
 const CourseDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { hasCourseAccess, loading: authLoading } = useAuth();
+
+  // Per-course allowlist gate. The master 'courses' FeatureGate is applied
+  // by AppRouter, so we know the user has the master toggle. Here we block
+  // students who don't have THIS specific course unlocked — the backend's
+  // requireCourseAccess will 403, this gives a clean lock page client-side.
+  if (!authLoading && !hasCourseAccess(id)) {
+    return <LockedFeaturePage feature="courses" courseId={id} />;
+  }
 
   const [course,    setCourse]    = useState(null);
   const [loading,   setLoading]   = useState(true);

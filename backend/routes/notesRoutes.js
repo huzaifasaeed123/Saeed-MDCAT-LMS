@@ -1,6 +1,7 @@
 const express        = require('express');
 const { protect }    = require('../middleware/auth');
 const { authorize }  = require('../middleware/roleCheck');
+const { requireFeature } = require('../middleware/featureGate');
 
 const {
   getContents,
@@ -20,6 +21,9 @@ router.use((req, _res, next) => { req.section = 'notes'; next(); });
 // All routes require a valid JWT session.
 // NOTE: stream endpoint is mounted in app.js before uploadRoutes.
 router.use(protect);
+
+// Feature gate — students need explicit 'notes' access; staff bypass.
+router.use(requireFeature('notes'));
 
 // Reads — any authenticated user
 router.get('/contents',            getContents);

@@ -185,7 +185,12 @@ async function recomputeAllTime() {
 
   await LeaderboardSnapshot.findOneAndUpdate(
     { type: 'alltime', subjectTitle: null },
-    { entries: buildEntries(top50, userMap), computedAt: new Date(), periodStart: null },
+    {
+      entries:     buildEntries(top50, userMap),
+      totalRanked: allScored.length,   // dashboard percentile reads from here
+      computedAt:  new Date(),
+      periodStart: null,
+    },
     { upsert: true },
   );
   await saveAllUserRanks(allScored, 'alltime', null, false);

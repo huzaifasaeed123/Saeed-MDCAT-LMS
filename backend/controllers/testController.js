@@ -455,32 +455,46 @@ const _buildTestStats = async (testId) => {
   }
 
   // ── Hydrate user names (top scorers + per-attempt rows) in ONE find ────
+  // Include the optional student profile fields so the Excel export can show
+  // father/province/district/class/etc. without a second round-trip.
   const userIds = [...new Set(f.attempts.map((a) => a.user?.toString()).filter(Boolean))]
     .map((id) => new mongoose.Types.ObjectId(id));
   const users   = await User.find({ _id: { $in: userIds } })
-    .select('_id fullName email')
+    .select('_id fullName email contactNumber fatherName province district studentClass studentStatus fscCollegeName fscBoard')
     .lean();
   const userMap = Object.fromEntries(users.map((u) => [u._id.toString(), u]));
 
   const completedAttempts = f.attempts
     .filter((a) => a.status === 'completed')
-    .map((a) => ({
-      attemptId:   a._id,
-      userId:      a.user,
-      userName:    userMap[a.user?.toString()]?.fullName || '',
-      userEmail:   userMap[a.user?.toString()]?.email    || '',
-      mode:        a.mode,
-      score:       a.score,
-      maxScore:    a.maxScore,
-      scorePercentage: a.scorePercentage,
-      totalTimeSpent:  a.totalTimeSpent,
-      answeredCount:   a.answeredCount,
-      correctCount:    a.correctCount,
-      reportedCount:   a.reportedCount,
-      startTime:       a.startTime,
-      endTime:         a.endTime,
-      createdAt:       a.createdAt,
-    }));
+    .map((a) => {
+      const u = userMap[a.user?.toString()] || {};
+      return {
+        attemptId:   a._id,
+        userId:      a.user,
+        userName:    u.fullName      || '',
+        userEmail:   u.email         || '',
+        // Optional student profile fields — empty string when not set.
+        userContact:       u.contactNumber  || '',
+        userFatherName:    u.fatherName     || '',
+        userProvince:      u.province       || '',
+        userDistrict:      u.district       || '',
+        userClass:         u.studentClass   || '',
+        userStudentStatus: u.studentStatus  || '',
+        userFscCollege:    u.fscCollegeName || '',
+        userFscBoard:      u.fscBoard       || '',
+        mode:        a.mode,
+        score:       a.score,
+        maxScore:    a.maxScore,
+        scorePercentage: a.scorePercentage,
+        totalTimeSpent:  a.totalTimeSpent,
+        answeredCount:   a.answeredCount,
+        correctCount:    a.correctCount,
+        reportedCount:   a.reportedCount,
+        startTime:       a.startTime,
+        endTime:         a.endTime,
+        createdAt:       a.createdAt,
+      };
+    });
 
   const topScorers = completedAttempts
     .slice()
@@ -598,12 +612,18 @@ exports.exportTestStats = async (req, res) => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
 
     // ── Sheet 2: Attempts (one row per completed attempt) ──────────────
+    // Student profile columns sit after the standard identity columns so the
+    // first 4 columns of the export remain stable for downstream tooling.
     const attemptHeader = [
-      'Student', 'Email', 'Mode', 'Score', 'Max', 'Score %', 'Answered', 'Correct',
+      'Student', 'Email', 'Contact', 'Father Name',
+      'Province', 'District', 'Class', 'Status', 'FSC College', 'FSC Board',
+      'Mode', 'Score', 'Max', 'Score %', 'Answered', 'Correct',
       'Reported', 'Time (mm:ss)', 'Started', 'Ended',
     ];
     const attemptRows = stats.completedAttempts.map((a) => [
-      a.userName, a.userEmail, a.mode, a.score, a.maxScore, a.scorePercentage,
+      a.userName, a.userEmail, a.userContact, a.userFatherName,
+      a.userProvince, a.userDistrict, a.userClass, a.userStudentStatus, a.userFscCollege, a.userFscBoard,
+      a.mode, a.score, a.maxScore, a.scorePercentage,
       a.answeredCount, a.correctCount, a.reportedCount,
       fmtSecs(a.totalTimeSpent), fmtDate(a.startTime), fmtDate(a.endTime),
     ]);
@@ -627,21 +647,30 @@ exports.exportTestStats = async (req, res) => {
     // ── Sheet 4 (optional): per-attempt × per-question audit trail ─────
     // Heavy. For a 40k×200 test this would be 8M rows — opt-in only.
     if (req.query.detail === '1') {
-      const detailHeader = ['Student', 'Email', 'Attempt', 'Q#', 'Selected', 'Correct', 'Is Correct', 'Reported', 'Marked'];
+      const detailHeader = [
+        'Student', 'Email', 'Father Name', 'Province', 'District', 'Class', 'Status', 'FSC College', 'FSC Board',
+        'Attempt', 'Q#', 'Selected', 'Correct', 'Is Correct', 'Reported', 'Marked',
+      ];
       const detailRows = [];
       // We need questionAttempts for each attempt; fetch them once.
       const fullAttempts = await UserTestAttempt.find({ test: req.params.id })
         .select('user mode questionAttempts createdAt')
         .lean();
       const userIds = [...new Set(fullAttempts.map((a) => a.user?.toString()))].map((id) => new mongoose.Types.ObjectId(id));
-      const users   = await User.find({ _id: { $in: userIds } }).select('_id fullName email').lean();
+      const users   = await User.find({ _id: { $in: userIds } })
+        .select('_id fullName email fatherName province district studentClass studentStatus fscCollegeName fscBoard')
+        .lean();
       const uMap    = Object.fromEntries(users.map((u) => [u._id.toString(), u]));
 
       for (const a of fullAttempts) {
         const u = uMap[a.user?.toString()] || {};
         a.questionAttempts.forEach((qa, idx) => {
           detailRows.push([
-            u.fullName || '', u.email || '', String(a._id), idx + 1,
+            u.fullName || '', u.email || '',
+            u.fatherName || '', u.province || '', u.district || '',
+            u.studentClass || '', u.studentStatus || '',
+            u.fscCollegeName || '', u.fscBoard || '',
+            String(a._id), idx + 1,
             qa.selectedOption || '', qa.correctOption || '',
             qa.isCorrect ? 'Yes' : 'No',
             qa.reported  ? 'Yes' : 'No',

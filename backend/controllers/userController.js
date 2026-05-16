@@ -1,15 +1,51 @@
 const User    = require('../models/User');
 const XLSX    = require('xlsx');
 const { validationResult } = require('express-validator');
+const dashboardCache = require('../utils/dashboardCache');
 
-// ─── GET /api/users  (paginated + search + filter) ───────────────────────────
-// Query params: page, limit, search (matches name OR email), role
+// Optional student profile fields shared across createUser / updateUser /
+// updateProfile / register. All are optional + trimmed; empty strings clear
+// the field, allowing users to remove a previously-set value via the form.
+const OPTIONAL_PROFILE_FIELDS = [
+  'fatherName',
+  'province',
+  'district',
+  'studentClass',
+  'studentStatus',
+  'fscCollegeName',
+  'fscBoard',
+];
+
+// Pull only known profile fields from a request body. Trims strings; passes
+// undefined through so callers can distinguish "not provided" (skip) from
+// "" (explicit clear).
+const pickProfileFields = (body = {}) => {
+  const out = {};
+  for (const f of OPTIONAL_PROFILE_FIELDS) {
+    if (body[f] === undefined) continue;
+    out[f] = typeof body[f] === 'string' ? body[f].trim() : body[f];
+  }
+  return out;
+};
+
+// ─── GET /api/users  (paginated + search + filters) ──────────────────────────
+// Query params:
+//   page, limit          — pagination (limit capped at 100)
+//   search               — case-insensitive partial match on name/email/contact
+//   role                 — exact match (student/teacher/admin)
+//   province             — exact match against User.province
+//   district             — case-insensitive partial match (lets admin type
+//                          "kara" to find all Karachi sub-districts)
+//   studentClass         — exact match (XI / XII / FSC Completed)
+//   studentStatus        — exact match (Fresher / Repeater)
+//   fscBoard             — case-insensitive partial match
+// All filters AND-combine. Returned `total` reflects the filtered set.
 exports.getUsers = async (req, res) => {
   try {
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, parseInt(req.query.limit) || 20);
     const skip   = (page - 1) * limit;
-    const role   = req.query.role;   // 'student' | 'teacher' | 'admin' | undefined
+    const role   = req.query.role;
     const search = req.query.search?.trim();
 
     const filter = {};
@@ -23,6 +59,21 @@ exports.getUsers = async (req, res) => {
         { contactNumber:{ $regex: search, $options: 'i' } },
       ];
     }
+    // Profile-field filters — empty strings ignored so the UI can send the
+    // current select value without conditionals.
+    const eqIfSet = (key, val) => {
+      if (typeof val === 'string' && val.trim() !== '') filter[key] = val.trim();
+    };
+    const regexIfSet = (key, val) => {
+      if (typeof val === 'string' && val.trim() !== '') {
+        filter[key] = { $regex: val.trim(), $options: 'i' };
+      }
+    };
+    eqIfSet('province',       req.query.province);
+    eqIfSet('studentClass',   req.query.studentClass);
+    eqIfSet('studentStatus',  req.query.studentStatus);
+    regexIfSet('district',    req.query.district);
+    regexIfSet('fscBoard',    req.query.fscBoard);
 
     const [users, total] = await Promise.all([
       User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -35,7 +86,7 @@ exports.getUsers = async (req, res) => {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     });
   } catch (error) {
     console.error('getUsers error:', error);
@@ -63,12 +114,14 @@ exports.createUser = async (req, res) => {
   }
   try {
     const { fullName, email, contactNumber, password, role } = req.body;
+    const profile = pickProfileFields(req.body);
 
     if (await User.findOne({ email })) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    const user = await User.create({ fullName, email, contactNumber, password, role });
+    const user = await User.create({ fullName, email, contactNumber, password, role, ...profile });
+    // Admin dashboard cache is refreshed manually by admins — see dashboardController.
     res.status(201).json({ success: true, data: user });
   } catch (error) {
     console.error('createUser error:', error);
@@ -80,7 +133,10 @@ exports.createUser = async (req, res) => {
 // Whitelist of fields admins are allowed to set via this endpoint. Everything
 // else (sessionVersion, resetPasswordToken, lockUntil, loginAttempts, googleId,
 // firstFailedAt, createdAt) is internal state and must never be set by the API.
-const ADMIN_UPDATABLE_FIELDS = ['fullName', 'email', 'contactNumber', 'role', 'profilePicture'];
+const ADMIN_UPDATABLE_FIELDS = [
+  'fullName', 'email', 'contactNumber', 'role', 'profilePicture',
+  ...OPTIONAL_PROFILE_FIELDS,
+];
 
 exports.updateUser = async (req, res) => {
   const errors = validationResult(req);
@@ -121,6 +177,8 @@ exports.deleteUser = async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     await user.deleteOne();
+    // Drop the deleted user's per-user cache; admin cache is refreshed manually.
+    dashboardCache.invalidateUser(user._id);
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     console.error('deleteUser error:', error);
@@ -192,6 +250,7 @@ exports.bulkUploadUsers = async (req, res) => {
       results.created++;
     }
 
+    // Admin dashboard cache is refreshed manually by admins after a bulk upload.
     res.status(200).json({
       success: true,
       message: `${results.created} user(s) created, ${results.skipped} skipped`,
@@ -204,21 +263,65 @@ exports.bulkUploadUsers = async (req, res) => {
 };
 
 // ─── PUT /api/users/profile (self-update) ────────────────────────────────────
+// Password change requires the user's CURRENT password as proof — even if the
+// JWT is valid (which it always is for an authenticated request), we don't
+// want a stolen session to be able to swap the password and lock the owner
+// out. We load the existing hash, compare, and only then accept the new one.
+//
+// Exception: Google-only accounts (signed in via OAuth, no local password
+// set yet) can set a password without supplying "current" — there's nothing
+// to verify against. After that, future changes require the current one.
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { fullName, contactNumber, password, profilePicture } = req.body;
+    const { fullName, contactNumber, password, currentPassword, profilePicture } = req.body;
+    const wantsPasswordChange = password && String(password).trim() !== '';
 
-    const user = await User.findById(userId);
+    // Load with the password hash only when we actually need to verify it.
+    // Skipping +password on no-password updates keeps the projection lean.
+    const user = wantsPasswordChange
+      ? await User.findById(userId).select('+password')
+      : await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    if (wantsPasswordChange) {
+      // Verify the current password — but only if the user already has one.
+      // Google-only accounts (no local password yet) skip the check.
+      if (user.password) {
+        if (!currentPassword || !String(currentPassword).trim()) {
+          return res.status(400).json({
+            success: false,
+            field:   'currentPassword',
+            message: 'Current password is required to change your password.',
+          });
+        }
+        const matches = await user.matchPassword(currentPassword);
+        if (!matches) {
+          return res.status(401).json({
+            success: false,
+            field:   'currentPassword',
+            message: 'Current password is incorrect.',
+          });
+        }
+      }
+      // Pre-save hook hashes the new password before persisting.
+      user.password = password;
+    }
 
     if (fullName)    user.fullName    = fullName;
     if (contactNumber) user.contactNumber = contactNumber;
     if (profilePicture !== undefined) user.profilePicture = profilePicture;
-    if (password && password.trim()) user.password = password;
+
+    // Optional student profile fields — empty string clears the field.
+    const profile = pickProfileFields(req.body);
+    for (const [k, v] of Object.entries(profile)) user[k] = v;
 
     await user.save();
-    res.status(200).json({ success: true, data: user });
+
+    // Strip the password hash from the response so it never goes over the wire.
+    const safe = user.toObject();
+    delete safe.password;
+    res.status(200).json({ success: true, data: safe });
   } catch (error) {
     console.error('updateProfile error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });

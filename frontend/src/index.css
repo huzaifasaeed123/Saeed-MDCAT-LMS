@@ -3,29 +3,149 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles */
+/* ──────────────────────────────────────────────────────────────────────────
+   SKN ACADEMY LMS · DESIGN TOKENS
+   Primary  = ORANGE (#f97316) — buttons, CTAs, active sidebar, focus rings.
+   Secondary = VIOLET (#6d28d9) — hero stages, brand gradients, support chips.
+   Brand gradient (logo + heading accents): violet → magenta → orange.
+   Two themes via the `.dark` class on <html> (Tailwind darkMode: 'class').
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Brand gradients — used for the logo wordmark, hero stages, and the
+     single accent span on auth headings. NEVER for primary buttons. */
+  --grad-brand:       linear-gradient(95deg, #6d28d9 0%, #a21caf 40%, #ec4899 65%, #f97316 100%);
+  --grad-brand-vivid: linear-gradient(135deg, #6d28d9 0%, #a21caf 45%, #ec4899 70%, #f97316 100%);
+  --grad-brand-soft:  linear-gradient(95deg, rgba(109,40,217,.10), rgba(249,115,22,.10));
+
+  /* Type stack */
+  --font:         'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ─── Light theme (default) ─────────────────────────────────────────────── */
+
+:root {
+  --bg:            #faf7f2;   /* ✓ keep — warm cream */
+  --bg-surface:    #ffffff;   /* ✓ keep — pure white cards */
+  --bg-elevated:   #ffffff;
+  --bg-muted:      #f4efe7;   /* CHANGE from #f4f3f8  (chip/input fill) */
+  --bg-subtle:     #fbf8f3;   /* ADD — for inset/subtle cards */
+  --bg-inset:      #f7f2ea;   /* ADD — announcement / summary blocks */
+
+  --border:        #ece5d7;   /* CHANGE from #ebe9f1  (1px dividers)   */
+  --border-strong: #d6cdb9;   /* CHANGE from #d8d5e2  (focused inputs) */
+  --border-faint:  #f3ede2;   /* ADD — list-row separators            */
+
+  --text:          #1a1714;   /* CHANGE from #15131c  (warm near-black) */
+  --text-strong:   #0c0a08;   /* CHANGE from #08070d                    */
+  --text-muted:    #6b6358;   /* CHANGE from #5f5b73  (warm gray, was purple) */
+  --text-faint:    #a39988;   /* CHANGE from #9591a8                    */
+}
+
+/* ─── Dark theme (.dark on <html>) ──────────────────────────────────────── */
+.dark {
+  --bg:           #0a0a0f;
+  --bg-surface:   #111118;
+  --bg-elevated:  #16151f;
+  --bg-muted:     #15141d;
+  --border:       #232230;
+  --border-strong:#3a3848;
+  --text:         #f5f3fb;
+  --text-strong:  #ffffff;
+  --text-muted:   #a09cb5;
+  --text-faint:   #6b6781;
+  --shadow-sm:    0 1px 2px rgba(0, 0, 0, .4);
+  --shadow:       0 4px 16px -4px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .35);
+}
+
+/* App-wide background + body font.
+   Body uses Inter (var(--font)); headings opt in to Plus Jakarta Sans via
+   the `font-display` Tailwind class. */
+html, body {
+  background: var(--bg);
+  color: var(--text);
+}
+body {
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ─── Brand utilities (Tailwind-compatible) ────────────────────────────── */
+@layer utilities {
+  /* Gradient text — pair with display sizes for hero/marketing copy.
+     Used sparingly: the logo wordmark, a single accent word in hero
+     headings. NOT for body text or buttons. */
+  .text-brand-gradient {
+    background: var(--grad-brand-vivid);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .bg-brand-gradient { background: var(--grad-brand-vivid); }
+  .bg-brand-gradient-soft { background: var(--grad-brand-soft); }
+
+  /* Semantic surface helpers — let pages reference theme tokens without
+     remembering hex values or stacking dark: variants everywhere. */
+  .surface       { background: var(--bg-surface); color: var(--text); }
+  .surface-muted { background: var(--bg-muted);   color: var(--text); }
+  .surface-elev  { background: var(--bg-elevated); color: var(--text); }
+  .border-token  { border-color: var(--border); }
+  .text-muted    { color: var(--text-muted); }
+  .text-faint    { color: var(--text-faint); }
+}
+
+/* ─── Component classes ────────────────────────────────────────────────── */
 @layer components {
+  /* PRIMARY CTA — solid orange, subtle hover lift, orange glow.
+     Matches the design-system reference. Stops being a gradient — that's
+     reserved for the brand-stage backgrounds + logo wordmark. */
+  .btn-brand {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-white transition-all;
+    background-color: #f97316;
+    box-shadow: 0 4px 14px -4px rgba(249, 115, 22, .55);
+  }
+  .btn-brand:hover {
+    background-color: #ea580c;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px -6px rgba(249, 115, 22, .7);
+  }
+  .btn-brand:disabled,
+  .btn-brand[disabled] {
+    opacity: .6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 4px 14px -4px rgba(249, 115, 22, .35);
+  }
+
+  /* Secondary outline button — used for cancel/back actions next to a btn-brand. */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold transition-colors;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: var(--bg-muted); }
+
+  /* Legacy button helpers (preserved for backwards compatibility with pages
+     that haven't migrated yet). They now use the orange palette since
+     primary-* was flipped. */
   .btn {
     @apply px-4 py-2 rounded-md transition-colors duration-200 font-medium;
   }
-  
-  .btn-primary {
-    @apply bg-primary-600 text-white hover:bg-primary-700;
-  }
-  
-  .btn-secondary {
-    @apply bg-gray-500 text-white hover:bg-gray-600;
-  }
-  
-  .btn-sm {
-    @apply px-2 py-1 text-sm;
-  }
-  
+  .btn-primary { @apply bg-primary-600 text-white hover:bg-primary-700; }
+  .btn-secondary { @apply bg-gray-500 text-white hover:bg-gray-600; }
+  .btn-sm { @apply px-2 py-1 text-sm; }
+
+  /* Form controls — use the theme token surface + border so dark mode
+     just works without dark: variants on every input. */
   .form-control {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px solid var(--border);
   }
-  
-  .error-text {
-    @apply text-red-500 text-sm mt-1;
-  }
+  .error-text { @apply text-red-500 text-sm mt-1; }
 }

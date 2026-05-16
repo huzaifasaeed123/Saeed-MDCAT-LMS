@@ -86,6 +86,9 @@ exports.createReply = async (req, res) => {
     // Increment reply count on post (fire-and-forget).
     Post.updateOne({ _id: postId }, { $inc: { replyCount: 1 } }).catch(console.error);
 
+    // Dashboard cache is NOT invalidated here. The 3-min SWR fresh window
+    // handles freshness without forcing a rebuild on every reply.
+
     // Award reply points + capture the value for the response toast.
     const pts = await getPointValues();   // cached, no DB call
     awardPoints(userId, pts.reply);       // fire-and-forget

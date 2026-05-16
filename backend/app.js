@@ -30,6 +30,7 @@ const videosRoutes       = require('./routes/videosRoutes');
 const leaderboardRoutes  = require('./routes/leaderboardRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const syllabusRoutes     = require('./routes/syllabusRoutes');
+const dashboardRoutes    = require('./routes/dashboardRoutes');
 const { openStream }     = require('./controllers/streamController');
 const app = express();
 
@@ -114,9 +115,10 @@ app.use('/api/videos',      videosRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/syllabus',      syllabusRoutes);
+app.use('/api/dashboard',     dashboardRoutes);
 // Basic route
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to Saeed MDCAT LMS API' });
+  res.json({ message: 'Welcome to SKN Academy LMS API' });
 });
 
 

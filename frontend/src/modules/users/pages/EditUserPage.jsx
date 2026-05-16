@@ -5,8 +5,9 @@ import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { getUserById, updateUser } from '../services/userService';
+import FeatureAccessPanel from '../components/FeatureAccessPanel';
+import StudentProfileFields from '../../../shared/components/StudentProfileFields';
 
-// Validation schema for editing users
 const EditUserSchema = Yup.object().shape({
   fullName: Yup.string()
     .required('Full name is required')
@@ -33,74 +34,81 @@ const EditUserPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch user data on component mount
   useEffect(() => {
     const fetchUser = async () => {
       try {
         setLoading(true);
         const response = await getUserById(id);
-
         if (response.success) {
           setUser(response.data);
         } else {
           setError('Failed to fetch user data');
           toast.error('Failed to fetch user data');
         }
-      } catch (error) {
-        setError(error.response?.data?.message || 'Failed to fetch user');
+      } catch (err) {
+        setError(err.response?.data?.message || 'Failed to fetch user');
         toast.error('Failed to fetch user');
       } finally {
         setLoading(false);
       }
     };
-
     fetchUser();
   }, [id]);
 
-  // Handle form submission
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      const response = await updateUser(id, values);
-
+      const payload = { ...values };
+      if (payload.district === '__OTHER__') payload.district = '';
+      const response = await updateUser(id, payload);
       if (response.success) {
         toast.success('User updated successfully');
         navigate('/admin/users');
       }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update user');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update user');
     } finally {
       setSubmitting(false);
     }
   };
 
   if (loading) {
-    return <div className="loading">Loading user data...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
+      </div>
+    );
   }
+  if (error)  return <div className="error-message">{error}</div>;
+  if (!user)  return <div className="error-message">User not found</div>;
 
-  if (error) {
-    return <div className="error-message">{error}</div>;
-  }
-
-  if (!user) {
-    return <div className="error-message">User not found</div>;
-  }
-
-  // Initial form values from user data
   const initialValues = {
     fullName: user.fullName || '',
     email: user.email || '',
     contactNumber: user.contactNumber || '',
     role: user.role || 'student',
-    password: '', // Empty password field for existing users
+    password: '',
+    // Optional student profile fields — fall back to empty strings so the
+    // form is always controlled (Formik dislikes undefined values).
+    fatherName:     user.fatherName     || '',
+    province:       user.province       || '',
+    district:       user.district       || '',
+    studentClass:   user.studentClass   || '',
+    studentStatus:  user.studentStatus  || '',
+    fscCollegeName: user.fscCollegeName || '',
+    fscBoard:       user.fscBoard       || '',
   };
 
   return (
-    <div className="edit-user-page">
-      <div className="page-header">
-        <h1>Edit User</h1>
+    <div className="max-w-3xl mx-auto space-y-6 pb-8">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Edit User</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{user.fullName} · {user.email}</p>
       </div>
 
-      <div className="user-form-container">
+      {/* ── Profile form ──────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-base font-bold text-gray-800 mb-4">Profile</h3>
+
         <Formik
           initialValues={initialValues}
           validationSchema={EditUserSchema}
@@ -108,53 +116,57 @@ const EditUserPage = () => {
           enableReinitialize
         >
           {({ isSubmitting }) => (
-            <Form className="user-form">
-              <div className="form-group">
-                <label htmlFor="fullName">Full Name</label>
-                <Field type="text" name="fullName" id="fullName" className="form-control" />
-                <ErrorMessage name="fullName" component="div" className="error-text" />
+            <Form className="space-y-4">
+              <div>
+                <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <Field type="text" name="fullName" id="fullName" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <ErrorMessage name="fullName" component="div" className="text-xs text-rose-600 mt-1" />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <Field type="email" name="email" id="email" className="form-control" />
-                <ErrorMessage name="email" component="div" className="error-text" />
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <Field type="email" name="email" id="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <ErrorMessage name="email" component="div" className="text-xs text-rose-600 mt-1" />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="contactNumber">Contact Number</label>
-                <Field type="text" name="contactNumber" id="contactNumber" className="form-control" />
-                <ErrorMessage name="contactNumber" component="div" className="error-text" />
+              <div>
+                <label htmlFor="contactNumber" className="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                <Field type="text" name="contactNumber" id="contactNumber" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <ErrorMessage name="contactNumber" component="div" className="text-xs text-rose-600 mt-1" />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="role">Role</label>
-                <Field as="select" name="role" id="role" className="form-control">
+              <div>
+                <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <Field as="select" name="role" id="role" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="student">Student</option>
                   <option value="teacher">Teacher</option>
                   <option value="admin">Admin</option>
                 </Field>
-                <ErrorMessage name="role" component="div" className="error-text" />
+                <ErrorMessage name="role" component="div" className="text-xs text-rose-600 mt-1" />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="password">Password (Leave empty to keep current)</label>
-                <Field type="password" name="password" id="password" className="form-control" />
-                <ErrorMessage name="password" component="div" className="error-text" />
-                <small className="form-text text-muted">
-                  Only enter a password if you want to change it.
-                </small>
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-gray-400 font-normal">(leave empty to keep current)</span></label>
+                <Field type="password" name="password" id="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <ErrorMessage name="password" component="div" className="text-xs text-rose-600 mt-1" />
               </div>
 
-              <div className="form-buttons">
-                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'Updating...' : 'Update User'}
+              {/* Optional student profile fields — empty values clear stored data. */}
+              <StudentProfileFields variant="simple" />
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Updating…' : 'Save Profile'}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
                   onClick={() => navigate('/admin/users')}
                   disabled={isSubmitting}
+                  className="px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -163,6 +175,18 @@ const EditUserPage = () => {
           )}
         </Formik>
       </div>
+
+      {/* ── Access panel — student only ──────────────────────────────────── */}
+      {/*    Staff bypass the locks server-side, so showing toggles for
+            admin/teacher rows would be misleading. */}
+      {user.role === 'student' && (
+        <FeatureAccessPanel
+          userId={id}
+          initialFeatureAccess={user.featureAccess}
+          initialCoursesGrantAll={user.coursesGrantAll}
+          initialCourseAccess={user.courseAccess}
+        />
+      )}
     </div>
   );
 };

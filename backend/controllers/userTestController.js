@@ -253,13 +253,30 @@ exports.startTest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Mode must be either tutor or timer' });
     }
 
-    // Single fetch — populate mcqs to avoid a second Test.findById call
-    const test = await Test.findById(testId).populate('mcqs');
+    // Single fetch — populate mcqs to avoid a second Test.findById call.
+    // QB is populated WITH select('title') so we can snapshot the QB title
+    // into the new attempt for the History endpoint — zero extra queries.
+    const test = await Test.findById(testId)
+      .populate('mcqs')
+      .populate({ path: 'questionBankId', select: 'title' });
     if (!test) {
       return res.status(404).json({ success: false, message: 'Test not found' });
     }
     if (test.status !== 'published' && test.createdBy?.toString() !== req.user.id) {
       return res.status(400).json({ success: false, message: 'Test is not published' });
+    }
+
+    // Reject modes the test creator hasn't allowed. Defensive against old
+    // documents written before allowedModes existed: an empty/missing array
+    // falls back to "either mode permitted" so legacy tests don't break.
+    const allowed = Array.isArray(test.allowedModes) && test.allowedModes.length > 0
+      ? test.allowedModes
+      : ['tutor', 'timer'];
+    if (!allowed.includes(mode)) {
+      return res.status(400).json({
+        success: false,
+        message: `This test only allows ${allowed.join(' or ')} mode.`,
+      });
     }
 
     // Resume existing in-progress attempt
@@ -322,14 +339,27 @@ exports.startTest = async (req, res) => {
       };
     });
 
+    // Snapshot test metadata into the attempt — the History endpoint reads
+    // these directly instead of populating Test + QuestionBank on every load.
+    // Captured ONCE at attempt-creation time; if admin later renames the test
+    // or QB, this attempt keeps the original names (correct UX).
+    const qb = test.questionBankId; // populated above
     const newAttempt = await UserTestAttempt.create({
-      user:             req.user.id,
-      test:             testId,
+      user:              req.user.id,
+      test:              testId,
       mode,
-      startTime:        new Date(),
-      maxScore:         mcqs.length,
+      startTime:         new Date(),
+      maxScore:          mcqs.length,
       questionAttempts,
-      totalDurationSec: totalDurationSec || null,
+      totalDurationSec:  totalDurationSec || null,
+      // Snapshot fields ↓
+      testTitle:         test.title || '',
+      testSubjects:      Array.isArray(test.subjects) ? test.subjects.slice() : [],
+      testChapters:      Array.isArray(test.chapters) ? test.chapters.slice() : [],
+      testTopics:        Array.isArray(test.topics)   ? test.topics.slice()   : [],
+      questionBankId:    qb?._id || qb || null,
+      questionBankTitle: qb?.title || '',
+      totalQuestions:    mcqs.length,
     });
 
     const populatedAttempt = await UserTestAttempt.findById(newAttempt._id)
@@ -699,6 +729,14 @@ exports.completeTest = async (req, res) => {
     updateUserMcqHistory(attempt);  // fire-and-forget — does not block the response
     updateMcqOptionStats(attempt);  // fire-and-forget — increments per-option pick counts
 
+    // Dashboard summary cache for this user is now stale (test stats changed
+    // — students DO refresh the dashboard right after finishing a test to see
+    // their new score). Cheap: just deletes one Map entry.
+    // Admin cache is NOT invalidated — admins refresh manually for fresh KPIs.
+    try {
+      require('../utils/dashboardCache').invalidateUser(req.user.id);
+    } catch { /* never fail the response on a cache miss */ }
+
     const totalQuestions   = attempt.questionAttempts.length;
     const answeredQuestions = attempt.questionAttempts.filter((q) => q.selectedOption !== null).length;
     const accuracy          = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
@@ -736,112 +774,140 @@ exports.getUserTestHistory = async (req, res) => {
     const page  = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const skip  = (page - 1) * limit;
+    const isFirstPage = page === 1;
 
-    // Attempt-level filters (direct fields on UserTestAttempt)
-    const attemptQuery = { user: req.user.id };
-    if (req.query.status && req.query.status !== 'all') attemptQuery.status = req.query.status;
-    if (req.query.mode   && req.query.mode   !== 'all') attemptQuery.mode   = req.query.mode;
+    // ── Build filter on UserTestAttempt directly ────────────────────────────
+    // Thanks to the test-snapshot fields (testTitle, testSubjects, …,
+    // questionBankId) we can apply every filter on UserTestAttempt without
+    // ever joining Test. That kills the old "Test.find first, then filter
+    // attempts" round-trip.
+    const q = { user: req.user.id };
+    if (req.query.status && req.query.status !== 'all') q.status = req.query.status;
+    if (req.query.mode   && req.query.mode   !== 'all') q.mode   = req.query.mode;
 
     if (req.query.date && req.query.date !== 'all') {
       const now = Date.now();
       if (req.query.date === 'today') {
         const d = new Date(); d.setHours(0, 0, 0, 0);
-        attemptQuery.createdAt = { $gte: d };
+        q.createdAt = { $gte: d };
       } else if (req.query.date === 'week') {
-        attemptQuery.createdAt = { $gte: new Date(now - 7 * 86400000) };
+        q.createdAt = { $gte: new Date(now - 7  * 86400000) };
       } else if (req.query.date === 'month') {
-        attemptQuery.createdAt = { $gte: new Date(now - 30 * 86400000) };
+        q.createdAt = { $gte: new Date(now - 30 * 86400000) };
       }
     }
 
-    // Test-level filters — resolve matching Test IDs first, then filter attempts
     const { search, subject, chapter, topic, qbId } = req.query;
-    const hasTestFilter = search || (subject && subject !== 'all') || (chapter && chapter !== 'all') ||
-                          (topic && topic !== 'all') || (qbId && qbId !== 'all');
-    if (hasTestFilter) {
-      const testQuery = {};
-      if (search)                        testQuery.title         = { $regex: search, $options: 'i' };
-      if (subject && subject !== 'all')  testQuery.subjects      = subject;
-      if (chapter && chapter !== 'all')  testQuery.chapters      = chapter;
-      if (topic   && topic   !== 'all')  testQuery.topics        = topic;
-      if (qbId    && qbId    !== 'all')  testQuery.questionBankId = qbId;
-      const matchingIds = await Test.find(testQuery).select('_id').lean();
-      attemptQuery.test = { $in: matchingIds.map((t) => t._id) };
-    }
+    if (search)                       q.testTitle      = { $regex: search, $options: 'i' };
+    if (subject && subject !== 'all') q.testSubjects   = subject;
+    if (chapter && chapter !== 'all') q.testChapters   = chapter;
+    if (topic   && topic   !== 'all') q.testTopics     = topic;
+    if (qbId    && qbId    !== 'all') q.questionBankId = qbId;
 
-    // Paginated data — only selectedOption from questionAttempts (rest is excluded)
-    const [rawAttempts, total] = await Promise.all([
-      UserTestAttempt.find(attemptQuery)
+    // ── Page-2+ fast path: ONE query total ─────────────────────────────────
+    // Pull `limit + 1` rows so we know whether more pages exist (hasMore)
+    // without the cost of a separate countDocuments(). Stats + filterOptions
+    // were sent on page 1 — frontend caches them and reuses on subsequent pages.
+    const PROJECTION = 'test mode status score maxScore scorePercentage answeredCount ' +
+                       'startTime endTime totalTimeSpent createdAt ' +
+                       'testTitle testSubjects testChapters testTopics ' +
+                       'questionBankId questionBankTitle totalQuestions';
+
+    if (!isFirstPage) {
+      const docs = await UserTestAttempt.find(q)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
-        .select('test mode status score maxScore scorePercentage startTime endTime totalTimeSpent createdAt questionAttempts.selectedOption')
-        .populate({
-          path: 'test',
-          select: 'title subjects chapters topics subject unit questionBankId',
-          populate: { path: 'questionBankId', select: 'title' },
-        })
+        .limit(limit + 1) // +1 sentinel for hasMore detection
+        .select(PROJECTION)
+        .lean();
+      const hasMore = docs.length > limit;
+      return res.status(200).json({
+        success: true,
+        data:    hasMore ? docs.slice(0, limit) : docs,
+        page,
+        hasMore,
+      });
+    }
+
+    // ── Page 1: TWO queries total ──────────────────────────────────────────
+    // 1) Attempts find (with hasMore sentinel)
+    // 2) One $facet aggregation that computes stats + filter options together
+    //
+    // All of this runs against UserTestAttempt only — no joins. Filter options
+    // are derived from the same denormalised arrays the History row reads from.
+    const oid = new mongoose.Types.ObjectId(req.user.id);
+
+    const [docs, [metaAgg]] = await Promise.all([
+      UserTestAttempt.find(q)
+        .sort({ createdAt: -1 })
+        .limit(limit + 1)
+        .select(PROJECTION)
         .lean(),
-      UserTestAttempt.countDocuments(attemptQuery),
+
+      // ONE aggregation, three branches via $facet — all on UserTestAttempt.
+      UserTestAttempt.aggregate([
+        { $match: { user: oid } },
+        {
+          $facet: {
+            stats: [
+              { $group: {
+                  _id:       null,
+                  total:     { $sum: 1 },
+                  completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+                  abandoned: { $sum: { $cond: [{ $eq: ['$status', 'abandoned'] }, 1, 0] } },
+                  sumScore:  { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$scorePercentage', 0] } },
+              }},
+            ],
+            subjects: [
+              { $unwind: '$testSubjects' },
+              { $group: { _id: '$testSubjects' } },
+              { $match: { _id: { $nin: [null, ''] } } },
+              { $sort:  { _id: 1 } },
+            ],
+            chapters: [
+              { $unwind: '$testChapters' },
+              { $group: { _id: '$testChapters' } },
+              { $match: { _id: { $nin: [null, ''] } } },
+              { $sort:  { _id: 1 } },
+            ],
+            topics: [
+              { $unwind: '$testTopics' },
+              { $group: { _id: '$testTopics' } },
+              { $match: { _id: { $nin: [null, ''] } } },
+              { $sort:  { _id: 1 } },
+            ],
+            qbs: [
+              { $match: { questionBankId: { $ne: null } } },
+              { $group: { _id: '$questionBankId', title: { $first: '$questionBankTitle' } } },
+              { $sort:  { title: 1 } },
+            ],
+          },
+        },
+      ]),
     ]);
 
-    // Replace questionAttempts array with a single answeredCount scalar
-    const attempts = rawAttempts.map((a) => {
-      const answeredCount = (a.questionAttempts || []).filter((qa) => qa.selectedOption).length;
-      const { questionAttempts: _omit, ...rest } = a;
-      return { ...rest, answeredCount };
-    });
+    const hasMore = docs.length > limit;
+    const data    = hasMore ? docs.slice(0, limit) : docs;
 
-    // Summary stats — computed from ALL user attempts (unaffected by current filter)
-    const [statsAgg] = await UserTestAttempt.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(req.user.id) } },
-      { $group: {
-        _id:       null,
-        total:     { $sum: 1 },
-        completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-        sumScore:  { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$scorePercentage', 0] } },
-      }},
-    ]);
-    const s = statsAgg || { total: 0, completed: 0, sumScore: 0 };
+    const s = metaAgg?.stats?.[0] || { total: 0, completed: 0, abandoned: 0, sumScore: 0 };
     const stats = {
       total:     s.total,
       completed: s.completed,
+      abandoned: s.abandoned,
       avgScore:  s.completed > 0 ? Math.round(s.sumScore / s.completed) : 0,
     };
-
-    // Filter options — distinct values from ALL user's test history (for dropdowns)
-    const allTestIds = await UserTestAttempt.distinct('test', { user: req.user.id });
-    const allTests   = await Test.find({ _id: { $in: allTestIds } })
-      .select('subjects chapters topics subject unit questionBankId')
-      .populate('questionBankId', 'title')
-      .lean();
-
-    const subjs = new Set(), chaps = new Set(), tops = new Set();
-    const qbMap = {};
-    allTests.forEach((t) => {
-      (t.subjects || []).forEach((v) => v && subjs.add(v));
-      if (t.subject) subjs.add(t.subject);
-      (t.chapters || []).forEach((v) => v && chaps.add(v));
-      if (t.unit) chaps.add(t.unit);
-      (t.topics || []).forEach((v) => v && tops.add(v));
-      const qb = t.questionBankId;
-      if (qb) qbMap[(qb._id || qb).toString()] = qb.title || (qb._id || qb).toString();
-    });
     const filterOptions = {
-      subjects: [...subjs].sort(),
-      chapters: [...chaps].sort(),
-      topics:   [...tops].sort(),
-      qbs:      Object.entries(qbMap)
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, title]) => ({ id, title })),
+      subjects: (metaAgg?.subjects || []).map((x) => x._id),
+      chapters: (metaAgg?.chapters || []).map((x) => x._id),
+      topics:   (metaAgg?.topics   || []).map((x) => x._id),
+      qbs:      (metaAgg?.qbs      || []).map((x) => ({ id: String(x._id), title: x.title || '' })),
     };
 
-    res.status(200).json({
-      success:       true,
-      data:          attempts,
-      total,
+    return res.status(200).json({
+      success: true,
+      data,
       page,
-      pages:         Math.ceil(total / limit) || 1,
+      hasMore,
       stats,
       filterOptions,
     });

@@ -29,6 +29,19 @@ const testSchema = new Schema(
     instructions: String,
     mcqs: [{ type: Schema.Types.ObjectId, ref: 'MCQ' }],
 
+    // Which test modes are allowed for this test.
+    //   ['tutor', 'timer']  → student picks at start (default behaviour)
+    //   ['tutor']           → locked to tutor — picker hidden
+    //   ['timer']           → locked to timer — picker hidden, only the
+    //                          time-multiplier sub-picker remains visible
+    // Set by the creator: student auto-tests lock to whichever mode they
+    // picked on the Create page; staff can permit one or both.
+    allowedModes: {
+      type: [String],
+      enum: ['tutor', 'timer'],
+      default: ['tutor', 'timer'],
+    },
+
     // Question Bank linkage (optional — set when test is QB-linked)
     questionBankId: { type: Schema.Types.ObjectId, ref: 'QuestionBank' },
     qbSubjectId:    { type: Schema.Types.ObjectId },

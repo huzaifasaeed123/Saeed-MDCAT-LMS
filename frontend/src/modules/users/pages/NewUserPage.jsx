@@ -5,6 +5,8 @@ import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import { createUser } from '../services/userService';
+import StudentProfileFields from '../../../shared/components/StudentProfileFields';
+import { EMPTY_STUDENT_PROFILE } from '../../../shared/constants/studentProfile';
 
 // Validation schema for creating new users
 const NewUserSchema = Yup.object().shape({
@@ -31,7 +33,9 @@ const NewUserPage = () => {
   // Handle form submission
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      const response = await createUser(values);
+      const payload = { ...values };
+      if (payload.district === '__OTHER__') payload.district = '';
+      const response = await createUser(payload);
 
       if (response.success) {
         toast.success('User created successfully');
@@ -44,13 +48,14 @@ const NewUserPage = () => {
     }
   };
 
-  // Initial form values
+  // Initial form values — admin can fill optional student fields too.
   const initialValues = {
     fullName: '',
     email: '',
     contactNumber: '',
     role: 'student',
     password: '',
+    ...EMPTY_STUDENT_PROFILE,
   };
 
   return (
@@ -99,6 +104,11 @@ const NewUserPage = () => {
                 <label htmlFor="password">Password</label>
                 <Field type="password" name="password" id="password" className="form-control" />
                 <ErrorMessage name="password" component="div" className="error-text" />
+              </div>
+
+              {/* Optional student profile fields — admin can fill on behalf of student. */}
+              <div className="space-y-4">
+                <StudentProfileFields variant="simple" />
               </div>
 
               <div className="form-buttons">

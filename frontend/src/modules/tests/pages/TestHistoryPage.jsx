@@ -1,56 +1,140 @@
-import { useState, useEffect, useRef } from 'react';
+// src/modules/tests/pages/TestHistoryPage.jsx
+//
+// SKN Academy LMS — Test History (post-redesign).
+//   • 4 KPI cards: total / completed / avg score / best streak.
+//   • Single filter row (search + 4 selects + clear button).
+//   • Attempt list: table-style row on md+, stacked card on mobile.
+//   • Score shown as a colored SVG donut with the percentage in the middle.
+//   • Full light + dark mode via Tailwind dark: variants.
+//   • Action buttons (Resume / Results / Review / Retake) keep all existing
+//     navigation; only the visual treatment changed.
+//
+// Functionality preserved exactly: filters, pagination, debounced search,
+// loading states, empty state, all status/mode/subject filter wiring.
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
-  FiCheckCircle, FiXCircle, FiPlayCircle, FiEye,
-  FiBarChart2, FiZap, FiCalendar, FiFilter, FiChevronLeft,
-  FiChevronRight, FiSearch, FiBook, FiLayers, FiChevronDown, FiChevronUp, FiX
+  FiCheckCircle, FiPlayCircle, FiEye, FiBarChart2, FiZap,
+  FiSearch, FiX, FiChevronLeft, FiChevronRight,
+  FiFileText, FiTarget, FiTrendingUp, FiSliders,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const PAGE_SIZE = 20;
 
 const formatDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-const ScoreBadge = ({ pct }) => {
-  const bg = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-orange-500' : 'bg-red-400';
+// ── SVG score donut ─────────────────────────────────────────────────────────
+// Smaller version of what you'd find on dashboards. Stroke colour follows
+// the score range — green ≥ 80, orange 50–79, red < 50. Track is theme-aware.
+const ScoreDonut = ({ pct = 0, size = 48 }) => {
+  const safe = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const r    = (size - 6) / 2;          // radius (3px stroke padding)
+  const c    = 2 * Math.PI * r;         // circumference
+  const dash = (safe / 100) * c;
+
+  // Stroke colour buckets — tuned to match the mockup's traffic-light cues.
+  const stroke = safe >= 80
+    ? '#10b981'   // emerald-500
+    : safe >= 50
+      ? '#f97316' // primary-500 (orange)
+      : '#ef4444'; // red-500
+
   return (
-    <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${bg}`}>
-      {pct}%
-    </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
+      {/* Track */}
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        className="stroke-[var(--border)]"
+        strokeWidth="3"
+      />
+      {/* Progress arc */}
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${c - dash}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text
+        x="50%" y="50%"
+        textAnchor="middle"
+        dy="0.34em"
+        className="fill-[var(--text-strong)] font-bold"
+        style={{ fontSize: size <= 48 ? 12 : 14 }}
+      >
+        {safe}%
+      </text>
+    </svg>
   );
 };
 
+// ── Status pill — matches mockup labels: Passed / Below 50% / In Progress / Abandoned
 const StatusBadge = ({ status, scorePercent }) => {
   if (status === 'completed') {
     const passed = scorePercent >= 50;
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-        {passed ? <FiCheckCircle className="w-3 h-3" /> : <FiXCircle className="w-3 h-3" />}
-        {passed ? 'Passed' : 'Failed'}
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold
+        ${passed
+          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'}`}
+      >
+        {passed ? <FiCheckCircle className="w-3 h-3" /> : null}
+        {passed ? 'Passed' : 'Below 50%'}
       </span>
     );
   }
   if (status === 'in-progress') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
         <FiPlayCircle className="w-3 h-3" /> In Progress
       </span>
     );
   }
-  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Abandoned</span>;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-500 dark:bg-[var(--bg-surface)] dark:text-[var(--text-faint)]">
+      Abandoned
+    </span>
+  );
+};
+
+// ── KPI card: icon tile + label + value + sub
+const Kpi = ({ Icon, label, value, sub, tone = 'orange' }) => {
+  const TONES = {
+    orange:  'bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300',
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+    violet:  'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+    blue:    'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+  };
+  return (
+    <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-4 flex items-start gap-3">
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${TONES[tone]}`}>
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</div>
+        <div className="font-display text-2xl font-extrabold text-[var(--text-strong)] mt-0.5 leading-none">{value}</div>
+        {sub && <div className="text-[11px] text-[var(--text-faint)] mt-1">{sub}</div>}
+      </div>
+    </div>
+  );
 };
 
 const TestHistoryPage = () => {
   const navigate = useNavigate();
 
   const [attempts, setAttempts]         = useState([]);
-  const [total, setTotal]               = useState(0);
-  const [pages, setPages]               = useState(1);
-  const [stats, setStats]               = useState({ total: 0, completed: 0, avgScore: 0 });
+  // Pagination is now hasMore-based (no totalPages). Page 1 also returns
+  // stats + filterOptions; the frontend caches those and reuses on pages 2+.
+  const [hasMore, setHasMore]           = useState(false);
+  const [stats, setStats]               = useState({ total: 0, completed: 0, avgScore: 0, abandoned: 0, bestStreak: 0 });
   const [filterOptions, setFilterOptions] = useState({ subjects: [], chapters: [], topics: [], qbs: [] });
   const [loading, setLoading]           = useState(true);
-  const [showFilters, setShowFilters]   = useState(true);
 
   // Filter state
   const [searchText, setSearchText]       = useState('');
@@ -66,6 +150,24 @@ const TestHistoryPage = () => {
   // Debounce search to avoid calling the API on every keystroke
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimer = useRef(null);
+
+  // Desktop: secondary filters (chapter / topic / QB) hide behind a "More"
+  // toggle so the primary row stays compact at common widths.
+  const [showMore, setShowMore] = useState(false);
+  // Mobile: a single "Filters" button collapses ALL selects into a sheet.
+  // Avoids the 3-row stack of selects that looked busy on phones.
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  // Active-filter count powers the badge on the mobile "Filters" button.
+  const activeFilterCount = (
+    (statusFilter   !== 'all' ? 1 : 0) +
+    (modeFilter     !== 'all' ? 1 : 0) +
+    (subjectFilter  !== 'all' ? 1 : 0) +
+    (chapterFilter  !== 'all' ? 1 : 0) +
+    (topicFilter    !== 'all' ? 1 : 0) +
+    (qbFilter       !== 'all' ? 1 : 0) +
+    (dateFilter     !== 'all' ? 1 : 0)
+  );
   useEffect(() => {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => setDebouncedSearch(searchText), 400);
@@ -91,9 +193,10 @@ const TestHistoryPage = () => {
     apiClient.get(`/user-tests/history?${params}`)
       .then((res) => {
         setAttempts(res.data.data || []);
-        setTotal(res.data.total || 0);
-        setPages(res.data.pages || 1);
-        if (res.data.stats)         setStats(res.data.stats);
+        setHasMore(!!res.data.hasMore);
+        // Backend only sends stats + filterOptions on page 1 (saves queries
+        // on subsequent pages). Frontend keeps the cached versions otherwise.
+        if (res.data.stats)         setStats((s) => ({ ...s, ...res.data.stats }));
         if (res.data.filterOptions) setFilterOptions(res.data.filterOptions);
       })
       .catch(() => toast.error('Failed to load history'))
@@ -110,296 +213,482 @@ const TestHistoryPage = () => {
     setQbFilter('all'); setDateFilter('all');
   };
 
+  // Tailwind shared classes for the filter dropdowns + inputs.
+  const inputCls =
+    'px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-sm ' +
+    'text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-primary-400 transition';
+
+  // Subtitle: matches the mockup's tri-stat summary.
+  const abandoned = Math.max(0, stats.abandoned ?? (stats.total - stats.completed));
+  const subtitle = `${stats.total} total attempt${stats.total === 1 ? '' : 's'} · ${stats.completed} completed · ${abandoned} abandoned`;
+
+  // ── Push page header into the top bar ─────────────────────────────────
+  // These hooks MUST sit above any early `return` so the hook order stays
+  // stable across renders (Rules of Hooks). The layout's PageHeaderContext
+  // renders title + subtitle on the left and the action button on the right
+  // of the global top bar.
+  const headerAction = useMemo(() => (
+    <button
+      onClick={() => navigate('/auto-test')}
+      className="btn-brand text-sm whitespace-nowrap"
+    >
+      <FiZap className="w-4 h-4" /> New practice test
+    </button>
+  ), [navigate]);
+  usePageHeader({
+    title:    'Test History',
+    subtitle,
+    action:   headerAction,
+  });
+
   if (loading && attempts.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500" />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Test History</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{stats.total} total attempt{stats.total !== 1 ? 's' : ''}</p>
-        </div>
-        <button
-          onClick={() => navigate('/auto-test')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
-        >
-          <FiZap className="w-4 h-4" /> New Practice Test
-        </button>
+    <div className="max-w-6xl mx-auto">
+      {/* Mobile-only action button — top bar hides the action below md so we
+          render it inline here on small screens. */}
+      <div className="md:hidden mb-4">{headerAction}</div>
+
+      {/* ── KPI cards — 2-col on mobile, 4-col on lg+ ─────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <Kpi
+          Icon={FiFileText}
+          label="Total tests"
+          value={stats.total}
+          sub={stats.total > 0 ? 'all-time attempts' : 'no tests yet'}
+          tone="orange"
+        />
+        <Kpi
+          Icon={FiCheckCircle}
+          label="Completed"
+          value={stats.completed}
+          sub={stats.total > 0 ? `${Math.round((stats.completed / Math.max(1, stats.total)) * 100)}% completion` : '—'}
+          tone="emerald"
+        />
+        <Kpi
+          Icon={FiTarget}
+          label="Avg score"
+          value={`${stats.avgScore ?? 0}%`}
+          sub={stats.completed > 0 ? 'across completed' : '—'}
+          tone="violet"
+        />
+        <Kpi
+          Icon={FiTrendingUp}
+          label="Best streak"
+          value={stats.bestStreak ? `${stats.bestStreak} in a row` : '—'}
+          sub={stats.bestStreak ? 'passed ≥ 70%' : 'build a streak'}
+          tone="blue"
+        />
       </div>
 
-      {/* Summary stats */}
-      {stats.total > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            <p className="text-xs text-gray-400 mt-1">Total Tests</p>
+      {/* ── Filter bar ──────────────────────────────────────────────────────
+          Two distinct layouts for the two breakpoints:
+            • Mobile (<md): only Search + a "Filters" button (with active count
+              badge) + Clear. Tapping Filters reveals all selects in a 2-column
+              grid below — replaces the cramped wrapping multi-row layout.
+            • Desktop (≥md): inline Search + Status + Mode + Subject + Time
+              + "More" (reveals secondary filters) + Clear. */}
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-2 sm:p-3 mb-5">
+        {/* Primary row — visible at every breakpoint */}
+        <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative flex-1 min-w-0">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search test, topic, chapter…"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className={`${inputCls} pl-10 w-full`}
+            />
           </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
-            <p className="text-xs text-gray-400 mt-1">Completed</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-            <p className="text-2xl font-bold text-orange-500">{stats.avgScore}%</p>
-            <p className="text-xs text-gray-400 mt-1">Avg Score</p>
-          </div>
-        </div>
-      )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <FiFilter className="w-4 h-4" /> Filters
-            {hasActiveFilter && (
-              <span className="ml-1 px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-xs">active</span>
+          {/* ── Mobile-only single "Filters" button ─────────────────────── */}
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen((v) => !v)}
+            className={`md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors flex-shrink-0 ${
+              mobileFiltersOpen || activeFilterCount > 0
+                ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300'
+                : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
+            aria-expanded={mobileFiltersOpen}
+            aria-label="Filters"
+          >
+            <FiSliders className="w-3.5 h-3.5" />
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="ml-0.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-primary-500 text-white text-[10px] font-bold">
+                {activeFilterCount}
+              </span>
             )}
-          </div>
-          <button onClick={() => setShowFilters((v) => !v)} className="text-gray-400 hover:text-gray-600">
-            {showFilters ? <FiChevronUp /> : <FiChevronDown />}
           </button>
+
+          {/* ── Desktop inline selects (hidden on mobile) ───────────────── */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`${inputCls} flex-shrink-0 hidden md:block`}
+            aria-label="Status"
+          >
+            <option value="all">Status</option>
+            <option value="completed">Completed</option>
+            <option value="in-progress">In progress</option>
+            <option value="abandoned">Abandoned</option>
+          </select>
+          <select
+            value={modeFilter}
+            onChange={(e) => setModeFilter(e.target.value)}
+            className={`${inputCls} flex-shrink-0 hidden md:block`}
+            aria-label="Mode"
+          >
+            <option value="all">Mode</option>
+            <option value="tutor">Tutor</option>
+            <option value="timer">Timed</option>
+          </select>
+          {filterOptions.subjects.length > 0 && (
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              className={`${inputCls} flex-shrink-0 hidden md:block`}
+              aria-label="Subject"
+            >
+              <option value="all">Subject</option>
+              {filterOptions.subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className={`${inputCls} flex-shrink-0 hidden md:block`}
+            aria-label="Date range"
+          >
+            <option value="all">Time</option>
+            <option value="today">Today</option>
+            <option value="week">Last 7 days</option>
+            <option value="month">Last 30 days</option>
+          </select>
+
+          {/* Desktop "More" toggle */}
+          {(filterOptions.chapters.length || filterOptions.topics.length || filterOptions.qbs.length) > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowMore((v) => !v)}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border transition-colors flex-shrink-0 ${
+                showMore
+                  ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+              }`}
+              aria-expanded={showMore}
+            >
+              <FiSliders className="w-3.5 h-3.5" />
+              <span>More</span>
+            </button>
+          )}
+
+          {/* Clear — both layouts (only visible when something is active) */}
+          {hasActiveFilter && (
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors flex-shrink-0"
+              title="Clear all filters"
+            >
+              <FiX className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Clear</span>
+            </button>
+          )}
         </div>
 
-        {showFilters && (
-          <>
-            <div className="relative mb-3">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search by test name…"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-3">
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                <option value="all">All Status</option>
-                <option value="completed">Completed</option>
-                <option value="in-progress">In Progress</option>
+        {/* ── Mobile filter sheet (expanded panel, full-width selects) ─── */}
+        {mobileFiltersOpen && (
+          <div className="md:hidden mt-3 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Status">
+              <option value="all">Status</option>
+              <option value="completed">Completed</option>
+              <option value="in-progress">In progress</option>
+              <option value="abandoned">Abandoned</option>
+            </select>
+            <select value={modeFilter} onChange={(e) => setModeFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Mode">
+              <option value="all">Mode</option>
+              <option value="tutor">Tutor</option>
+              <option value="timer">Timed</option>
+            </select>
+            {filterOptions.subjects.length > 0 && (
+              <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Subject">
+                <option value="all">Subject</option>
+                {filterOptions.subjects.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
-
-              <select value={modeFilter} onChange={(e) => setModeFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                <option value="all">All Modes</option>
-                <option value="tutor">Tutor Mode</option>
-                <option value="timer">Timed Mode</option>
-              </select>
-
-              <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="week">Last 7 Days</option>
-                <option value="month">Last 30 Days</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {filterOptions.subjects.length > 0 && (
-                <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  <option value="all">All Subjects</option>
-                  {filterOptions.subjects.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              )}
-
-              {filterOptions.chapters.length > 0 && (
-                <select value={chapterFilter} onChange={(e) => setChapterFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  <option value="all">All Chapters</option>
-                  {filterOptions.chapters.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              )}
-
-              {filterOptions.topics.length > 0 && (
-                <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  <option value="all">All Topics</option>
-                  {filterOptions.topics.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              )}
-
-              {filterOptions.qbs.length > 0 && (
-                <select value={qbFilter} onChange={(e) => setQbFilter(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  <option value="all">All QBs</option>
-                  {filterOptions.qbs.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
-                </select>
-              )}
-            </div>
-
-            {hasActiveFilter && (
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-400">Showing {total} result{total !== 1 ? 's' : ''}</p>
-                <button onClick={clearFilters}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-red-500 border border-red-200 hover:bg-red-50">
-                  <FiX className="w-3 h-3" /> Clear filters
-                </button>
-              </div>
             )}
-          </>
+            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Date range">
+              <option value="all">Time</option>
+              <option value="today">Today</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+            </select>
+            {filterOptions.chapters.length > 0 && (
+              <select value={chapterFilter} onChange={(e) => setChapterFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Chapter">
+                <option value="all">Chapter</option>
+                {filterOptions.chapters.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            {filterOptions.topics.length > 0 && (
+              <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className={`${inputCls} w-full`} aria-label="Topic">
+                <option value="all">Topic</option>
+                {filterOptions.topics.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {filterOptions.qbs.length > 0 && (
+              <select value={qbFilter} onChange={(e) => setQbFilter(e.target.value)} className={`${inputCls} w-full col-span-2`} aria-label="Question bank">
+                <option value="all">Question bank</option>
+                {filterOptions.qbs.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* ── Desktop secondary filters (under the "More" toggle) ──────── */}
+        {showMore && (filterOptions.chapters.length || filterOptions.topics.length || filterOptions.qbs.length) > 0 && (
+          <div className="hidden md:flex items-center gap-2 flex-wrap mt-2 pt-2 border-t border-[var(--border)]">
+            {filterOptions.chapters.length > 0 && (
+              <select value={chapterFilter} onChange={(e) => setChapterFilter(e.target.value)} className={`${inputCls} flex-shrink-0`} aria-label="Chapter">
+                <option value="all">Chapter</option>
+                {filterOptions.chapters.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            {filterOptions.topics.length > 0 && (
+              <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className={`${inputCls} flex-shrink-0`} aria-label="Topic">
+                <option value="all">Topic</option>
+                {filterOptions.topics.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {filterOptions.qbs.length > 0 && (
+              <select value={qbFilter} onChange={(e) => setQbFilter(e.target.value)} className={`${inputCls} flex-shrink-0`} aria-label="Question bank">
+                <option value="all">Question bank</option>
+                {filterOptions.qbs.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
+              </select>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Loading overlay for filter changes */}
+      {/* ── Loading overlay (for filter changes when list already has items) */}
       {loading && attempts.length > 0 && (
         <div className="flex justify-center py-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500" />
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500" />
         </div>
       )}
 
-      {/* Empty state */}
+      {/* ── Empty state ─────────────────────────────────────────────────── */}
       {!loading && attempts.length === 0 && (
-        <div className="text-center py-16">
+        <div className="text-center py-16 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
           <div className="text-5xl mb-4">📝</div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">No tests found</h3>
-          <p className="text-sm text-gray-400 mb-6">Try adjusting your filters or create a new practice test.</p>
-          <button onClick={() => navigate('/auto-test')} className="px-6 py-2.5 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600">
-            Create Practice Test
+          <h3 className="text-lg font-semibold text-[var(--text)] mb-2">No tests found</h3>
+          <p className="text-sm text-[var(--text-faint)] mb-6">
+            {hasActiveFilter ? 'Try adjusting your filters.' : 'Create your first practice test to see it here.'}
+          </p>
+          <button onClick={() => navigate('/auto-test')} className="btn-brand text-sm">
+            <FiZap className="w-4 h-4" /> Create practice test
           </button>
         </div>
       )}
 
-      {/* Attempt cards */}
-      {!loading && (
-        <div className="space-y-3">
-          {attempts.map((attempt) => {
-            const testId       = attempt.test?._id || attempt.test;
-            const total        = attempt.maxScore || 0;
-            const answered     = attempt.answeredCount || 0;
-            const scorePercent = attempt.scorePercentage ? Math.round(attempt.scorePercentage) : 0;
+      {/* ── Attempt list ─────────────────────────────────────────────────── */}
+      {/* Strict CSS Grid on md+: every row uses the same grid-template-columns
+          so columns line up under their headers regardless of attempt status
+          (in-progress rows had alignment drift before this refactor).
+          Below md: each row collapses to a flex-column card (score donut on
+          top, content below, actions wrap last).                            */}
+      {!loading && attempts.length > 0 && (
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
+          {/* Column header — md+ only */}
+          <div
+            className="hidden md:grid items-center gap-4 px-5 py-3 border-b border-[var(--border)] text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)]"
+            style={{ gridTemplateColumns: '56px minmax(0, 1.4fr) 100px 90px 100px 290px' }}
+          >
+            <span>Score</span>
+            <span>Test</span>
+            <span>Subject</span>
+            <span>Mode</span>
+            <span>Date</span>
+            <span className="text-right">Actions</span>
+          </div>
 
-            const displaySubjects = attempt.test?.subjects?.length
-              ? attempt.test.subjects
-              : (attempt.test?.subject ? [attempt.test.subject] : []);
-            const displayChapters = attempt.test?.chapters?.length
-              ? attempt.test.chapters
-              : (attempt.test?.unit ? [attempt.test.unit] : []);
-            const qbTitle = attempt.test?.questionBankId?.title;
+          <ul className="divide-y divide-[var(--border)]">
+            {attempts.map((attempt) => {
+              // Backend now returns Test info as denormalised snapshot fields
+              // directly on the attempt — no nested .test.* lookups needed.
+              const testId       = attempt.test;
+              const totalQs      = attempt.maxScore || attempt.totalQuestions || 0;
+              const answered     = attempt.answeredCount || 0;
+              const scorePct     = attempt.scorePercentage ? Math.round(attempt.scorePercentage) : 0;
+              const subject      = (attempt.testSubjects && attempt.testSubjects[0]) || '—';
+              const qbTitle      = attempt.questionBankTitle || '';
+              const mode         = attempt.mode === 'tutor' ? 'Tutor' : (attempt.mode === 'timer' ? 'Timed' : 'Untimed');
 
-            return (
-              <div key={attempt._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3">
-                  {attempt.status === 'completed' && <ScoreBadge pct={scorePercent} />}
-                  {attempt.status === 'in-progress' && (
-                    <div className="w-11 h-11 rounded-full border-4 border-yellow-300 flex items-center justify-center flex-shrink-0">
-                      <FiPlayCircle className="w-5 h-5 text-yellow-500" />
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center flex-wrap gap-1.5 mb-0.5">
-                      <StatusBadge status={attempt.status} scorePercent={scorePercent} />
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                        {attempt.mode === 'tutor' ? '🎓 Tutor' : '⏱️ Timed'}
-                      </span>
-                      {displaySubjects.slice(0, 2).map((s) => (
-                        <span key={s} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                          <FiBook className="w-2.5 h-2.5" />{s}
-                        </span>
-                      ))}
-                      {displayChapters.slice(0, 1).map((c) => (
-                        <span key={c} className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                          <FiLayers className="w-2.5 h-2.5" />{c}
-                        </span>
-                      ))}
-                      {qbTitle && (
-                        <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">QB: {qbTitle}</span>
-                      )}
-                    </div>
-
-                    <h3 className="font-semibold text-gray-900 truncate text-sm">
-                      {attempt.test?.title || 'Untitled Test'}
-                    </h3>
-
-                    <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-gray-400">
-                      <span className="flex items-center gap-1">
-                        <FiCalendar className="w-3 h-3" /> {formatDate(attempt.createdAt)}
-                      </span>
-                      {attempt.status === 'completed' && (
-                        <span className="font-medium text-gray-600">{attempt.score}/{total} correct</span>
-                      )}
-                      {attempt.status === 'in-progress' && (
-                        <span>{answered}/{total} answered</span>
-                      )}
-                    </div>
-
-                    {attempt.status === 'in-progress' && total > 0 && (
-                      <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-orange-400 rounded-full" style={{ width: `${(answered / total) * 100}%` }} />
-                      </div>
-                    )}
-                  </div>
+              // ── Cell content (rendered once, placed by both layouts) ───
+              const scoreCell = attempt.status === 'completed' ? (
+                <ScoreDonut pct={scorePct} size={48} />
+              ) : (
+                <div className="w-12 h-12 rounded-full border-[3px] border-amber-300 dark:border-amber-500/40 flex items-center justify-center">
+                  <FiPlayCircle className="w-5 h-5 text-amber-500" />
                 </div>
+              );
 
-                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-                  {attempt.status === 'in-progress' && (
-                    <button
-                      onClick={() => navigate(`/student/tests/${testId}/play?attemptId=${attempt._id}`)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
-                    >
-                      <FiPlayCircle className="w-4 h-4" /> Resume
-                    </button>
+              const testCell = (
+                <div className="min-w-0">
+                  <div className="flex items-center flex-wrap gap-1.5">
+                    <h3 className="font-semibold text-[var(--text-strong)] truncate text-sm sm:text-[15px]">
+                      {attempt.testTitle || 'Untitled Test'}
+                    </h3>
+                    <StatusBadge status={attempt.status} scorePercent={scorePct} />
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+                    {attempt.status === 'completed'
+                      ? `${attempt.score}/${totalQs} correct`
+                      : (attempt.status === 'in-progress' ? `${answered}/${totalQs} answered` : '—')}
+                    {qbTitle ? ` · ${qbTitle}` : ''}
+                  </div>
+                  {attempt.status === 'in-progress' && totalQs > 0 && (
+                    <div className="mt-1.5 h-1 bg-[var(--border)] rounded-full overflow-hidden max-w-[200px]">
+                      <div className="h-full bg-primary-500 rounded-full" style={{ width: `${(answered / totalQs) * 100}%` }} />
+                    </div>
                   )}
+                </div>
+              );
+
+              const subjectChip = (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                  {subject}
+                </span>
+              );
+
+              const modeChip = (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary-50 text-secondary-700 dark:bg-secondary-950/40 dark:text-secondary-300">
+                  {mode}
+                </span>
+              );
+
+              const dateCell = (
+                <span className="text-xs text-[var(--text-muted)]">
+                  {formatDate(attempt.createdAt)}
+                </span>
+              );
+
+              // Action buttons — tight padding + no flex-wrap so all three
+              // sit on a single line inside the 290px actions column.
+              // On mobile the parent uses flex-wrap anyway (see card layout).
+              const btnBase =
+                'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap min-h-[34px]';
+              const btnGhost =
+                `${btnBase} border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)]`;
+              const btnPrimary =
+                `${btnBase} bg-primary-500 text-white hover:bg-primary-600`;
+
+              const actionsCell = (
+                <div className="flex items-center gap-1.5 justify-start md:justify-end md:flex-nowrap flex-wrap">
                   {attempt.status === 'completed' && (
                     <>
                       <button
                         onClick={() => navigate(`/student/tests/${testId}/result/${attempt._id}`)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
+                        className={btnGhost}
                       >
-                        <FiBarChart2 className="w-4 h-4" /> Results
+                        <FiBarChart2 className="w-3.5 h-3.5" /> Results
                       </button>
                       <button
                         onClick={() => navigate(`/student/tests/${testId}/review/${attempt._id}`)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50"
+                        className={btnGhost}
                       >
-                        <FiEye className="w-4 h-4" /> Review
+                        <FiEye className="w-3.5 h-3.5" /> Review
                       </button>
                     </>
                   )}
+                  {attempt.status === 'in-progress' && (
+                    <button
+                      onClick={() => navigate(`/student/tests/${testId}/play?attemptId=${attempt._id}`)}
+                      className={btnPrimary}
+                    >
+                      <FiPlayCircle className="w-3.5 h-3.5" /> Resume
+                    </button>
+                  )}
                   <button
                     onClick={() => navigate(`/student/tests/${testId}`)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 ml-auto"
+                    className={btnPrimary}
                   >
                     Retake
                   </button>
                 </div>
-              </div>
-            );
-          })}
+              );
+
+              return (
+                <li
+                  key={attempt._id}
+                  className="px-4 sm:px-5 py-3 sm:py-4 hover:bg-[var(--bg-muted)] transition-colors"
+                >
+                  {/* ── Desktop layout: strict CSS grid ─────────────── */}
+                  <div
+                    className="hidden md:grid md:items-center md:gap-4"
+                    style={{ gridTemplateColumns: '56px minmax(0, 1.4fr) 100px 90px 100px 290px' }}
+                  >
+                    <div className="flex justify-start">{scoreCell}</div>
+                    {testCell}
+                    <div>{subjectChip}</div>
+                    <div>{modeChip}</div>
+                    <div>{dateCell}</div>
+                    <div>{actionsCell}</div>
+                  </div>
+
+                  {/* ── Mobile layout: stacked card ─────────────────── */}
+                  <div className="md:hidden flex items-start gap-3">
+                    <div className="flex-shrink-0">{scoreCell}</div>
+                    <div className="flex-1 min-w-0">
+                      {testCell}
+                      <div className="flex items-center flex-wrap gap-1.5 mt-2">
+                        {subjectChip}
+                        {modeChip}
+                        {dateCell}
+                      </div>
+                      <div className="mt-2">{actionsCell}</div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
-      {/* Pagination */}
-      {pages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          <p className="text-sm text-gray-400">Page {page} of {pages} ({total} results)</p>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+      {/* ── Pagination (hasMore-based) ─────────────────────────────────────
+          We no longer fetch a total page count — the backend skipped the
+          countDocuments() to save a query. Prev/Next controls are driven by
+          `page` (for prev) and `hasMore` (for next). */}
+      {(page > 1 || hasMore) && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-5">
+          <p className="text-sm text-[var(--text-muted)] text-center sm:text-left">
+            Page {page}
+          </p>
+          <div className="flex items-center justify-center sm:justify-end gap-1.5">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]"
+              aria-label="Previous page"
+            >
               <FiChevronLeft className="w-4 h-4" />
+              <span className="text-sm font-semibold hidden sm:inline">Prev</span>
             </button>
-            {Array.from({ length: Math.min(5, pages) }, (_, i) => {
-              const start = Math.max(1, Math.min(page - 2, pages - 4));
-              const p = start + i;
-              return p <= pages ? (
-                <button key={p} onClick={() => setPage(p)}
-                  className={`w-9 h-9 rounded-lg text-sm font-medium ${p === page ? 'bg-orange-500 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {p}
-                </button>
-              ) : null;
-            })}
-            <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page === pages}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasMore}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]"
+              aria-label="Next page"
+            >
+              <span className="text-sm font-semibold hidden sm:inline">Next</span>
               <FiChevronRight className="w-4 h-4" />
             </button>
           </div>

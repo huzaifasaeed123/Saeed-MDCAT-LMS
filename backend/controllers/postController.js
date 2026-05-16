@@ -198,6 +198,9 @@ exports.createPost = async (req, res) => {
 
     // Drop the default-feed cache so the new post is visible on next fetch.
     invalidateFeedCache();
+    // We do NOT drop the user's dashboard cache here. The 3-min SWR fresh window
+    // is enough — a user creating a post doesn't expect their dashboard's
+    // "postsCreated" counter to update instantly. Same reasoning for admin.
 
     // Award points + return the earned amount so the frontend can show a "+N points" toast.
     const pts = await getPointValues();   // cached, no DB call

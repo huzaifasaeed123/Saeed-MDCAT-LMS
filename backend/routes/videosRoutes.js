@@ -1,6 +1,7 @@
 const express        = require('express');
 const { protect }    = require('../middleware/auth');
 const { authorize }  = require('../middleware/roleCheck');
+const { requireFeature } = require('../middleware/featureGate');
 
 const {
   getContents,
@@ -18,6 +19,9 @@ const router = express.Router();
 router.use((req, _res, next) => { req.section = 'videos'; next(); });
 
 router.use(protect);
+
+// Feature gate — students need explicit 'videos' access; staff bypass.
+router.use(requireFeature('videos'));
 
 // Reads — any authenticated user
 router.get('/contents',            getContents);

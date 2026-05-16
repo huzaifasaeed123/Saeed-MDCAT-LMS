@@ -9,6 +9,20 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const AuthProvider = ({ children }) => {
   const [user, setUser]                       = useState(null);
   const [loading, setLoading]                 = useState(true);
+  // ── Feature & course access ──────────────────────────────────────────────
+  // Hydrated from /auth/refresh-token (or /auth/login) on app load and
+  // re-synced from the SSE 'connected' frame on every (re)connect. Updated
+  // in real time when admin toggles access via the 'feature_access_updated'
+  // event. Stored separately from `user` so AuthContext owns a single source
+  // of truth that every screen + the FeatureGate wrapper can read.
+  const [featureAccess, setFeatureAccess]     = useState({
+    autoTest: false, community: false, videos: false, notes: false,
+  });
+  // When true (and featureAccess.courses === true), the student has access
+  // to EVERY course — courseAccess is ignored. Set by the "Grant all courses"
+  // toggle in the admin UI or implicitly by the bulk "enable Courses for all".
+  const [coursesGrantAll, setCoursesGrantAll] = useState(false);
+  const [courseAccess,  setCourseAccess]      = useState([]); // array of course id strings
   const [msgUnreadCount, setMsgUnreadCount]   = useState(0);
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
   // Notifications list owned here so the bell dropdown can open with zero
@@ -27,6 +41,11 @@ export const AuthProvider = ({ children }) => {
   // Updated on the 'connected' frame and bumped on 'syllabus_progress_update'.
   const [syllabusDueCount, setSyllabusDueCount] = useState(0);
   const [syllabusStreak,   setSyllabusStreak]   = useState(0);
+  // Admin-only live presence count — populated from the SSE 'connected' frame
+  // (initial value) and refreshed on every 'active_users' broadcast. Stored
+  // here so any admin component can read it without prop-drilling.
+  // Shape: { users: number, connections: number }
+  const [activeUsers, setActiveUsers] = useState(null);
   const sseSourceRef                      = useRef(null);
   const sseRetryRef                       = useRef(null);
 
@@ -38,6 +57,12 @@ export const AuthProvider = ({ children }) => {
         if (res.data.success) {
           setAccessToken(res.data.accessToken);
           setUser(res.data.user);
+          // Backend ships featureAccess + coursesGrantAll + courseAccess
+          // inside the user payload so the sidebar/dashboard can render the
+          // correct lock states on first paint — no extra round-trip.
+          if (res.data.user?.featureAccess) setFeatureAccess(res.data.user.featureAccess);
+          setCoursesGrantAll(!!res.data.user?.coursesGrantAll);
+          if (Array.isArray(res.data.user?.courseAccess)) setCourseAccess(res.data.user.courseAccess);
         }
       } catch { /* guest */ }
       finally { setLoading(false); }
@@ -96,6 +121,57 @@ export const AuthProvider = ({ children }) => {
               setSyllabusDueCount(data.syllabus.dueCount || 0);
               setSyllabusStreak(data.syllabus.streak || 0);
             }
+            // Feature + course access — re-synced on every (re)connect so the
+            // sidebar lock badges stay accurate even after offline windows.
+            if (data.featureAccess) setFeatureAccess(data.featureAccess);
+            if (data.coursesGrantAll !== undefined) setCoursesGrantAll(!!data.coursesGrantAll);
+            if (Array.isArray(data.courseAccess)) setCourseAccess(data.courseAccess);
+            // Admin-only: initial live presence count, included only for
+            // role === 'admin' connections by the backend.
+            if (data.activeUsers) setActiveUsers(data.activeUsers);
+          } else if (data.type === 'active_users') {
+            // Live presence broadcast — backend pushes this on every connect
+            // /disconnect (debounced server-side). Admin dashboards read it
+            // straight from context.
+            setActiveUsers({ users: data.users, connections: data.connections });
+          } else if (data.type === 'session_replaced') {
+            // Single Session mode: another device just logged in as this user.
+            // Drop client state immediately so we redirect to /login on the
+            // next render. The SSE connection will tear itself down via the
+            // user-effect cleanup once `user` becomes null.
+            clearAccessToken();
+            setUser(null);
+            // Reset access flags so nothing leaks across the logout boundary.
+            setFeatureAccess({ autoTest: false, community: false, videos: false, notes: false });
+            setCoursesGrantAll(false);
+            setCourseAccess([]);
+            setActiveUsers(null);
+            // Surface a UX message — a CustomEvent so any layer (Navbar,
+            // login page, toast layer) can show its preferred notification
+            // without us coupling AuthContext to react-toastify here.
+            window.dispatchEvent(new CustomEvent('auth:session-replaced', {
+              detail: { message: data.message || 'You were signed out from this device.' },
+            }));
+          } else if (data.type === 'feature_access_updated') {
+            // Admin toggled this user's access — apply immediately so the
+            // lock pages flip without a page refresh.
+            if (data.featureAccess) setFeatureAccess(data.featureAccess);
+            if (data.coursesGrantAll !== undefined) setCoursesGrantAll(!!data.coursesGrantAll);
+            if (Array.isArray(data.courseAccess)) setCourseAccess(data.courseAccess);
+          } else if (data.type === 'bulk_access_updated') {
+            // Admin flipped a feature for everyone in one shot. We don't know
+            // our per-user shape from this payload (intentional — backend
+            // doesn't want to compute N personalised SSE frames), so we
+            // re-pull our own access via /auth/refresh-token. Single API call.
+            apiClient.post('/auth/refresh-token')
+              .then((r) => {
+                if (r.data?.success && r.data.user) {
+                  if (r.data.user.featureAccess) setFeatureAccess(r.data.user.featureAccess);
+                  setCoursesGrantAll(!!r.data.user.coursesGrantAll);
+                  if (Array.isArray(r.data.user.courseAccess)) setCourseAccess(r.data.user.courseAccess);
+                }
+              })
+              .catch(() => { /* silent — next reconnect will re-sync */ });
           } else if (data.type === 'syllabus_progress_update') {
             // Server doesn't know the new due-count yet (would cost a DB
             // hit). We optimistically nudge the badge here; the next
@@ -201,22 +277,35 @@ export const AuthProvider = ({ children }) => {
   const updateUser = useCallback((userData, accessToken) => {
     if (accessToken) setAccessToken(accessToken);
     setUser(userData);
+    // Sync access state too — login/register responses carry the same shape
+    // as /auth/me so the lock badges render correctly on first dashboard hit.
+    if (userData?.featureAccess) setFeatureAccess(userData.featureAccess);
+    setCoursesGrantAll(!!userData?.coursesGrantAll);
+    if (Array.isArray(userData?.courseAccess)) setCourseAccess(userData.courseAccess);
   }, []);
 
   const clearUser = useCallback(() => {
     clearAccessToken();
     setUser(null);
+    setFeatureAccess({ autoTest: false, community: false, videos: false, notes: false });
+    setCoursesGrantAll(false);
+    setCourseAccess([]);
+    setActiveUsers(null);
   }, []);
 
   return (
     <AuthContext.Provider value={{
       user, updateUser, clearUser, loading,
+      featureAccess, setFeatureAccess,
+      coursesGrantAll, setCoursesGrantAll,
+      courseAccess,  setCourseAccess,
       msgUnreadCount, notifUnreadCount,
       notifications, setNotifications,
       announcements, setAnnouncements,
       announcementUnreadCount, setAnnouncementUnreadCount,
       syllabusDueCount, setSyllabusDueCount,
       syllabusStreak,   setSyllabusStreak,
+      activeUsers,
     }}>
       {children}
     </AuthContext.Provider>

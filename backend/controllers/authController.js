@@ -5,6 +5,31 @@ const User            = require('../models/User');
 const SystemSettings  = require('../models/SystemSettings');
 const { validationResult } = require('express-validator');
 const { OAuth2Client } = require('google-auth-library');
+const { pushToUser }   = require('../utils/sseManager');
+
+// Project a User document into the JSON we send to the client. Single source
+// of truth — used by login / register / refresh / getMe so the frontend always
+// receives an identical user shape. featureAccess + courseAccess are included
+// so the frontend AuthContext can render the sidebar lock state immediately,
+// no extra round-trip needed.
+const projectUser = (user) => ({
+  id:             user._id,
+  fullName:       user.fullName,
+  email:          user.email,
+  contactNumber:  user.contactNumber || '',
+  role:           user.role,
+  profilePicture: user.profilePicture || null,
+  featureAccess:  {
+    autoTest:  !!user.featureAccess?.autoTest,
+    community: !!user.featureAccess?.community,
+    videos:    !!user.featureAccess?.videos,
+    notes:     !!user.featureAccess?.notes,
+  },
+  // Course access: grant-all flag + per-course allowlist. "Has courses" is
+  // derived in the frontend as: coursesGrantAll || courseAccess.length > 0.
+  coursesGrantAll: !!user.coursesGrantAll,
+  courseAccess:    (user.courseAccess || []).map((c) => String(c)),
+});
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -50,14 +75,7 @@ const sendTokenResponse = (user, settings, statusCode, res) => {
   res.status(statusCode).json({
     success: true,
     accessToken,
-    user: {
-      id:             user._id,
-      fullName:       user.fullName,
-      email:          user.email,
-      contactNumber:  user.contactNumber || '',
-      role:           user.role,
-      profilePicture: user.profilePicture || null,
-    },
+    user: projectUser(user),
   });
 };
 
@@ -75,10 +93,22 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
+    // Optional student profile fields — students can fill these at signup
+    // (fatherName, province, district, studentClass, studentStatus, fscCollegeName,
+    // fscBoard). All optional; empty strings stored as-is.
+    const OPT = ['fatherName','province','district','studentClass','studentStatus','fscCollegeName','fscBoard'];
+    const profile = {};
+    for (const f of OPT) {
+      if (req.body[f] !== undefined) profile[f] = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
+    }
+
     const [user, settings] = await Promise.all([
-      User.create({ fullName, email, contactNumber, password, role: 'student' }),
+      User.create({ fullName, email, contactNumber, password, role: 'student', ...profile }),
       getSessionSettings(),
     ]);
+
+    // Admin dashboard cache is NOT auto-invalidated on signup — admins refresh
+    // explicitly via the dashboard "Refresh" button when they want fresh KPIs.
 
     sendTokenResponse(user, settings, 201, res);
   } catch (error) {
@@ -153,11 +183,27 @@ exports.login = async (req, res) => {
 
     // Mode 2: each new login invalidates all previous sessions by bumping the version.
     // The old refresh tokens carry the previous sv; they'll fail on their next refresh.
+    let didReplaceSession = false;
     if (settings.sessionMode === 'single') {
       user.sessionVersion = (user.sessionVersion ?? 0) + 1;
+      didReplaceSession   = true;
     }
 
     await user.save();
+
+    // Instant logout for the OLD device(s): the previous browser still has an
+    // open SSE connection in sseManager. Push a 'session_replaced' frame and
+    // the frontend will log itself out immediately, instead of waiting up to
+    // 1 hour for the access token to expire.
+    // Cost = one in-memory Map lookup + one socket write. No DB query. The
+    // new device hasn't opened its SSE yet, so it can't kick itself.
+    if (didReplaceSession) {
+      try {
+        pushToUser(user._id, 'session_replaced', {
+          message: 'You were signed out because someone signed in to your account on another device.',
+        });
+      } catch { /* never fail the login on a push error */ }
+    }
 
     sendTokenResponse(user, settings, 200, res);
   } catch (error) {
@@ -195,6 +241,13 @@ exports.googleAuthGIS = async (req, res) => {
     if (settings.sessionMode === 'single') {
       user.sessionVersion = (user.sessionVersion ?? 0) + 1;
       await user.save();
+      // Instant logout for the previous device — same rationale as the
+      // password-login path above. Zero DB cost.
+      try {
+        pushToUser(user._id, 'session_replaced', {
+          message: 'You were signed out because someone signed in to your account on another device.',
+        });
+      } catch { /* swallow — login should not fail on a push error */ }
     }
 
     sendTokenResponse(user, settings, 200, res);
@@ -276,14 +329,7 @@ exports.refreshToken = async (req, res) => {
     res.status(200).json({
       success: true,
       accessToken: newAccessToken,
-      user: {
-        id:             user._id,
-        fullName:       user.fullName,
-        email:          user.email,
-        contactNumber:  user.contactNumber || '',
-        role:           user.role,
-        profilePicture: user.profilePicture || null,
-      },
+      user: projectUser(user),
     });
   } catch (error) {
     console.error('refreshToken error:', error);
@@ -296,7 +342,7 @@ exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json({ success: true, data: projectUser(user) });
   } catch (error) {
     console.error('getMe error:', error);
     res.status(500).json({ success: false, message: 'Server Error' });

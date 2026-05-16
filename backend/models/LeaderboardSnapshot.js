@@ -24,6 +24,10 @@ const leaderboardSnapshotSchema = new mongoose.Schema({
   subjectTitle: { type: String, default: null },  // lowercase-trimmed; null for global boards
   periodStart:  { type: Date,   default: null },  // start of the window (weekly/monthly/mostimproved)
   entries:      [entrySchema],                    // top 50 — stored sorted by rank
+  // Total number of users with a rank on this board. Used by dashboard
+  // percentile calc so it doesn't have to countDocuments() LeaderboardUserRank
+  // on every cache miss.
+  totalRanked:  { type: Number, default: 0 },
   computedAt:   { type: Date,   default: Date.now },
 }, { timestamps: false });
 

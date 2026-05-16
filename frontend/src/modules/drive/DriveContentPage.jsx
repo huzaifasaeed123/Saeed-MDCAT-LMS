@@ -495,8 +495,11 @@ const DriveContentPage = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="text-sm text-gray-500">{pageDesc}</p>
+          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Library</div>
+          <h1 className="text-2xl font-extrabold tracking-[-0.025em] text-gray-900 mt-0.5">
+            <span className="text-brand-gradient">{pageTitle}</span>
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">{pageDesc}</p>
         </div>
         {isStaff && (
           <div className="flex gap-2 flex-wrap justify-end">

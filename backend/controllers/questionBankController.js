@@ -374,6 +374,16 @@ exports.generateTest = async (req, res) => {
     } else {
       // Resolve QB title for display
       const qb = await QuestionBank.findById(questionBankId).select('title');
+
+      // ── allowedModes ────────────────────────────────────────────────────
+      // Whitelist + dedupe whatever the client sent. Drops bogus values
+      // (anything not in the enum) and falls back to the schema default of
+      // ['tutor', 'timer'] when nothing valid comes in.
+      const VALID_MODES = ['tutor', 'timer'];
+      const rawModes = Array.isArray(req.body.allowedModes) ? req.body.allowedModes : [];
+      const allowedModes = [...new Set(rawModes.filter((m) => VALID_MODES.includes(m)))];
+      const finalAllowed = allowedModes.length > 0 ? allowedModes : ['tutor', 'timer'];
+
       test = await Test.create({
         title: testTitle,
         description: description || '',
@@ -386,6 +396,7 @@ exports.generateTest = async (req, res) => {
         questionBankId,
         status: 'published',
         isPublished: true,
+        allowedModes: finalAllowed,
       });
     }
 

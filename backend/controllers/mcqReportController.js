@@ -15,6 +15,33 @@ const FULL_POPULATE = [
   { path: 'messages.sender', select: 'fullName role' },
 ];
 
+// Slimmer populate used for LIST endpoints — drops `closedBy` and
+// `messages.sender` because:
+//   • Lists never render closedBy (only the detail header could, and it
+//     doesn't right now).
+//   • Each message already carries `senderName` and `senderRole` denormalised
+//     at write-time (see addMessage), so the populate is redundant.
+// Net: 2 fewer round trips per list response.
+const LIST_POPULATE = [
+  { path: 'mcq', select: MCQ_POPULATE },
+  { path: 'reportedBy', select: 'fullName email role' },
+  { path: 'handledBy', select: 'fullName role' },
+];
+
+// Parse the `status` query param. Accepts:
+//   undefined / ''  → no filter
+//   'all'           → no filter
+//   'open'          → status: 'open'
+//   'open,active'   → status: { $in: ['open', 'active'] }
+// Returns an object you spread into the Mongo filter (so {} when no filter).
+const parseStatusParam = (raw) => {
+  if (!raw || raw === 'all') return {};
+  const parts = String(raw).split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { status: parts[0] };
+  return { status: { $in: parts } };
+};
+
 // ── POST /api/mcq-reports ─────────────────────────────────────────────────────
 exports.createReport = async (req, res) => {
   try {
@@ -79,16 +106,26 @@ exports.createReport = async (req, res) => {
 };
 
 // ── GET /api/mcq-reports/my ───────────────────────────────────────────────────
-// Student's own reports with filters + pagination + stats in single response
+// Student's own reports.
+//
+// Optimised response shape:
+//   • Page 1 → single $facet aggregation returns list + stats + filterOptions
+//             in ONE round trip. Then 3 batched populates for the visible rows.
+//             Net: 4 trips (was 9).
+//   • Page 2+ → just find + populates. No stats / filterOptions / count.
+//             Net: 4 trips (was 9).
+//   • countDocuments dropped — pagination is hasMore-driven (fetch limit+1,
+//     trim if oversize, set hasMore flag).
 exports.getMyReports = async (req, res) => {
   try {
-    const { status, subject, chapter, topic, questionBank, satisfied, page = 1 } = req.query;
+    const { subject, chapter, topic, questionBank, satisfied, page = 1 } = req.query;
     const limit = 20;
-    const skip = (parseInt(page) - 1) * limit;
-    const uid = req.user.id;
+    const pageNum = parseInt(page) || 1;
+    const skip = (pageNum - 1) * limit;
+    const isFirstPage = pageNum === 1;
+    const uid = new mongoose.Types.ObjectId(req.user.id);
 
-    const filter = { reportedBy: uid };
-    if (status && status !== 'all') filter.status = status;
+    const filter = { reportedBy: uid, ...parseStatusParam(req.query.status) };
     if (subject)      filter.mcqSubject      = subject;
     if (chapter)      filter.mcqChapter      = chapter;
     if (topic)        filter.mcqTopic        = topic;
@@ -96,41 +133,100 @@ exports.getMyReports = async (req, res) => {
     if (satisfied === 'true')  filter.studentSatisfied = true;
     if (satisfied === 'false') filter.studentSatisfied = false;
 
-    const [reports, total, statsRaw, allForFilters] = await Promise.all([
-      MCQReport.find(filter)
-        .populate(FULL_POPULATE)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      MCQReport.countDocuments(filter),
-      // Stats always across ALL student reports (unfiltered)
-      MCQReport.aggregate([
-        { $match: { reportedBy: new mongoose.Types.ObjectId(uid) } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      // Filter option values from all student reports
-      MCQReport.find({ reportedBy: uid }).select('mcqSubject mcqChapter mcqTopic mcqQuestionBank'),
-    ]);
+    if (isFirstPage) {
+      // ── One trip: list + stats + filterOptions via $facet ────────────────
+      const [aggResult] = await MCQReport.aggregate([
+        { $facet: {
+          // The actual page slice. We fetch limit+1 so we can derive hasMore.
+          list: [
+            { $match: filter },
+            { $sort: { createdAt: -1 } },
+            { $limit: limit + 1 },
+          ],
+          // Status + feedback breakdown across ALL of the user's reports
+          // (no extra filters). Powers the KPI tiles. We compute every
+          // counter inside ONE $group via $sum-conditionals so this branch
+          // makes a single pass over the same docs — zero extra DB cost
+          // versus the prior status-only breakdown.
+          stats: [
+            { $match: { reportedBy: uid } },
+            { $group: {
+              _id: null,
+              total:        { $sum: 1 },
+              open:         { $sum: { $cond: [{ $eq: ['$status', 'open'] }, 1, 0] } },
+              active:       { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+              closed:       { $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] } },
+              satisfied:    { $sum: { $cond: [{ $eq: ['$studentSatisfied', true] }, 1, 0] } },
+              notSatisfied: { $sum: { $cond: [{ $eq: ['$studentSatisfied', false] }, 1, 0] } },
+            }},
+          ],
+          // Distinct filter option values across the visible scope.
+          // $addToSet inside $group dedupes server-side; no second pass.
+          filters: [
+            { $match: { reportedBy: uid } },
+            { $group: {
+              _id: null,
+              subjects: { $addToSet: '$mcqSubject' },
+              chapters: { $addToSet: '$mcqChapter' },
+              topics:   { $addToSet: '$mcqTopic' },
+              qbs:      { $addToSet: '$mcqQuestionBank' },
+            }},
+          ],
+        }},
+      ]);
 
-    const stats = { total: 0, open: 0, active: 0, closed: 0 };
-    statsRaw.forEach(s => {
-      stats[s._id] = s.count;
-      stats.total += s.count;
-    });
+      let listDocs = aggResult.list || [];
+      const hasMore = listDocs.length > limit;
+      if (hasMore) listDocs = listDocs.slice(0, limit);
 
-    const subjects      = [...new Set(allForFilters.map(r => r.mcqSubject).filter(Boolean))].sort();
-    const chapters      = [...new Set(allForFilters.map(r => r.mcqChapter).filter(Boolean))].sort();
-    const topics        = [...new Set(allForFilters.map(r => r.mcqTopic).filter(Boolean))].sort();
-    const questionBanks = [...new Set(allForFilters.map(r => r.mcqQuestionBank).filter(Boolean))].sort();
+      // Hydrate references on just the page rows. Aggregation returns plain
+      // docs, so Model.populate is the explicit form.
+      await MCQReport.populate(listDocs, LIST_POPULATE);
 
-    res.json({
+      // stats branch is now a single $group({ _id: null }) doc.
+      const statsDoc = (aggResult.stats && aggResult.stats[0]) || {};
+      const stats = {
+        total:        statsDoc.total        || 0,
+        open:         statsDoc.open         || 0,
+        active:       statsDoc.active       || 0,
+        closed:       statsDoc.closed       || 0,
+        satisfied:    statsDoc.satisfied    || 0,
+        notSatisfied: statsDoc.notSatisfied || 0,
+      };
+
+      const filtersDoc = (aggResult.filters && aggResult.filters[0]) || {};
+      const sortedDistinct = (arr) =>
+        [...new Set((arr || []).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const filterOptions = {
+        subjects:      sortedDistinct(filtersDoc.subjects),
+        chapters:      sortedDistinct(filtersDoc.chapters),
+        topics:        sortedDistinct(filtersDoc.topics),
+        questionBanks: sortedDistinct(filtersDoc.qbs),
+      };
+
+      return res.json({
+        success: true,
+        data: listDocs,
+        page: pageNum,
+        hasMore,
+        stats,
+        filterOptions,
+      });
+    }
+
+    // ── Pages 2+ — plain find + populates only ────────────────────────────
+    const docs = await MCQReport.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit + 1)
+      .populate(LIST_POPULATE);
+
+    const hasMore = docs.length > limit;
+    return res.json({
       success: true,
-      data: reports,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-      stats,
-      filterOptions: { subjects, chapters, topics, questionBanks },
+      data: hasMore ? docs.slice(0, limit) : docs,
+      page: pageNum,
+      hasMore,
     });
   } catch (err) {
     console.error('getMyReports error:', err);
@@ -141,66 +237,130 @@ exports.getMyReports = async (req, res) => {
 // ── GET /api/mcq-reports ─────────────────────────────────────────────────────
 // Teacher: sees open reports + reports they handle
 // Admin: sees everything
+//
+// Optimised the same way as getMyReports:
+//   • Page 1 → one $facet aggregation (list + filterOptions) + populates
+//   • Page 2+ → just find + populates
+//   • hasMore pagination (no countDocuments)
+//
+// Teacher visibility rules are preserved exactly:
+//   • Base scope: status='open' OR handledBy=me
+//   • status=open       → only unassigned-open queue
+//   • status=open,active→ open OR (active assigned to me)
+//   • status=closed     → only my own closed
+//   • status=active     → only my own active (already covered by base scope)
 exports.getAllReports = async (req, res) => {
   try {
-    const { status, subject, chapter, topic, questionBank, satisfied, handledBy, page = 1 } = req.query;
+    const { subject, chapter, topic, questionBank, satisfied, handledBy, page = 1 } = req.query;
     const limit = 20;
-    const skip = (parseInt(page) - 1) * limit;
-
+    const pageNum = parseInt(page) || 1;
+    const skip = (pageNum - 1) * limit;
+    const isFirstPage = pageNum === 1;
     const isAdmin = req.user.role === 'admin';
+    const myId = req.user.id;
 
-    let baseFilter = {};
-    if (!isAdmin) {
-      baseFilter.$or = [{ status: 'open' }, { handledBy: req.user.id }];
-    }
+    // Parsed status — may be empty {}, or { status: 'x' }, or { status: { $in: [...] } }.
+    const statusFilter = parseStatusParam(req.query.status);
+    const statusList = statusFilter.status
+      ? (Array.isArray(statusFilter.status?.$in) ? statusFilter.status.$in : [statusFilter.status])
+      : [];
 
-    const filter = { ...baseFilter };
-    if (status && status !== 'all') {
-      if (!isAdmin) {
-        if (status === 'open') {
-          filter.$or = [{ status: 'open' }];
-        } else {
-          delete filter.$or;
-          filter.handledBy = req.user.id;
-          filter.status = status;
-        }
+    // Visible scope (admin = all; teacher = open + own).
+    const visibleScope = isAdmin ? {} : { $or: [{ status: 'open' }, { handledBy: myId }] };
+
+    const filter = { ...visibleScope };
+
+    if (!isAdmin && statusList.length > 0) {
+      const wantsOpen = statusList.includes('open');
+      const wantsActive = statusList.includes('active');
+      const wantsClosed = statusList.includes('closed');
+
+      if (wantsOpen && !wantsActive && !wantsClosed) {
+        // Open only — the unassigned queue.
+        filter.$or = [{ status: 'open' }];
+      } else if (wantsOpen && wantsActive && !wantsClosed) {
+        // Open + my active.
+        filter.$or = [{ status: 'open' }, { handledBy: myId, status: 'active' }];
       } else {
-        filter.status = status;
+        // Any combination that includes closed (or active-only) is scoped
+        // to "things I've handled", since teachers can't see other people's
+        // active/closed reports.
+        delete filter.$or;
+        filter.handledBy = myId;
+        filter.status = statusList.length === 1 ? statusList[0] : { $in: statusList };
       }
+    } else if (isAdmin && statusList.length > 0) {
+      filter.status = statusList.length === 1 ? statusList[0] : { $in: statusList };
     }
+
     if (subject)      filter.mcqSubject      = subject;
     if (chapter)      filter.mcqChapter      = chapter;
     if (topic)        filter.mcqTopic        = topic;
     if (questionBank) filter.mcqQuestionBank = questionBank;
     if (satisfied === 'true')  filter.studentSatisfied = true;
     if (satisfied === 'false') filter.studentSatisfied = false;
-    if (handledBy && isAdmin) filter.handledBy = handledBy;
+    if (handledBy && isAdmin) {
+      try { filter.handledBy = new mongoose.Types.ObjectId(handledBy); } catch { /* ignore */ }
+    }
 
-    // Build visible scope for filter options
-    const visibleScope = isAdmin ? {} : { $or: [{ status: 'open' }, { handledBy: req.user.id }] };
+    if (isFirstPage) {
+      const [aggResult] = await MCQReport.aggregate([
+        { $facet: {
+          list: [
+            { $match: filter },
+            { $sort: { updatedAt: -1 } },
+            { $limit: limit + 1 },
+          ],
+          filters: [
+            { $match: visibleScope },
+            { $group: {
+              _id: null,
+              subjects: { $addToSet: '$mcqSubject' },
+              chapters: { $addToSet: '$mcqChapter' },
+              topics:   { $addToSet: '$mcqTopic' },
+              qbs:      { $addToSet: '$mcqQuestionBank' },
+            }},
+          ],
+        }},
+      ]);
 
-    const [reports, total, allVisible] = await Promise.all([
-      MCQReport.find(filter)
-        .populate(FULL_POPULATE)
-        .sort({ updatedAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      MCQReport.countDocuments(filter),
-      MCQReport.find(visibleScope).select('mcqSubject mcqChapter mcqTopic mcqQuestionBank'),
-    ]);
+      let listDocs = aggResult.list || [];
+      const hasMore = listDocs.length > limit;
+      if (hasMore) listDocs = listDocs.slice(0, limit);
 
-    const subjects      = [...new Set(allVisible.map(r => r.mcqSubject).filter(Boolean))].sort();
-    const chapters      = [...new Set(allVisible.map(r => r.mcqChapter).filter(Boolean))].sort();
-    const topics        = [...new Set(allVisible.map(r => r.mcqTopic).filter(Boolean))].sort();
-    const questionBanks = [...new Set(allVisible.map(r => r.mcqQuestionBank).filter(Boolean))].sort();
+      await MCQReport.populate(listDocs, LIST_POPULATE);
 
-    res.json({
+      const filtersDoc = (aggResult.filters && aggResult.filters[0]) || {};
+      const sortedDistinct = (arr) =>
+        [...new Set((arr || []).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const filterOptions = {
+        subjects:      sortedDistinct(filtersDoc.subjects),
+        chapters:      sortedDistinct(filtersDoc.chapters),
+        topics:        sortedDistinct(filtersDoc.topics),
+        questionBanks: sortedDistinct(filtersDoc.qbs),
+      };
+
+      return res.json({
+        success: true,
+        data: listDocs,
+        page: pageNum,
+        hasMore,
+        filterOptions,
+      });
+    }
+
+    const docs = await MCQReport.find(filter)
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit + 1)
+      .populate(LIST_POPULATE);
+
+    const hasMore = docs.length > limit;
+    return res.json({
       success: true,
-      data: reports,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-      filterOptions: { subjects, chapters, topics, questionBanks },
+      data: hasMore ? docs.slice(0, limit) : docs,
+      page: pageNum,
+      hasMore,
     });
   } catch (err) {
     console.error('getAllReports error:', err);

@@ -7,8 +7,9 @@ const User         = require('../models/User');
 const { _helpers: { visibleFilter: announcementVisibleFilter } } = require('./announcementController');
 const { getLatestForRole: getCachedAnnouncements } = require('../utils/announcementsCache');
 const { getDueCountAndStreak: getSyllabusBadge } = require('./syllabusTodayController');
-const { addClient, removeClient, clientCount } = require('../utils/sseManager');
+const { addClient, removeClient, clientCount, getActiveCount } = require('../utils/sseManager');
 const { updateLeaderboardCache } = require('../utils/leaderboardCache');
+const userAccessCache = require('../utils/userAccessCache');
 
 // ─── GET /api/stream?token=<accessToken> ─────────────────────────────────────
 // Opens a persistent SSE connection for the authenticated user.
@@ -44,7 +45,9 @@ exports.openStream = (req, res) => {
   res.flushHeaders(); // open the pipe immediately — client starts listening
 
   // ── Register this connection ──────────────────────────────────────────────
-  addClient(userId, res);
+  // role is forwarded so sseManager can maintain a separate admin set and
+  // broadcast 'active_users' frames whenever connections change.
+  addClient(userId, res, { role: decoded.role });
   console.log(`[SSE] connected: ${userId} | total users: ${clientCount()}`);
 
   // ── Heartbeat every 25s to keep connection alive through proxies ──────────
@@ -83,8 +86,11 @@ exports.openStream = (req, res) => {
     // Syllabus dashboard tile: due-today count + revision streak. One indexed
     // countDocuments + one small aggregation on TopicRevisionLog (60-day window).
     getSyllabusBadge(userId),
+    // Feature & course access — served from the in-memory userAccessCache.
+    // Cache HIT here = 0 DB queries. On miss, one User.findById projection.
+    userAccessCache.getOrLoad(userId),
   ])
-    .then(async ([msgResult, unreadNotifs, recentAnnouncements, userDoc, syllabusBadge]) => {
+    .then(async ([msgResult, unreadNotifs, recentAnnouncements, userDoc, syllabusBadge, accessCached]) => {
       // If we got fewer than 10 unread notifications, that's the full count.
       // Otherwise we need a separate countDocuments to know the true total.
       const notifUnreadTotal = unreadNotifs.length < 10
@@ -106,7 +112,16 @@ exports.openStream = (req, res) => {
         });
       }
 
+      const accessShape = userAccessCache.toResponseShape(accessCached);
+
       try {
+        // Admin-only: seed the initial live active-user count so the dashboard
+        // renders correctly on first paint, without waiting up to 1.5s for the
+        // first 'active_users' broadcast tick.
+        const adminExtras = role === 'admin'
+          ? { activeUsers: getActiveCount() }   // { users, connections }
+          : {};
+
         res.write(`data: ${JSON.stringify({
           type:             'connected',
           userId,
@@ -116,6 +131,12 @@ exports.openStream = (req, res) => {
           announcements:    recentAnnouncements,  // up to 15 visible announcements
           announcementUnreadCount,
           syllabus:         syllabusBadge,        // { dueCount, streak }
+          // Re-sync feature/course access on every (re)connect — covers cases
+          // where the user reopens the tab after an admin change while offline.
+          featureAccess:    accessShape.featureAccess,
+          coursesGrantAll:  accessShape.coursesGrantAll,
+          courseAccess:     accessShape.courseAccess,
+          ...adminExtras,
         })}\n\n`);
       } catch { /* connection closed before queries finished */ }
       // Prime leaderboard cache on first connection if empty
@@ -128,6 +149,9 @@ exports.openStream = (req, res) => {
           unreadTotal: 0, notifUnreadTotal: 0, notifications: [],
           announcements: [], announcementUnreadCount: 0,
           syllabus: { dueCount: 0, streak: 0 },
+          featureAccess: { autoTest: false, community: false, videos: false, notes: false },
+          coursesGrantAll: false,
+          courseAccess:  [],
         })}\n\n`);
       } catch {}
     });

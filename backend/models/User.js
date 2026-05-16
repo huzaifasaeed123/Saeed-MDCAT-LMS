@@ -22,6 +22,40 @@ const UserSchema = new mongoose.Schema({
     type: String,
     match: [/^\+?[0-9]{10,14}$/, 'Please add a valid contact number']
   },
+
+  // ── Optional student profile fields ────────────────────────────────────────
+  // All optional. Teachers/admins typically leave them blank. Enum values are
+  // enforced only when a value is present (empty string / undefined passes).
+  // Used by the Profile page, admin user views, and test result Excel exports.
+  fatherName:     { type: String, trim: true, maxlength: 50 },
+  province:       {
+    type: String,
+    enum: {
+      values: ['', 'Punjab', 'KPK', 'Sindh', 'Balochistan', 'AJK', 'Gilgit Baltistan'],
+      message: 'Invalid province',
+    },
+    default: '',
+  },
+  district:       { type: String, trim: true, maxlength: 50 },
+  studentClass:   {
+    type: String,
+    enum: {
+      values: ['', 'XI', 'XII', 'FSC Completed'],
+      message: 'Invalid class',
+    },
+    default: '',
+  },
+  studentStatus:  {
+    type: String,
+    enum: {
+      values: ['', 'Fresher', 'Repeater'],
+      message: 'Invalid status',
+    },
+    default: '',
+  },
+  fscCollegeName: { type: String, trim: true, maxlength: 100 },
+  fscBoard:       { type: String, trim: true, maxlength: 100 },
+
   password: {
     type: String,
     required: [function() { return !this.googleId; }, 'Please provide a password'],
@@ -56,6 +90,30 @@ const UserSchema = new mongoose.Schema({
   // unread badge as count(announcement.createdAt > announcementsSeenAt) — no
   // per-user announcement-read documents needed.
   announcementsSeenAt: { type: Date, default: null },
+
+  // ── Feature access flags ─────────────────────────────────────────────────
+  // Per-student gating of paid features. ALL default to false — admin must
+  // explicitly grant access. Staff (admin/teacher) bypass these checks in the
+  // featureGate middleware. Read at request-time from userAccessCache (10-min
+  // TTL, eager-invalidated on admin write) so the hot path never hits the DB.
+  // Courses are NOT in this map — they have a richer model below.
+  featureAccess: {
+    autoTest:  { type: Boolean, default: false }, // Create Auto Test (practice generator)
+    community: { type: Boolean, default: false }, // Community discussion board
+    videos:    { type: Boolean, default: false }, // Videos library
+    notes:     { type: Boolean, default: false }, // Notes / PDF library
+  },
+
+  // Course access model — two ways to grant:
+  //   1. coursesGrantAll === true → student can open EVERY course (existing
+  //      and future) and the courseAccess array is ignored entirely.
+  //   2. coursesGrantAll === false → student can open only courses listed in
+  //      courseAccess.
+  // "Has courses feature" is derived: coursesGrantAll OR courseAccess.length > 0.
+  // There is no separate "master toggle" — keeping a flag in sync with this
+  // derived state caused bugs and admin confusion.
+  coursesGrantAll: { type: Boolean, default: false },
+  courseAccess:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
 
   createdAt: { type: Date, default: Date.now }
 });

@@ -1,6 +1,7 @@
 // frontend/src/App.jsx
 import React from 'react';
 import { AuthProvider, AuthContext } from './core/auth/AuthContext';
+import { ThemeProvider } from './core/theme/ThemeContext';
 import AppRouter from './core/router/AppRouter';
 import AuthLoadingScreen from './shared/components/AuthLoadingScreen';
 
@@ -11,11 +12,15 @@ const AppContent = () => {
   return <AppRouter />;
 };
 
+// ThemeProvider wraps everything so even the AuthLoadingScreen renders in
+// the user's chosen theme — no flash of wrong palette on cold load.
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
