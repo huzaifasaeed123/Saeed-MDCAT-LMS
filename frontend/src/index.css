@@ -49,8 +49,11 @@
   --bg-surface:   #111118;
   --bg-elevated:  #16151f;
   --bg-muted:     #15141d;
+  --bg-subtle:    #0e0d14;
+  --bg-inset:     #100f17;
   --border:       #232230;
   --border-strong:#3a3848;
+  --border-faint: #1a1923;  /* Was inheriting the light cream from :root and rendering as bright "white" dividers on dark surfaces. */
   --text:         #f5f3fb;
   --text-strong:  #ffffff;
   --text-muted:   #a09cb5;

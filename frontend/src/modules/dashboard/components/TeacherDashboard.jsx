@@ -19,41 +19,43 @@ const fmtDate = (d) => {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-const Kpi = ({ Icon, label, value, sub, tone = 'violet' }) => {
+const Kpi = ({ Icon, label, value, sub, tone = 'primary' }) => {
   const TONES = {
-    violet:  'bg-purple-50 text-purple-700',
-    emerald: 'bg-emerald-50 text-emerald-700',
-    amber:   'bg-amber-50 text-amber-700',
-    blue:    'bg-blue-50 text-blue-700',
-    rose:    'bg-rose-50 text-rose-700',
+    primary:   'bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300',
+    secondary: 'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+    emerald:   'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    amber:     'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+    blue:      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    rose:      'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+    violet:    'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
   };
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${TONES[tone]}`}>
+    <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-4">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${TONES[tone] || TONES.primary}`}>
         <Icon className="w-4 h-4" />
       </div>
-      <p className="text-2xl font-extrabold text-gray-900 mt-3 leading-none">{value}</p>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-2">{label}</p>
-      {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
+      <p className="text-2xl font-bold text-[var(--text-strong)] mt-3 leading-none">{value}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-faint)] mt-2">{label}</p>
+      {sub && <p className="text-[10px] text-[var(--text-faint)] mt-0.5">{sub}</p>}
     </div>
   );
 };
 
 const TestRow = ({ t }) => (
-  <Link to={`/tests/${t.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
-    <div className="w-9 h-9 rounded-lg bg-brand-gradient-soft text-primary-700 flex items-center justify-center flex-shrink-0">
+  <Link to={`/tests/${t.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--bg-muted)] border border-transparent hover:border-[var(--border-faint)] transition-colors">
+    <div className="w-9 h-9 rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300 flex items-center justify-center flex-shrink-0">
       <FiFileText className="w-4 h-4" />
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold text-gray-900 truncate">{t.title}</p>
-      <p className="text-xs text-gray-500 mt-0.5">
+      <p className="text-sm font-bold text-[var(--text-strong)] truncate">{t.title}</p>
+      <p className="text-xs text-[var(--text-muted)] mt-0.5">
         {t.totalQuestions} MCQ{t.totalQuestions !== 1 ? 's' : ''} · {fmtDate(t.createdAt)}
       </p>
     </div>
     <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-      t.status === 'published' ? 'bg-emerald-100 text-emerald-700'
-      : t.status === 'archived' ? 'bg-gray-200 text-gray-500'
-      : 'bg-amber-100 text-amber-700'
+      t.status === 'published' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+      : t.status === 'archived' ? 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
+      : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
     }`}>
       {t.status || 'draft'}
     </span>
@@ -61,16 +63,16 @@ const TestRow = ({ t }) => (
 );
 
 const ReportRow = ({ r }) => (
-  <Link to="/teacher/mcq-reports" className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
-    <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
+  <Link to="/teacher/mcq-reports" className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--bg-muted)] border border-transparent hover:border-[var(--border-faint)] transition-colors">
+    <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 flex items-center justify-center flex-shrink-0">
       <FiFlag className="w-4 h-4" />
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold text-gray-900 truncate">{r.reason || 'MCQ reported'}</p>
-      <p className="text-xs text-gray-500 mt-0.5 truncate">
+      <p className="text-sm font-bold text-[var(--text-strong)] truncate">{r.reason || 'MCQ reported'}</p>
+      <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
         {r.questionPreview ? `"${r.questionPreview}…"` : 'No preview'}
       </p>
-      <p className="text-[10px] text-gray-400 mt-0.5">By {r.reporter} · {fmtDate(r.createdAt)}</p>
+      <p className="text-[10px] text-[var(--text-faint)] mt-0.5">By {r.reporter} · {fmtDate(r.createdAt)}</p>
     </div>
   </Link>
 );
@@ -95,7 +97,7 @@ const TeacherDashboard = ({ data, refreshing, onRefresh }) => {
           <div className="flex-1 min-w-0">
             <div className="font-mono text-[11px] tracking-[0.18em] uppercase opacity-85">Teacher</div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] mt-1">
-              Welcome back, {user?.fullName?.split(' ')[0] || 'Teacher'} 👋
+              Welcome back, {user?.fullName?.split(' ')[0] || 'Teacher'}
             </h1>
             <p className="text-sm opacity-90 mt-1 max-w-xl">
               {t.reportsOpen > 0
@@ -128,9 +130,9 @@ const TeacherDashboard = ({ data, refreshing, onRefresh }) => {
       </div>
 
       {/* ── KPI strip ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi Icon={FiFileText}     label="Tests Created"     value={t.testsCreated} tone="violet" />
-        <Kpi Icon={FiCheckSquare}  label="MCQs Authored"     value={t.mcqsCreated}  tone="amber" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Kpi Icon={FiFileText}     label="Tests Created"     value={t.testsCreated} tone="secondary" />
+        <Kpi Icon={FiCheckSquare}  label="MCQs Authored"     value={t.mcqsCreated}  tone="primary" />
         <Kpi Icon={FiFlag}         label="Reports Open"      value={t.reportsOpen}  sub={`${t.reportsHandledByMe} handled by me`} tone="rose" />
         <Kpi Icon={FiUsers}        label="Active Students (7d)" value={e.weekStudents} sub={`${e.weekAttempts} attempts`} tone="emerald" />
       </div>
@@ -138,22 +140,24 @@ const TeacherDashboard = ({ data, refreshing, onRefresh }) => {
       {/* ── Recent tests + reports ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* My recent tests */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Authored</div>
-              <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5">My Recent Tests</h3>
+              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Authored</div>
+              <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5">My Recent Tests</h3>
             </div>
-            <Link to="/tests" className="text-xs font-bold text-primary-700 hover:text-primary-800 flex items-center gap-0.5">
+            <Link to="/tests" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200 flex items-center gap-0.5">
               All tests <FiArrowRight className="w-3 h-3" />
             </Link>
           </div>
 
           {recentTests.length === 0 ? (
             <div className="text-center py-8">
-              <FiFileText className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">You haven't created any tests yet.</p>
-              <Link to="/tests/create" className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-brand-gradient-soft text-primary-700 text-xs font-bold">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[var(--bg-muted)] flex items-center justify-center">
+                <FiFileText className="w-6 h-6 text-[var(--text-faint)]" />
+              </div>
+              <p className="text-sm text-[var(--text-muted)]">You haven't created any tests yet.</p>
+              <Link to="/tests/create" className="btn-brand text-xs mt-3">
                 <FiPlusCircle className="w-3.5 h-3.5" /> Create your first test
               </Link>
             </div>
@@ -165,23 +169,25 @@ const TeacherDashboard = ({ data, refreshing, onRefresh }) => {
         </div>
 
         {/* Open MCQ reports */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Queue</div>
-              <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5 flex items-center gap-1.5">
-                <FiAlertCircle className="text-rose-500 w-4 h-4" /> Open Reports
+              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Queue</div>
+              <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5 flex items-center gap-1.5">
+                <FiAlertCircle className="text-rose-500 dark:text-rose-300 w-4 h-4" /> Open Reports
               </h3>
             </div>
-            <Link to="/teacher/mcq-reports" className="text-xs font-bold text-primary-700 hover:text-primary-800 flex items-center gap-0.5">
+            <Link to="/teacher/mcq-reports" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200 flex items-center gap-0.5">
               All <FiArrowRight className="w-3 h-3" />
             </Link>
           </div>
 
           {recentReports.length === 0 ? (
             <div className="text-center py-8">
-              <FiActivity className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No open reports — nothing to review.</p>
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[var(--bg-muted)] flex items-center justify-center">
+                <FiActivity className="w-6 h-6 text-[var(--text-faint)]" />
+              </div>
+              <p className="text-sm text-[var(--text-muted)]">No open reports — nothing to review.</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -193,33 +199,33 @@ const TeacherDashboard = ({ data, refreshing, onRefresh }) => {
 
       {/* ── Community engagement + announcements ───────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Engage</div>
-              <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5 flex items-center gap-1.5">
-                <FiMessageCircle className="text-primary-600 w-4 h-4" /> Community
+              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Engage</div>
+              <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5 flex items-center gap-1.5">
+                <FiMessageCircle className="text-primary-600 dark:text-primary-300 w-4 h-4" /> Community
               </h3>
             </div>
-            <Link to="/community" className="text-xs font-bold text-primary-700 hover:text-primary-800">Open →</Link>
+            <Link to="/community" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200">Open →</Link>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <div className="text-2xl font-extrabold text-gray-900">{c.postsCreated}</div>
-              <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Posts</div>
+              <div className="text-2xl font-extrabold text-[var(--text-strong)]">{c.postsCreated}</div>
+              <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Posts</div>
             </div>
             <div>
-              <div className="text-2xl font-extrabold text-gray-900">{c.repliesCreated}</div>
-              <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Replies</div>
+              <div className="text-2xl font-extrabold text-[var(--text-strong)]">{c.repliesCreated}</div>
+              <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Replies</div>
             </div>
             <div>
-              <div className="text-2xl font-extrabold text-gray-900">{t.answersMarked}</div>
-              <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Best Answers</div>
+              <div className="text-2xl font-extrabold text-[var(--text-strong)]">{t.answersMarked}</div>
+              <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Best Answers</div>
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-gray-500">Community points</span>
-            <span className="text-sm font-extrabold text-primary-700">{c.points} <span className="text-xs text-gray-400 font-medium">· {c.badge || 'Newcomer'}</span></span>
+          <div className="mt-3 pt-3 border-t border-[var(--border-faint)] flex items-center justify-between">
+            <span className="text-xs text-[var(--text-muted)]">Community points</span>
+            <span className="text-sm font-extrabold text-primary-600 dark:text-primary-300">{c.points} <span className="text-xs text-[var(--text-faint)] font-medium">· {c.badge || 'Newcomer'}</span></span>
           </div>
         </div>
 

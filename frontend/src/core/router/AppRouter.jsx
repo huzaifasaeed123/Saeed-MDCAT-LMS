@@ -39,7 +39,8 @@ import TestStatsPage from '../../modules/tests/pages/TestStatsPage';
 import TestStartPage from '../../modules/tests/pages/TestStartPage';
 import TestPlayerPage from '../../modules/tests/pages/TestPlayerPage';
 import TestResultPage from '../../modules/tests/pages/TestResultPage';
-import TestAttemptReviewPage from '../../modules/tests/pages/TestAttemptReviewPage';
+// TestAttemptReviewPage is no longer used — review route now reuses
+// TestPlayerPage with `isReview` detected from URL (see the route below).
 import TestHistoryPage from '../../modules/tests/pages/TestHistoryPage';
 
 // MCQs module
@@ -552,13 +553,11 @@ const AppRouter = () => {
               </DashboardLayout>
             }
           />
+          {/* Review route reuses TestPlayerPage in read-only mode (URL pattern
+              triggers `isReview`). Full-screen feel matches the live test player. */}
           <Route
             path="/student/tests/:testId/review/:attemptId"
-            element={
-              <DashboardLayout>
-                <TestAttemptReviewPage />
-              </DashboardLayout>
-            }
+            element={<TestPlayerPage />}
           />
         </Route>
 

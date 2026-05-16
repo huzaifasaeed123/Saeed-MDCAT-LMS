@@ -34,6 +34,19 @@ const dashboardRoutes    = require('./routes/dashboardRoutes');
 const { openStream }     = require('./controllers/streamController');
 const app = express();
 
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true
+};
+
 // Body parser
 app.use(express.json());
 
@@ -60,16 +73,13 @@ app.use((req, res, next) => {
 
 // CORS
 // Apply CORS globally for API routes (keep this!)
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
+app.use(cors(corsOptions));
 
 
 // Static file serving for all uploads (images, course images, notes PDFs)
 app.use(
   '/uploads',
-  cors({ origin: 'http://localhost:5173' }),
+  cors(corsOptions),
   express.static(path.join(__dirname, 'uploads'), {
     setHeaders: (res, filePath) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');

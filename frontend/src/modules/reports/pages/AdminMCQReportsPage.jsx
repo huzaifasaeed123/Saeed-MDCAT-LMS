@@ -639,7 +639,7 @@ const AdminMCQReportsPage = () => {
         <>
           {/* Filter bar — primary chips + Feedback + More toggle. Mobile uses a sheet. */}
           <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-2 sm:p-3 mb-5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
                 {statusChips.map((opt) => {
                   const active = statusFilter === opt.value;
@@ -672,22 +672,25 @@ const AdminMCQReportsPage = () => {
                 <option value="false">Not satisfied</option>
               </select>
 
+              {/* Mobile Filters pill — uses a tiny dot (not a number badge) so the row
+                  stays on one line without horizontal scroll when filters are active. */}
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen((v) => !v)}
-                className={`md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-colors flex-shrink-0 ${
+                className={`md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border transition-colors flex-shrink-0 ${
                   mobileFiltersOpen || moreFilterCount > 0 || satisfiedFilter
                     ? 'border-secondary-300 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-950/40 text-secondary-700 dark:text-secondary-300'
                     : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
                 }`}
                 aria-expanded={mobileFiltersOpen}
+                aria-label={(moreFilterCount > 0 || satisfiedFilter)
+                  ? `Filters (${moreFilterCount + (satisfiedFilter ? 1 : 0)} active)`
+                  : 'Filters'}
               >
                 <FiSliders className="w-3.5 h-3.5" />
                 <span>Filters</span>
                 {(moreFilterCount > 0 || satisfiedFilter) && (
-                  <span className="ml-0.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-secondary-600 text-white text-[10px] font-bold">
-                    {moreFilterCount + (satisfiedFilter ? 1 : 0)}
-                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-secondary-600" aria-hidden />
                 )}
               </button>
 
@@ -713,8 +716,9 @@ const AdminMCQReportsPage = () => {
               {hasAnyFilter && (
                 <button
                   onClick={clearAllFilters}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] flex-shrink-0"
+                  className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] flex-shrink-0"
                   title="Clear all filters"
+                  aria-label="Clear all filters"
                 >
                   <FiX className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Clear</span>

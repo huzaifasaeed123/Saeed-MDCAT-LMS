@@ -2,9 +2,11 @@ const QuestionBank    = require('../models/QuestionBankModel');
 const MCQ             = require('../models/McqModel');
 const Test            = require('../models/TestModel');
 const UserMcqHistory  = require('../models/UserMcqHistory');
+const UserTestAttempt = require('../models/UserTestAttempt');
 const mongoose        = require('mongoose');
 const { syncTestClassification } = require('./testController');
 const { backfillUserMcqHistory } = require('./userTestController');
+const qbCountsCache              = require('../utils/qbCountsCache');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,10 +48,38 @@ const cleanSubjects = (subjects = []) =>
 // GET /api/question-banks  — list (no subjects for performance)
 exports.getQuestionBanks = async (req, res) => {
   try {
+    // .lean() so we can attach totalMcqs as a plain property below without
+    // fighting Mongoose's hydrated-document immutability.
     const qbs = await QuestionBank.find()
       .populate('createdBy', 'fullName')
       .select('-subjects')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Attach totalMcqs per QB. Try the cache first; for QBs not yet cached,
+    // run ONE batched aggregation that covers all of them in a single trip.
+    // Warm-cache case: 0 extra DB trips. Cold case: 1 trip regardless of QB
+    // count. After warm-up, only invalidated QBs trigger a re-query.
+    const missingIds = [];
+    for (const q of qbs) {
+      if (qbCountsCache.getTotal(q._id) == null) missingIds.push(q._id);
+    }
+    if (missingIds.length > 0) {
+      const agg = await MCQ.aggregate([
+        { $match: { questionBankId: { $in: missingIds.map((id) => new mongoose.Types.ObjectId(id)) } } },
+        { $group: { _id: '$questionBankId', count: { $sum: 1 } } },
+      ]);
+      const aggMap = new Map();
+      agg.forEach((r) => { if (r._id) aggMap.set(r._id.toString(), r.count); });
+      // Populate cache. QBs with no MCQs at all won't appear in the agg
+      // output; set them to 0 so we don't re-query them on every call.
+      missingIds.forEach((id) => {
+        const total = aggMap.get(id.toString()) || 0;
+        qbCountsCache.setTotal(id, total);
+      });
+    }
+
+    qbs.forEach((q) => { q.totalMcqs = qbCountsCache.getTotal(q._id) ?? 0; });
     res.json({ success: true, count: qbs.length, data: qbs });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -100,6 +130,9 @@ exports.deleteQuestionBank = async (req, res) => {
   try {
     const qb = await QuestionBank.findByIdAndDelete(req.params.id);
     if (!qb) return res.status(404).json({ success: false, message: 'Question Bank not found' });
+    // Drop the cached counts so a stale entry doesn't linger in memory for
+    // the QB's TTL window after deletion.
+    qbCountsCache.invalidate(req.params.id);
     res.json({ success: true, message: 'Question Bank deleted' });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -128,6 +161,17 @@ exports.getMcqCount = async (req, res) => {
 };
 
 // ─── User MCQ Counts (per-mode breakdown for AutoTestGenerator) ──────────────
+
+// Module-level in-process cache: once we've confirmed a user either has
+// UserMcqHistory records OR doesn't need the backfill, we don't need to ask
+// the DB again for the lifetime of this Node process. A simple Set keyed by
+// userId string — entries are monotonic (a user never "un-backfills"), so
+// we never need to invalidate. Bounded by total user count, ~50 bytes per
+// entry, so even 100k users is ~5MB of memory — fine.
+//
+// Multi-process note: each Node instance has its own Set. Worst case is one
+// extra countDocuments per user per process per restart, which is benign.
+const backfillCheckedUsers = new Set();
 
 // GET /api/question-banks/:id/user-mcq-counts
 // Query: topicIds (comma-sep), chapterIds (comma-sep), subjectIds (comma-sep)
@@ -199,8 +243,13 @@ exports.getUserMcqCounts = async (req, res) => {
     let h = histAgg[0] || { attemptedCount: 0, incorrectCount: 0, correctCount: 0, omittedCount: 0, markedCount: 0 };
     let rawTopicAgg = topicAgg;
 
-    // One-time backfill: runs only when user has zero UserMcqHistory records at all.
-    if (h.attemptedCount === 0) {
+    // One-time backfill: runs only when user has zero UserMcqHistory records.
+    // The in-process Set above short-circuits the countDocuments trip once
+    // we've confirmed (this process lifetime) that the user is either fully
+    // backfilled or has history in some QB. So this whole branch fires AT MOST
+    // once per process per user — not on every QB switch.
+    const userIdStr = userId.toString();
+    if (h.attemptedCount === 0 && !backfillCheckedUsers.has(userIdStr)) {
       const anyHistory = await UserMcqHistory.countDocuments({ user: userId });
       if (anyHistory === 0) {
         await backfillUserMcqHistory(userId);
@@ -208,6 +257,12 @@ exports.getUserMcqCounts = async (req, res) => {
         h = freshHistAgg[0] || h;
         rawTopicAgg = freshTopicAgg;
       }
+      // Either branch above leaves the user in a known-good state, so we can
+      // skip the countDocuments check for any subsequent request in this process.
+      backfillCheckedUsers.add(userIdStr);
+    } else if (h.attemptedCount > 0 && !backfillCheckedUsers.has(userIdStr)) {
+      // User clearly has history in this QB → no need to re-check globally.
+      backfillCheckedUsers.add(userIdStr);
     }
 
     // Build byTopic map — frontend uses this for client-side subject/chapter counting
@@ -351,11 +406,36 @@ exports.generateTest = async (req, res) => {
 
     const pickCount = Math.min(Number(count), available);
 
-    // Random sample via aggregation $sample (correctly casted ObjectId filter)
+    // ── Decide whether this request is "Create & Start" (student auto-test) ─
+    // We only honour startImmediately for students creating a brand-new test;
+    // staff and existing-test-append flows still create-only.
+    const isStudent = req.user.role === 'student';
+    const startImmediately =
+      req.body.startImmediately === true && isStudent && !existingTestId;
+
+    // Random sample via $sample. The projection used to be `{ _id: 1 }` only,
+    // forcing syncTestClassification + the attempt builder to re-fetch the
+    // same MCQs immediately. Now we project the classification fields up-front
+    // so sync skips its find+populate (~2 trips). When startImmediately is on,
+    // we also project the play-time fields (options, questionText) so the
+    // attempt-creation + response can run without another fetch.
+    const sampleProjection = startImmediately
+      ? {
+          _id: 1, questionText: 1, options: 1, explanationText: 1, difficulty: 1,
+          subject: 1, unit: 1, topic: 1,
+          questionBankId: 1, testId: 1,
+          qbSubjectId: 1, qbChapterId: 1, qbTopicId: 1,
+        }
+      : {
+          _id: 1,
+          subject: 1, unit: 1, topic: 1,
+          questionBankId: 1,
+          qbSubjectId: 1, qbChapterId: 1, qbTopicId: 1,
+        };
     const pickedMcqs = await MCQ.aggregate([
       { $match: filter },
       { $sample: { size: pickCount } },
-      { $project: { _id: 1 } },
+      { $project: sampleProjection },
     ]);
     const mcqIds = pickedMcqs.map((m) => m._id);
 
@@ -372,9 +452,6 @@ exports.generateTest = async (req, res) => {
       if (!test.questionBankId) test.questionBankId = questionBankId;
       await test.save();
     } else {
-      // Resolve QB title for display
-      const qb = await QuestionBank.findById(questionBankId).select('title');
-
       // ── allowedModes ────────────────────────────────────────────────────
       // Whitelist + dedupe whatever the client sent. Drops bogus values
       // (anything not in the enum) and falls back to the schema default of
@@ -400,14 +477,110 @@ exports.generateTest = async (req, res) => {
       });
     }
 
-    // Sync subjects/chapters/topics from the selected MCQs
-    await syncTestClassification(test._id);
+    // Sync subjects/chapters/topics. For the new-test branch we pass the
+    // freshly-picked MCQs (which we already have in scope with the right
+    // projection) so sync skips the find+populate it would otherwise do.
+    // For the existing-test branch we let sync re-fetch — it needs ALL of
+    // the test's MCQs, not just the newly appended ones.
+    const synced = existingTestId
+      ? await syncTestClassification(test._id)
+      : await syncTestClassification(test._id, pickedMcqs);
 
-    const updated = await Test.findById(test._id)
-      .populate('questionBankId', 'title')
-      .populate('courseId', 'title');
+    // Apply the synced classification to the in-memory test document so any
+    // downstream consumer (e.g. the attempt snapshot below) sees the latest
+    // arrays without a re-fetch.
+    if (synced) {
+      test.subjects = synced.subjects;
+      test.chapters = synced.chapters;
+      test.topics   = synced.topics;
+    }
 
-    res.status(existingTestId ? 200 : 201).json({ success: true, data: updated });
+    // ── Create & Start branch ───────────────────────────────────────────
+    // For students who set startImmediately, also create the UserTestAttempt
+    // in this same handler. Skips ~6 trips of redundant work that startTest
+    // would otherwise do (Test.findById + populate(mcqs) + populate(qb) +
+    // UserTestAttempt.findOne + countDocuments + final re-populate). Also
+    // skips one HTTP round trip from the client.
+    if (startImmediately) {
+      const mode = req.body.mode;
+      const reqDurationSec = Number(req.body.totalDurationSec);
+      if (!['tutor', 'timer'].includes(mode)) {
+        return res.status(400).json({ success: false, message: 'mode required (tutor | timer) when startImmediately is true' });
+      }
+      const allowed = Array.isArray(test.allowedModes) && test.allowedModes.length > 0
+        ? test.allowedModes
+        : ['tutor', 'timer'];
+      if (!allowed.includes(mode)) {
+        return res.status(400).json({ success: false, message: `mode '${mode}' is not in this test's allowedModes` });
+      }
+      const totalDurationSec = mode === 'timer'
+        ? (Number.isFinite(reqDurationSec) && reqDurationSec > 0 ? reqDurationSec : null)
+        : null;
+
+      // questionAttempts uses correctOption per MCQ — derived from options
+      // which we projected above. No extra DB hit.
+      const questionAttempts = pickedMcqs.map((mcq) => {
+        const correct = mcq.options?.find((o) => o.isCorrect);
+        return {
+          mcqId:           mcq._id,
+          correctOption:   correct?.optionLetter ?? null,
+          selectedOption:  null,
+          isCorrect:       false,
+          reported:        false,
+          saved:           false,
+          markedForReview: false,
+        };
+      });
+
+      // QB title snapshot for the attempt — same field UserTestAttempt's
+      // History endpoint relies on. One small targeted fetch.
+      let qbTitle = '';
+      if (test.questionBankId) {
+        const qb = await QuestionBank.findById(test.questionBankId).select('title');
+        qbTitle = qb?.title || '';
+      }
+
+      const attempt = await UserTestAttempt.create({
+        user:              req.user._id,
+        test:              test._id,
+        mode,
+        startTime:         new Date(),
+        maxScore:          pickedMcqs.length,
+        questionAttempts,
+        totalDurationSec,
+        // Snapshot fields ↓
+        testTitle:         test.title || '',
+        testSubjects:      Array.isArray(test.subjects) ? test.subjects.slice() : [],
+        testChapters:      Array.isArray(test.chapters) ? test.chapters.slice() : [],
+        testTopics:        Array.isArray(test.topics)   ? test.topics.slice()   : [],
+        questionBankId:    test.questionBankId || null,
+        questionBankTitle: qbTitle,
+        totalQuestions:    pickedMcqs.length,
+      });
+
+      // Build the attempt response in the populated shape TestPlayerPage
+      // expects (test as plain object with mcqs as id array, questionAttempts
+      // with full MCQ objects embedded). Zero extra trips.
+      const mcqMap = new Map(pickedMcqs.map((m) => [m._id.toString(), m]));
+      const testForResponse = test.toObject();
+      testForResponse.mcqs = mcqIds;
+      const attemptResponse = attempt.toObject();
+      attemptResponse.test = testForResponse;
+      attemptResponse.questionAttempts = attemptResponse.questionAttempts.map((qa) => ({
+        ...qa,
+        mcqId: mcqMap.get(qa.mcqId.toString()) || qa.mcqId,
+      }));
+
+      return res.status(201).json({
+        success: true,
+        data: test,
+        attempt: attemptResponse,
+      });
+    }
+
+    // Default path: just return the test. The frontend (student staff or
+    // append-mode) reads _id / title / totalQuestions, all on the in-memory doc.
+    res.status(existingTestId ? 200 : 201).json({ success: true, data: test });
   } catch (err) {
     console.error('generateTest error:', err);
     res.status(400).json({ success: false, message: err.message });

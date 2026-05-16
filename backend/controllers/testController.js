@@ -12,11 +12,33 @@ const User = require('../models/User');
  * Reads every MCQ attached to a test, resolves QB hierarchy names,
  * and writes unique subjects/chapters/topics arrays back onto the test.
  * Called fire-and-forget after MCQs are added or removed.
+ *
+ * Two call shapes:
+ *   syncTestClassification(testId)
+ *     Re-fetches the test + populates mcqs. Used by addMcqs / removeMcqs
+ *     where the caller doesn't already have the MCQ list in scope.
+ *
+ *   syncTestClassification(testId, providedMcqs)
+ *     Skips the find+populate and works straight from the in-memory MCQ
+ *     array. Used by generateTest's new-test branch where we already have
+ *     the freshly picked MCQs from the $sample aggregation.
+ *
+ * Returns the computed `{ subjects, chapters, topics }` so the caller can
+ * apply the same values to an in-memory document without re-reading the DB.
+ * Returns null on failure or when there's nothing to sync.
  */
-const syncTestClassification = async (testId) => {
+const syncTestClassification = async (testId, providedMcqs) => {
   try {
-    const test = await Test.findById(testId).populate('mcqs');
-    if (!test) return;
+    let mcqs;
+    if (Array.isArray(providedMcqs) && providedMcqs.length > 0) {
+      // Hot path: caller already has the MCQs projected with the required
+      // classification fields. Skip 1 find + 1 mcqs populate.
+      mcqs = providedMcqs;
+    } else {
+      const test = await Test.findById(testId).populate('mcqs');
+      if (!test) return null;
+      mcqs = test.mcqs;
+    }
 
     const subjects = new Set();
     const chapters = new Set();
@@ -24,7 +46,7 @@ const syncTestClassification = async (testId) => {
 
     // Group QB-linked MCQs by QB to minimise DB round-trips
     const qbMap = {};
-    for (const mcq of test.mcqs) {
+    for (const mcq of mcqs) {
       if (mcq.subject) subjects.add(mcq.subject);
       if (mcq.unit)    chapters.add(mcq.unit);
       if (mcq.topic)   topics.add(mcq.topic);
@@ -35,10 +57,10 @@ const syncTestClassification = async (testId) => {
       }
     }
 
-    for (const [qbId, mcqs] of Object.entries(qbMap)) {
+    for (const [qbId, qbMcqs] of Object.entries(qbMap)) {
       const qb = await QuestionBank.findById(qbId);
       if (!qb) continue;
-      for (const mcq of mcqs) {
+      for (const mcq of qbMcqs) {
         if (!mcq.qbSubjectId) continue;
         const subj = qb.subjects.id(mcq.qbSubjectId);
         if (!subj) continue;
@@ -56,13 +78,16 @@ const syncTestClassification = async (testId) => {
       }
     }
 
-    await Test.findByIdAndUpdate(testId, {
+    const result = {
       subjects: [...subjects].filter(Boolean),
       chapters: [...chapters].filter(Boolean),
       topics:   [...topics].filter(Boolean),
-    });
+    };
+    await Test.findByIdAndUpdate(testId, result);
+    return result;
   } catch (err) {
     console.error('syncTestClassification error:', err);
+    return null;
   }
 };
 

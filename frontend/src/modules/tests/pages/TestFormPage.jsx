@@ -1,9 +1,17 @@
 // src/modules/tests/pages/TestFormPage.jsx
-import React, { useState, useEffect } from 'react';
+//
+// Admin Test Create / Edit form — themed to match the design system. Two
+// section cards (Basic Info + Test Settings), a sticky-feeling submit row,
+// and the page title pushed up into the global top bar via usePageHeader().
+//
+// All state, effects, validation and API calls are preserved untouched —
+// only the JSX, Tailwind classes, and the page header wiring changed.
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { FiArrowLeft, FiSave } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const TestFormPage = () => {
   const navigate = useNavigate();
@@ -85,65 +93,112 @@ const TestFormPage = () => {
     }
   };
 
+  // ── Push title/subtitle to top navbar ───────────────────────────────────
+  const headerSubtitle = isEdit
+    ? 'Update test settings, modes and instructions.'
+    : 'Fill in the basic details. You can add MCQs from a Question Bank after creating the test.';
+
+  const headerAction = useMemo(() => (
+    <button
+      type="button"
+      onClick={() => navigate('/tests')}
+      className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold text-[var(--text-muted)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-muted)] transition-colors"
+    >
+      <FiArrowLeft className="w-4 h-4" /> Back to tests
+    </button>
+  ), [navigate]);
+
+  usePageHeader({
+    title:    isEdit ? 'Edit Test' : 'Create Test',
+    subtitle: headerSubtitle,
+    action:   headerAction,
+  });
+
+  // Shared classes
+  const inputCls =
+    'w-full px-4 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl text-sm ' +
+    'text-[var(--text)] placeholder:text-[var(--text-faint)] focus:outline-none focus:ring-2 focus:ring-primary-400 transition';
+  const labelCls = 'block text-sm font-medium text-[var(--text)] mb-1';
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-2xl">
-      <button onClick={() => navigate('/tests')}
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-5 group">
-        <FiArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-        Back to Tests
-      </button>
+    <div className="max-w-3xl mx-auto">
+      {/* Mobile-only back button — top bar action slot is desktop-only */}
+      <div className="md:hidden mb-4">
+        <button
+          type="button"
+          onClick={() => navigate('/tests')}
+          className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-strong)] transition-colors"
+        >
+          <FiArrowLeft className="w-4 h-4" /> Back to tests
+        </button>
+      </div>
 
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">{isEdit ? 'Edit Test' : 'Create Test'}</h1>
-      {!isEdit && (
-        <p className="text-sm text-gray-500 mb-6">
-          Fill in the basic details. You can add MCQs from a Question Bank after creating the test.
-        </p>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Info */}
-        <div className="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
-          <h2 className="font-semibold text-gray-700">Basic Information</h2>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Basic Info card */}
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 space-y-4">
+          <h2 className="font-display text-base font-bold text-[var(--text-strong)]">Basic Information</h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title <span className="text-red-500">*</span></label>
-            <input type="text" name="title" value={formData.title} onChange={handleChange}
+            <label className={labelCls}>
+              Title <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={handleChange}
               placeholder="e.g. Biology Mock Test – Chapter 5"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
-              required />
+              className={inputCls}
+              required
+            />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea name="description" value={formData.description} onChange={handleChange}
-              rows={3} placeholder="Optional description for students…"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
+            <label className={labelCls}>Description</label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              rows={3}
+              placeholder="Optional description for students…"
+              className={`${inputCls} resize-none`}
+            />
           </div>
         </div>
 
-        {/* Test Settings */}
-        <div className="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
-          <h2 className="font-semibold text-gray-700">Test Settings</h2>
+        {/* Test Settings card */}
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 space-y-5">
+          <h2 className="font-display text-base font-bold text-[var(--text-strong)]">Test Settings</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Passing Score (%)</label>
-              <input type="number" name="passingScore" value={formData.passingScore} onChange={handleChange}
-                min={0} max={100}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <label className={labelCls}>Passing Score (%)</label>
+              <input
+                type="number"
+                name="passingScore"
+                value={formData.passingScore}
+                onChange={handleChange}
+                min={0}
+                max={100}
+                className={inputCls}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty</label>
-              <select name="difficultyLevel" value={formData.difficultyLevel} onChange={handleChange}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <label className={labelCls}>Difficulty</label>
+              <select
+                name="difficultyLevel"
+                value={formData.difficultyLevel}
+                onChange={handleChange}
+                className={inputCls}
+              >
                 <option value="Easy">Easy</option>
                 <option value="Medium">Medium</option>
                 <option value="Hard">Hard</option>
@@ -154,7 +209,7 @@ const TestFormPage = () => {
           {/* Allowed test modes — multi-select. Both checked (default) lets
               the student pick at start. Lock to one mode to force it. */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Test Modes</label>
+            <label className={`${labelCls} mb-2`}>Allowed Test Modes</label>
             <div className="flex flex-wrap gap-2">
               {[
                 { value: 'tutor', label: 'Tutor mode',  hint: 'Instant feedback per question' },
@@ -176,7 +231,7 @@ const TestFormPage = () => {
                     className={`flex-1 min-w-[160px] text-left p-3 rounded-xl border-2 transition-colors ${
                       checked
                         ? 'border-primary-400 bg-primary-50 dark:bg-primary-950/30 dark:border-primary-700'
-                        : 'border-gray-200 dark:border-[var(--border)] hover:border-primary-200 dark:hover:border-primary-800'
+                        : 'border-[var(--border)] hover:border-primary-200 dark:hover:border-primary-800'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -184,7 +239,7 @@ const TestFormPage = () => {
                       <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
                         checked
                           ? 'bg-primary-500 border-primary-500'
-                          : 'border-gray-300 dark:border-[var(--border)]'
+                          : 'border-[var(--border)]'
                       }`}>
                         {checked && (
                           <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
@@ -198,7 +253,7 @@ const TestFormPage = () => {
                 );
               })}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-[var(--text-faint)] mt-1.5">
               {formData.allowedModes.length === 2
                 ? 'Both modes allowed — student picks at start.'
                 : `Test locked to ${formData.allowedModes[0]} mode.`}
@@ -207,7 +262,7 @@ const TestFormPage = () => {
 
           {/* Attempt limit — toggle "Unlimited" on/off; show number input when off */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Allowed Attempts</label>
+            <label className={`${labelCls} mb-2`}>Allowed Attempts</label>
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -216,15 +271,15 @@ const TestFormPage = () => {
                   maxAttempts: p.maxAttempts == null ? 1 : null,
                 }))}
                 className={`relative inline-block w-11 h-6 rounded-full transition-colors ${
-                  formData.maxAttempts == null ? 'bg-emerald-500' : 'bg-gray-300'
+                  formData.maxAttempts == null ? 'bg-emerald-500' : 'bg-[var(--border)]'
                 }`}
                 title="Toggle unlimited attempts"
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm ${
                   formData.maxAttempts == null ? 'translate-x-5' : 'translate-x-0'
                 }`} />
               </button>
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-[var(--text)]">
                 {formData.maxAttempts == null ? 'Unlimited attempts' : 'Limit attempts to'}
               </span>
               {formData.maxAttempts != null && (
@@ -237,31 +292,42 @@ const TestFormPage = () => {
                     const v = parseInt(e.target.value, 10);
                     setFormData((p) => ({ ...p, maxAttempts: Number.isFinite(v) && v > 0 ? v : 1 }));
                   }}
-                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                  className="w-24 px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm transition"
                 />
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-[var(--text-faint)] mt-1.5">
               Admins/teachers are always exempt — this limit applies to students only.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
-            <textarea name="instructions" value={formData.instructions} onChange={handleChange}
-              rows={4} placeholder="Instructions shown to students before the test…"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
+            <label className={labelCls}>Instructions</label>
+            <textarea
+              name="instructions"
+              value={formData.instructions}
+              onChange={handleChange}
+              rows={4}
+              placeholder="Instructions shown to students before the test…"
+              className={`${inputCls} resize-none`}
+            />
           </div>
         </div>
 
-        {/* Submit */}
+        {/* Submit row */}
         <div className="flex justify-end gap-3">
-          <button type="button" onClick={() => navigate('/tests')}
-            className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+          <button
+            type="button"
+            onClick={() => navigate('/tests')}
+            className="px-5 py-2.5 text-sm font-semibold text-[var(--text-muted)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-muted)] transition-colors"
+          >
             Cancel
           </button>
-          <button type="submit" disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-60">
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-brand text-sm disabled:opacity-60"
+          >
             <FiSave className="w-4 h-4" />
             {saving ? 'Saving…' : isEdit ? 'Update Test' : 'Create Test & Add MCQs →'}
           </button>

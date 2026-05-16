@@ -26,26 +26,26 @@ const MCQReportsPanel = ({ mcqId }) => {
   const openCount = reports.filter(r => r.status !== 'closed').length;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-4 mb-6">
       <button
         onClick={() => setExpanded(v => !v)}
         className="flex items-center gap-2 w-full text-left"
       >
-        <FiFlag className={`w-4 h-4 flex-shrink-0 ${openCount > 0 ? 'text-red-500' : 'text-gray-400'}`} />
-        <span className="font-semibold text-gray-800 text-sm">Student Reports for this MCQ</span>
+        <FiFlag className={`w-4 h-4 flex-shrink-0 ${openCount > 0 ? 'text-red-500 dark:text-red-400' : 'text-[var(--text-faint)]'}`} />
+        <span className="font-semibold text-[var(--text-strong)] text-sm">Student Reports for this MCQ</span>
         {openCount > 0 && (
-          <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">
+          <span className="px-2 py-0.5 bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300 rounded-full text-xs font-bold">
             {openCount} open
           </span>
         )}
         {reports.length > 0 && (
-          <span className="text-xs text-gray-400">{reports.length} total</span>
+          <span className="text-xs text-[var(--text-faint)]">{reports.length} total</span>
         )}
-        {loading && <div className="animate-spin h-3.5 w-3.5 border-b-2 border-gray-400 rounded-full ml-1" />}
+        {loading && <div className="animate-spin h-3.5 w-3.5 border-b-2 border-[var(--text-faint)] rounded-full ml-1" />}
         {!loading && reports.length === 0 && !expanded && (
-          <span className="text-xs text-gray-400">No reports</span>
+          <span className="text-xs text-[var(--text-faint)]">No reports</span>
         )}
-        <div className="ml-auto text-gray-400">
+        <div className="ml-auto text-[var(--text-faint)]">
           {expanded ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
         </div>
       </button>
@@ -53,29 +53,30 @@ const MCQReportsPanel = ({ mcqId }) => {
       {expanded && (
         <div className="mt-3 space-y-2">
           {reports.length === 0 && !loading && (
-            <p className="text-sm text-gray-400 italic text-center py-2">No reports for this MCQ.</p>
+            <p className="text-sm text-[var(--text-faint)] italic text-center py-2">No reports for this MCQ.</p>
           )}
           {reports.map(r => (
             <div
               key={r._id}
               className={`p-3 rounded-lg border text-sm ${
-                r.status === 'closed'  ? 'border-gray-100 bg-gray-50' :
-                r.status === 'open'    ? 'border-yellow-200 bg-yellow-50' :
-                                         'border-blue-200 bg-blue-50'
+                r.status === 'closed'  ? 'border-[var(--border-faint)] bg-[var(--bg-muted)]' :
+                r.status === 'open'    ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30' :
+                                         'border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30'
               }`}
             >
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                  r.status === 'open' ? 'bg-yellow-100 text-yellow-700' :
-                  r.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                  r.status === 'open' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' :
+                  r.status === 'active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' :
+                  'bg-[var(--bg-muted)] text-[var(--text-muted)]'
                 }`}>{r.status}</span>
-                <span className="text-xs text-gray-700 font-medium">{r.reason}</span>
-                <span className="text-xs text-gray-400">by {r.reportedBy?.fullName}</span>
-                {r.handledBy && <span className="text-xs text-blue-500">→ {r.handledBy.fullName}</span>}
+                <span className="text-xs text-[var(--text)] font-medium">{r.reason}</span>
+                <span className="text-xs text-[var(--text-faint)]">by {r.reportedBy?.fullName}</span>
+                {r.handledBy && <span className="text-xs text-primary-600 dark:text-primary-300">→ {r.handledBy.fullName}</span>}
               </div>
-              {r.details && <p className="text-xs text-gray-500 mt-1 italic">"{r.details}"</p>}
+              {r.details && <p className="text-xs text-[var(--text-muted)] mt-1 italic">"{r.details}"</p>}
               {r.messages?.length > 0 && (
-                <p className="text-xs text-gray-400 mt-0.5">{r.messages.length} message{r.messages.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-[var(--text-faint)] mt-0.5">{r.messages.length} message{r.messages.length !== 1 ? 's' : ''}</p>
               )}
             </div>
           ))}
@@ -261,8 +262,8 @@ const SequentialMCQEditorPage = () => {
   const infoBlock = (
     <>
       {test && (
-        <div className="bg-blue-50 p-4 rounded-lg mb-6">
-          <h2 className="font-semibold">Test: {test.title}</h2>
+        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-4 mb-6">
+          <h2 className="font-semibold text-[var(--text-strong)]">Test: {test.title}</h2>
         </div>
       )}
       {currentMcq && <MCQReportsPanel mcqId={currentMcq._id} />}

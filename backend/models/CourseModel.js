@@ -69,6 +69,15 @@ const courseSchema = new Schema(
     },
     // Student-side sort order for Date Mode
     contentSortOrder: { type: String, enum: ['upcoming_first', 'past_first'], default: 'upcoming_first' },
+
+    // ── Admin metadata shown on student catalog cards ──────────────────────
+    // Course schedule. Either or both may be null when the date is open-ended.
+    // The frontend formats the visible "Duration" string from these.
+    startDate:        { type: Date,    default: null },
+    endDate:          { type: Date,    default: null },
+    // Free-form tag for the target MDCAT year (e.g., "MDCAT 2026"). Admins
+    // can leave it blank; cards only render the badge when it's set.
+    mdcatYear:        { type: String,  trim: true, default: '' },
   },
   { timestamps: true }
 );

@@ -71,7 +71,7 @@ exports.getPosts = async (req, res) => {
   try {
     const userId = req.user.id;
     const { category, filter = 'all', search, page = 1 } = req.query;
-    const limit = 20;
+    const limit = 10;
     const skip  = (Math.max(1, Number(page)) - 1) * limit;
 
     const q = {};

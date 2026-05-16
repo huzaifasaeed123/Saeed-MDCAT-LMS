@@ -35,8 +35,9 @@ import {
   FiClock,
   FiCalendar,
 } from 'react-icons/fi';
+import { getBackendUrl } from '../../../shared/utils/fixImageUrls';
 
-const STATIC_BASE = 'http://localhost:5000';
+const STATIC_BASE = getBackendUrl();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 const {
   startTest,
   getTestAttempt,
+  getAttemptAnalytics,
   getActiveAttempt,
   submitAnswer,
   reportQuestion,
@@ -28,6 +29,9 @@ router.delete('/saved-questions/:savedQuestionId', removeSavedQuestion);
 
 // Test attempt routes
 router.post('/start', startTest);
+// More-specific :attemptId/* routes go BEFORE the bare /:attemptId so Express
+// doesn't shadow them with the generic attempt-detail handler.
+router.get('/:attemptId/analytics', getAttemptAnalytics);
 router.get('/:attemptId', getTestAttempt);
 router.put('/:attemptId/question/:questionIndex', submitAnswer);
 router.put('/:attemptId/report/:questionIndex', reportQuestion);

@@ -279,6 +279,12 @@ exports.startTest = async (req, res) => {
       });
     }
 
+    // Resolve the MCQ array UP FRONT — used by both the resume branch
+    // (response reconstruction) and the new-attempt branch. test.mcqs is
+    // already populated from the Test.findById above; the legacy fallback
+    // covers tests written before the mcqs ref array existed.
+    const mcqs = test.mcqs?.length > 0 ? test.mcqs : await MCQ.find({ testId });
+
     // Resume existing in-progress attempt
     const existingAttempt = await UserTestAttempt.findOne({
       user: req.user.id,
@@ -286,13 +292,43 @@ exports.startTest = async (req, res) => {
       status: 'in-progress',
     });
     if (existingAttempt) {
-      const populated = await UserTestAttempt.findById(existingAttempt._id)
-        .populate('test')
-        .populate({ path: 'questionAttempts.mcqId', model: 'MCQ' });
+      // Reconstruct the populated response shape from in-memory data — the
+      // previous code did UserTestAttempt.findById + populate('test') +
+      // populate('questionAttempts.mcqId'), which was 3 round trips. We
+      // already have `test` and `mcqs` in scope.
+      //
+      // Edge case: the attempt's questionAttempts may reference MCQs no
+      // longer in test.mcqs (test was edited after the attempt started).
+      // Targeted MCQ.find for any missing ones is still cheaper than a
+      // full populate over every attempt question.
+      const attemptMcqIds = existingAttempt.questionAttempts
+        .map((qa) => qa.mcqId?.toString())
+        .filter(Boolean);
+      const haveIds = new Set(mcqs.map((m) => m._id.toString()));
+      const missingIds = attemptMcqIds.filter((id) => !haveIds.has(id));
+      const extraMcqs = missingIds.length > 0
+        ? await MCQ.find({ _id: { $in: missingIds } })
+        : [];
+
+      const resumeMcqMap = new Map();
+      [...mcqs, ...extraMcqs].forEach((m) => {
+        resumeMcqMap.set(m._id.toString(), m.toObject ? m.toObject() : m);
+      });
+
+      const testForResume = test.toObject();
+      testForResume.mcqs = mcqs.map((m) => m._id); // match populate('test') shape
+
+      const attemptObj = existingAttempt.toObject();
+      attemptObj.test = testForResume;
+      attemptObj.questionAttempts = attemptObj.questionAttempts.map((qa) => ({
+        ...qa,
+        mcqId: resumeMcqMap.get(qa.mcqId?.toString()) || qa.mcqId,
+      }));
+
       return res.status(200).json({
         success: true,
         message: 'Found existing test attempt',
-        data: populated,
+        data: attemptObj,
       });
     }
 
@@ -317,9 +353,6 @@ exports.startTest = async (req, res) => {
         });
       }
     }
-
-    // Fall back to legacy testId-field MCQs if test.mcqs is empty
-    const mcqs = test.mcqs?.length > 0 ? test.mcqs : await MCQ.find({ testId });
 
     if (mcqs.length === 0) {
       return res.status(400).json({ success: false, message: 'Test has no questions' });
@@ -362,14 +395,34 @@ exports.startTest = async (req, res) => {
       totalQuestions:    mcqs.length,
     });
 
-    const populatedAttempt = await UserTestAttempt.findById(newAttempt._id)
-      .populate('test')
-      .populate({ path: 'questionAttempts.mcqId', model: 'MCQ' });
+    // Build the populated response shape locally from data we already have
+    // in memory. The previous code re-fetched the attempt and ran two heavy
+    // populates (`test` + `questionAttempts.mcqId`) — three round trips for
+    // information we already loaded at the top of this handler. Reconstructing
+    // matches the populate shape exactly (test as a plain object with mcqs as
+    // an id array, questionAttempts.mcqId replaced with the full MCQ object)
+    // so TestPlayerPage sees no difference.
+    const mcqMap = new Map();
+    mcqs.forEach((m) => {
+      mcqMap.set(m._id.toString(), m.toObject ? m.toObject() : m);
+    });
+
+    const testForResponse = test.toObject();
+    // populate('test') by default returns test.mcqs as an id array — keep that
+    // shape so any consumer that walks test.mcqs gets ObjectIds, not nested docs.
+    testForResponse.mcqs = mcqs.map((m) => m._id);
+
+    const attemptResponse = newAttempt.toObject();
+    attemptResponse.test = testForResponse;
+    attemptResponse.questionAttempts = attemptResponse.questionAttempts.map((qa) => ({
+      ...qa,
+      mcqId: mcqMap.get(qa.mcqId.toString()) || qa.mcqId,
+    }));
 
     res.status(201).json({
       success: true,
       message: 'Test attempt started successfully',
-      data: populatedAttempt,
+      data: attemptResponse,
     });
   } catch (error) {
     console.error('Error starting test:', error);
@@ -432,6 +485,206 @@ exports.getActiveAttempt = async (req, res) => {
     });
   } catch (error) {
     console.error('getActiveAttempt error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+/**
+ * Get cohort analytics for a single attempt — drives the Test Result page's
+ * Leaderboard tab + the "Top X% · N students" + "class median Y%" + score
+ * histogram on the Overview tab.
+ *
+ * Returns:
+ *   - leaderboard: { top: [...], totalTakers, avgScore }
+ *   - myRank, myPercentile  (null if user not in the result set somehow)
+ *   - classMedian
+ *   - scoreHistogram: 10 buckets (0-10, 10-20, ..., 90-100)
+ *
+ * Cost: ONE $facet aggregation, indexed by { test: 1, status: 1 } (already
+ * exists). Top-10 + my-rank + median + histogram all in a single round trip.
+ *
+ * Not cached yet. When a test has >500 takers and this becomes a hot path,
+ * mirror leaderboardCache.js — invalidate when a new completeTest lands for
+ * that test.
+ *
+ * @route GET /api/user-tests/:attemptId/analytics
+ * @access Private
+ */
+exports.getAttemptAnalytics = async (req, res) => {
+  try {
+    const { attemptId } = req.params;
+
+    // One lookup to scope the analytics. Cheap — no populates.
+    const attempt = await UserTestAttempt.findById(attemptId).select('user test scorePercentage').lean();
+    if (!attempt) return res.status(404).json({ success: false, message: 'Test attempt not found' });
+    if (attempt.user.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    // Pass-rate needs the test's passingScore. Tiny extra trip — projected
+    // to a single field. Avoids hard-coding 50% as the pass threshold.
+    const test = await Test.findById(attempt.test).select('passingScore').lean();
+    const passingScore = test?.passingScore ?? 50;
+
+    const testOid = attempt.test;
+    const myUserOid = new mongoose.Types.ObjectId(req.user.id);
+
+    // ── Leaderboard rule: only each user's FIRST attempt counts for ranking.
+    // We dedup at the top of the pipeline so every $facet branch (top,
+    // allScores, stats, histogram) sees one document per user — their
+    // chronologically first completed attempt. Stats become "first-attempt
+    // cohort" which is consistent and prevents prolific re-takers from
+    // skewing averages.
+    //
+    // Mechanics: sort by user then createdAt ASC, $group by user with
+    // $first to keep the oldest doc, then $replaceRoot to flatten back to
+    // attempt documents.
+    const [agg] = await UserTestAttempt.aggregate([
+      { $match: { test: testOid, status: 'completed' } },
+      { $sort:  { user: 1, createdAt: 1 } },
+      { $group: { _id: '$user', doc: { $first: '$$ROOT' } } },
+      { $replaceRoot: { newRoot: '$doc' } },
+      { $facet: {
+        // Top 10 scorers with name, school, score breakdown. Ties broken by speed.
+        top: [
+          { $sort: { scorePercentage: -1, totalTimeSpent: 1 } },
+          { $limit: 10 },
+          { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'u' } },
+          { $unwind: { path: '$u', preserveNullAndEmptyArrays: true } },
+          { $project: {
+            _id: 0,
+            userId:          '$user',
+            fullName:        { $ifNull: ['$u.fullName', 'Unknown'] },
+            profilePicture:  '$u.profilePicture',
+            // School / college shown under the name in the leaderboard table.
+            // Best-effort: fall back through possible field names.
+            school:          { $ifNull: ['$u.fscCollegeName', ''] },
+            score:           1,
+            maxScore:        1,
+            scorePercentage: { $round: ['$scorePercentage', 1] },
+            totalTimeSpent:  1,
+            isMe:            { $eq: ['$user', myUserOid] },
+          }},
+        ],
+        // Every score sorted desc. Used in JS for rank + median (score) +
+        // median (time) + finding the current user's first-attempt details.
+        // Includes the attempt _id so the frontend can detect when the
+        // currently-viewed attempt is NOT the leaderboard-counted first one.
+        allScores: [
+          { $sort: { scorePercentage: -1, totalTimeSpent: 1 } },
+          { $project: { _id: 1, user: 1, scorePercentage: 1, score: 1, maxScore: 1, totalTimeSpent: 1 } },
+        ],
+        // 10-bucket histogram (kept for any future visualisation; UI not
+        // rendering it right now but the data is essentially free here).
+        histogram: [
+          { $bucket: {
+            groupBy: '$scorePercentage',
+            boundaries: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 100.0001],
+            default: 'other',
+            output: { count: { $sum: 1 } },
+          }},
+        ],
+        // Cohort stats. passed = attempts that met the test's passingScore.
+        stats: [
+          { $group: {
+            _id: null,
+            total:   { $sum: 1 },
+            avg:     { $avg: '$scorePercentage' },
+            avgTime: { $avg: '$totalTimeSpent' },
+            passed:  { $sum: { $cond: [{ $gte: ['$scorePercentage', passingScore] }, 1, 0] } },
+          }},
+        ],
+      }},
+    ]);
+
+    const allScores   = agg.allScores || [];
+    const totalTakers = allScores.length;
+    const stats       = agg.stats?.[0] || { total: 0, avg: 0, avgTime: 0, passed: 0 };
+
+    // ── Median score (cheap — allScores is sorted desc) ──────────────────
+    let classMedian = null;
+    if (totalTakers > 0) {
+      const mid = Math.floor(totalTakers / 2);
+      classMedian = totalTakers % 2 === 0
+        ? (allScores[mid - 1].scorePercentage + allScores[mid].scorePercentage) / 2
+        : allScores[mid].scorePercentage;
+    }
+
+    // ── Median time (resort by time — cheaper than a second aggregation) ─
+    let medianTime = null;
+    if (totalTakers > 0) {
+      const byTime = allScores
+        .map((s) => s.totalTimeSpent || 0)
+        .sort((a, b) => a - b);
+      const mid = Math.floor(byTime.length / 2);
+      medianTime = byTime.length % 2 === 0
+        ? Math.round((byTime[mid - 1] + byTime[mid]) / 2)
+        : byTime[mid];
+    }
+
+    // ── My rank + percentile ─────────────────────────────────────────────
+    // After dedup, the user appears at most once in allScores — namely
+    // their first attempt. myRank reflects first-attempt position.
+    const myEntry = allScores.find((s) => s.user.toString() === req.user.id);
+    const myIndex = myEntry ? allScores.indexOf(myEntry) : -1;
+    const myRank       = myIndex >= 0 ? myIndex + 1 : null;
+    const myPercentile = (myRank != null && totalTakers > 1)
+      ? Math.round(((totalTakers - myRank) / (totalTakers - 1)) * 100)
+      : (myRank === 1 ? 100 : null);
+
+    // myFirstAttempt = the actual attempt that "counts" on the leaderboard.
+    // The frontend uses this for the sidebar (Score / Accuracy / Time /
+    // Percentile / vs-comparisons) so those fields are consistent with the
+    // rank above — even when the user is viewing a different attempt.
+    const myFirstAttempt = myEntry
+      ? {
+          _id:             myEntry._id,
+          score:           myEntry.score,
+          maxScore:        myEntry.maxScore,
+          scorePercentage: Math.round((myEntry.scorePercentage || 0) * 10) / 10,
+          totalTimeSpent:  myEntry.totalTimeSpent || 0,
+        }
+      : null;
+    // True when the attempt being viewed IS the user's first attempt (so
+    // the frontend can skip the "based on first attempt" disclaimer).
+    const isFirstAttempt = myFirstAttempt
+      ? myFirstAttempt._id.toString() === attemptId
+      : false;
+
+    // ── Histogram bucket array ───────────────────────────────────────────
+    const bucketLabels = ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'];
+    const histMap = {};
+    (agg.histogram || []).forEach((b) => {
+      const lo = typeof b._id === 'number' ? Math.floor(b._id / 10) * 10 : null;
+      if (lo !== null && lo <= 90) histMap[`${lo}-${lo + 10}`] = b.count;
+      else if (b._id === 100) histMap['90-100'] = (histMap['90-100'] || 0) + b.count;
+    });
+    const scoreHistogram = bucketLabels.map((label) => ({
+      bucket: label,
+      count:  histMap[label] || 0,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        leaderboard: {
+          top:         agg.top || [],
+          totalTakers,
+          avgScore:    Math.round(stats.avg || 0),
+          avgTime:     Math.round(stats.avgTime || 0),
+          passRate:    totalTakers > 0 ? Math.round((stats.passed / totalTakers) * 100) : null,
+        },
+        myRank,
+        myPercentile,
+        myFirstAttempt,    // the leaderboard-counted attempt (null if no completed attempts somehow)
+        isFirstAttempt,    // is the currently-viewed attempt the leaderboard one?
+        classMedian: classMedian != null ? Math.round(classMedian) : null,
+        medianTime,
+        scoreHistogram,
+      },
+    });
+  } catch (err) {
+    console.error('getAttemptAnalytics error:', err);
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };

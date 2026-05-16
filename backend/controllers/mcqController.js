@@ -8,6 +8,7 @@ const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { extractMCQsFromDoc, convertToBackendFormat } = require('../utils/mcqDocParser');
+const qbCountsCache = require('../utils/qbCountsCache');
 
 // Create new MCQ
 exports.createMCQ = async (req, res) => {
@@ -18,21 +19,27 @@ exports.createMCQ = async (req, res) => {
     };
 
     const mcq = await MCQ.create(mcqData);
-    
+
     // Update test with new MCQ
     const test = await Test.findById(req.body.testId);
     if (!test) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Test not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Test not found'
       });
     }
-    
+
     test.mcqs.push(mcq._id);
     test.totalQuestions = test.mcqs.length;
     await test.save();
 
     syncTestClassification(test._id).catch(console.error);
+
+    // QB count cache: this MCQ either carries its own questionBankId or
+    // inherits one from the parent test (auto-test MCQs). Either way the
+    // QB total + per-topic counts just changed — invalidate so the next
+    // /question-banks and /topic-counts read rebuild fresh.
+    qbCountsCache.invalidate(mcq.questionBankId || test.questionBankId);
 
     res.status(201).json({
       success: true,
@@ -134,7 +141,12 @@ exports.updateMCQ = async (req, res) => {
         runValidators: true
       }
     );
-    
+
+    // QB count cache: if the MCQ's questionBankId or qbTopicId changed, both
+    // the old and new QB totals are stale. Invalidating both is cheap (just
+    // Map.delete) and avoids subtle bugs when admins move an MCQ between QBs.
+    qbCountsCache.invalidateMany([mcq.questionBankId, updatedMCQ?.questionBankId]);
+
     res.status(200).json({
       success: true,
       data: updatedMCQ
@@ -175,9 +187,13 @@ exports.deleteMCQ = async (req, res) => {
       test.totalQuestions = test.mcqs.length;
       await test.save();
     }
-    
+
     await mcq.deleteOne();
-    
+
+    // QB count cache: invalidate the MCQ's QB (and the parent test's QB if
+    // the MCQ didn't carry one directly) so subsequent reads rebuild fresh.
+    qbCountsCache.invalidate(mcq.questionBankId || test?.questionBankId);
+
     res.status(200).json({
       success: true,
       data: {}
@@ -364,6 +380,19 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
     // Insert MCQs to database
     const importedMcqs = await MCQ.insertMany(mcqsToImport);
 
+    // QB count cache: a bulk import can land MCQs across multiple QBs (the
+    // converter pulls questionBankId per-row). Collect the unique set and
+    // invalidate them all in one shot — Map.delete is O(1) per entry.
+    const touchedQbs = [...new Set(
+      importedMcqs
+        .map((m) => m.questionBankId?.toString())
+        .filter(Boolean)
+    )];
+    // Also invalidate the parent test's QB in case the imported rows didn't
+    // carry their own questionBankId (legacy converter behaviour).
+    if (test?.questionBankId) touchedQbs.push(test.questionBankId.toString());
+    qbCountsCache.invalidateMany(touchedQbs);
+
     // Update test with new MCQs (only if a test was provided)
     const mcqIds = importedMcqs.map((mcq) => mcq._id);
     if (test) {
@@ -486,16 +515,27 @@ exports.getMCQsForQuestionBank = async (req, res) => {
 };
 
 // GET /api/mcqs/question-bank/:qbId/topic-counts
-// Returns { [topicId]: count } for every topic in the QB
+// Returns { [topicId]: count } for every topic in the QB.
+//
+// Served from qbCountsCache. Same response for every user, so one cached
+// entry serves the whole site. Invalidated on any MCQ create/update/delete
+// that touches this QB (see CRUD handlers above).
 exports.getTopicCounts = async (req, res) => {
   try {
     const { qbId } = req.params;
+
+    const cached = qbCountsCache.getTopicCounts(qbId);
+    if (cached) {
+      return res.json({ success: true, data: cached, cached: true });
+    }
+
     const agg = await MCQ.aggregate([
       { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
       { $group: { _id: '$qbTopicId', count: { $sum: 1 } } },
     ]);
     const counts = {};
     agg.forEach((r) => { if (r._id) counts[r._id.toString()] = r.count; });
+    qbCountsCache.setTopicCounts(qbId, counts);
     res.json({ success: true, data: counts });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

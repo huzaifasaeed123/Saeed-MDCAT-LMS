@@ -1,11 +1,13 @@
 // File: modules/mcqs/pages/MCQFormPage.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { FiSave, FiX } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import useAuth from '../../../core/auth/useAuth';
 import { toast } from 'react-toastify';
 import MCQFormFields from '../components/MCQFormFields';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const MCQFormPage = () => {
   const navigate = useNavigate();
@@ -210,69 +212,78 @@ const MCQFormPage = () => {
     }
   };
 
+  // Push title / subtitle / Cancel button to the global top bar via context.
+  // Memoise the action node so the context effect doesn't re-fire each render.
+  const headerSubtitle = test
+    ? `${test.title}${test.subject ? ` · ${test.subject}` : ''}${test.unit ? ` · ${test.unit}` : ''}${test.topic ? ` · ${test.topic}` : ''}`
+    : '';
+  const headerAction = useMemo(() => (
+    <button
+      type="button"
+      onClick={() => navigate(`/tests/${testId}`)}
+      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors whitespace-nowrap"
+    >
+      <FiX className="w-4 h-4" /> Cancel
+    </button>
+  ), [navigate, testId]);
+  usePageHeader({
+    title:    mcqId ? 'Edit Question' : 'Add Question',
+    subtitle: headerSubtitle,
+    action:   headerAction,
+  });
+
   if (fetchingData) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-        <span className="ml-3 text-gray-600">Loading MCQ data...</span>
+        <span className="ml-3 text-[var(--text-muted)]">Loading MCQ data...</span>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">
-          {mcqId ? 'Edit Question' : 'Add Question'}
-        </h1>
+    <div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300 px-4 py-3 rounded-xl mb-4 text-sm">
+          {error}
+        </div>
+      )}
 
-        {test && (
-          <div className="bg-blue-50 p-4 rounded-lg mb-6">
-            <h2 className="font-semibold">Test: {test.title}</h2>
-            <p className="text-sm text-gray-600">
-              {test.subject} - {test.unit} - {test.topic}
-            </p>
-          </div>
-        )}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6"
+      >
+        <MCQFormFields
+          formData={formData}
+          setFormData={setFormData}
+          revisionInfo={revisionInfo}
+          statistics={statistics}
+          currentMcq={currentMcq}
+          user={user}
+          handleOptionChange={handleOptionChange}
+          addOption={addOption}
+          removeOption={removeOption}
+          readOnly={false}
+        />
 
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6">
-          <MCQFormFields
-            formData={formData}
-            setFormData={setFormData}
-            revisionInfo={revisionInfo}
-            statistics={statistics}
-            currentMcq={currentMcq}
-            user={user}
-            handleOptionChange={handleOptionChange}
-            addOption={addOption}
-            removeOption={removeOption}
-            readOnly={false}
-          />
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => navigate(`/tests/${testId}`)}
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg mr-2"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg"
-            >
-              {loading ? 'Saving...' : mcqId ? 'Update Question' : 'Save Question'}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex justify-end gap-2 pt-5 mt-5 border-t border-[var(--border-faint)]">
+          <button
+            type="button"
+            onClick={() => navigate(`/tests/${testId}`)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-brand text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <FiSave className="w-4 h-4" />
+            {loading ? 'Saving...' : mcqId ? 'Update Question' : 'Save Question'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

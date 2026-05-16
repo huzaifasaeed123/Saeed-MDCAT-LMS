@@ -33,39 +33,45 @@ const scoreColor = (pct) => {
 };
 
 // ── KPI tile ─────────────────────────────────────────────────────────────────
-const Kpi = ({ Icon, label, value, sub, tone = 'violet' }) => {
+const Kpi = ({ Icon, label, value, sub, tone = 'primary' }) => {
   const TONES = {
-    violet:  'bg-purple-50 text-purple-700',
-    emerald: 'bg-emerald-50 text-emerald-700',
-    amber:   'bg-amber-50 text-amber-700',
-    blue:    'bg-blue-50 text-blue-700',
-    rose:    'bg-rose-50 text-rose-700',
+    primary:   'bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300',
+    secondary: 'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+    emerald:   'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    amber:     'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+    blue:      'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    rose:      'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+    violet:    'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
   };
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${TONES[tone]}`}>
+    <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-4">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${TONES[tone] || TONES.primary}`}>
         <Icon className="w-4 h-4" />
       </div>
-      <p className="text-2xl font-extrabold text-gray-900 mt-3 leading-none">{value}</p>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-2">{label}</p>
-      {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
+      <p className="text-2xl font-bold text-[var(--text-strong)] mt-3 leading-none">{value}</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-faint)] mt-2">{label}</p>
+      {sub && <p className="text-[10px] text-[var(--text-faint)] mt-0.5">{sub}</p>}
     </div>
   );
 };
 
 // ── Recent attempt row ──────────────────────────────────────────────────────
 const AttemptRow = ({ a }) => (
-  <Link to={`/student/tests/${a.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
+  <Link to={`/student/tests/${a.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--bg-muted)] border border-transparent hover:border-[var(--border-faint)] transition-colors">
     <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${scoreColor(a.scorePct)}`}>
       {a.scorePct}%
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-sm font-bold text-gray-900 truncate">{a.title}</p>
-      <p className="text-xs text-gray-500 mt-0.5">
+      <p className="text-sm font-bold text-[var(--text-strong)] truncate">{a.title}</p>
+      <p className="text-xs text-[var(--text-muted)] mt-0.5">
         {a.answeredCount}/{a.totalQuestions} answered · {fmtTime(a.timeSpentSec)} · {fmtDate(a.finishedAt)}
       </p>
     </div>
-    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${a.mode === 'timer' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+      a.mode === 'timer'
+        ? 'bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
+        : 'bg-secondary-100 text-secondary-700 dark:bg-secondary-950/40 dark:text-secondary-300'
+    }`}>
       {a.mode}
     </span>
   </Link>
@@ -73,7 +79,7 @@ const AttemptRow = ({ a }) => (
 
 // ── Locked-feature pill (small CTA for students missing a feature) ─────────
 const LockedPill = ({ label, to }) => (
-  <Link to={to} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold transition-colors">
+  <Link to={to} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:hover:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900/60 text-xs font-bold transition-colors">
     <FiLock className="w-3 h-3" /> {label}
   </Link>
 );
@@ -100,7 +106,7 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
               {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] mt-1">
-              Salam, {user?.fullName?.split(' ')[0] || 'Student'} 👋
+              Salam, {user?.fullName?.split(' ')[0] || 'Student'}
             </h1>
             <p className="text-sm opacity-90 mt-1 max-w-xl">
               {tests.completed === 0
@@ -154,13 +160,13 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
       </div>
 
       {/* ── KPI strip ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi Icon={FiCheckSquare} label="Tests Completed" value={tests.completed}
              sub={tests.inProgress > 0 ? `${tests.inProgress} in progress` : (tests.weekCount > 0 ? `+${tests.weekCount} this week` : null)}
-             tone="violet" />
+             tone="secondary" />
         <Kpi Icon={FiZap} label="MCQs Solved" value={mcq.correctCount + mcq.incorrectCount}
              sub={mcq.weekTouched > 0 ? `+${mcq.weekTouched} this week` : null}
-             tone="amber" />
+             tone="primary" />
         <Kpi Icon={FiTarget} label="Accuracy" value={`${mcq.accuracy}%`}
              sub={`${mcq.correctCount} correct · ${mcq.incorrectCount} wrong`}
              tone="emerald" />
@@ -172,22 +178,24 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
       {/* ── Recent tests + side rail ───────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         {/* Recent attempts card */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Recent</div>
-              <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5">Latest Test Attempts</h3>
+              <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Recent</div>
+              <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5">Latest Test Attempts</h3>
             </div>
-            <Link to="/student/tests" className="text-xs font-bold text-primary-700 hover:text-primary-800 flex items-center gap-0.5">
+            <Link to="/student/tests" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200 flex items-center gap-0.5">
               See all <FiArrowRight className="w-3 h-3" />
             </Link>
           </div>
 
           {recent.length === 0 ? (
             <div className="text-center py-10">
-              <FiActivity className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No tests taken yet.</p>
-              <Link to="/auto-test" className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-brand-gradient-soft text-primary-700 text-xs font-bold">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[var(--bg-muted)] flex items-center justify-center">
+                <FiActivity className="w-6 h-6 text-[var(--text-faint)]" />
+              </div>
+              <p className="text-sm text-[var(--text-muted)]">No tests taken yet.</p>
+              <Link to="/auto-test" className="btn-brand text-xs mt-3">
                 <FiZap className="w-3.5 h-3.5" /> Start your first practice test
               </Link>
             </div>
@@ -201,73 +209,75 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
         {/* Side rail */}
         <div className="space-y-4">
           {/* Leaderboard widget */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Standing</div>
-                <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5 flex items-center gap-1.5">
-                  <FiAward className="text-primary-600 w-4 h-4" /> Leaderboard
+                <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Standing</div>
+                <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5 flex items-center gap-1.5">
+                  <FiAward className="text-primary-600 dark:text-primary-300 w-4 h-4" /> Leaderboard
                 </h3>
               </div>
-              <Link to="/leaderboard" className="text-xs font-bold text-primary-700 hover:text-primary-800">Full →</Link>
+              <Link to="/leaderboard" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200">Full →</Link>
             </div>
 
             {lb ? (
               <>
                 <div className="text-center py-2">
                   <div className="text-4xl font-extrabold text-brand-gradient">#{lb.rank}</div>
-                  <div className="text-xs text-gray-500 mt-1">of {lb.totalRanked} students</div>
-                  <div className="mt-2 inline-block px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
+                  <div className="text-xs text-[var(--text-muted)] mt-1">of {lb.totalRanked} students</div>
+                  <div className="mt-2 inline-block px-2.5 py-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 text-xs font-bold rounded-full">
                     Top {lb.percentile}%
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Score</div>
-                    <div className="text-sm font-extrabold text-gray-900 mt-0.5">{lb.score}</div>
+                  <div className="bg-[var(--bg-muted)] rounded-lg p-2 text-center">
+                    <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold">Score</div>
+                    <div className="text-sm font-extrabold text-[var(--text-strong)] mt-0.5">{lb.score}</div>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Solved</div>
-                    <div className="text-sm font-extrabold text-gray-900 mt-0.5">{lb.totalAttempted}</div>
+                  <div className="bg-[var(--bg-muted)] rounded-lg p-2 text-center">
+                    <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold">Solved</div>
+                    <div className="text-sm font-extrabold text-[var(--text-strong)] mt-0.5">{lb.totalAttempted}</div>
                   </div>
                 </div>
               </>
             ) : (
               <div className="text-center py-4">
-                <FiTrendingUp className="w-8 h-8 text-gray-200 mx-auto mb-1.5" />
-                <p className="text-xs text-gray-500">Complete a test to enter the leaderboard.</p>
+                <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-[var(--bg-muted)] flex items-center justify-center">
+                  <FiTrendingUp className="w-5 h-5 text-[var(--text-faint)]" />
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">Complete a test to enter the leaderboard.</p>
               </div>
             )}
           </div>
 
           {/* Community engagement */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Engage</div>
-                <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5">Community</h3>
+                <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Engage</div>
+                <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5">Community</h3>
               </div>
               {hasFeature('community')
-                ? <Link to="/community" className="text-xs font-bold text-primary-700 hover:text-primary-800">Open →</Link>
+                ? <Link to="/community" className="text-xs font-bold text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200">Open →</Link>
                 : <LockedPill label="Locked" to="/community" />}
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <div className="text-lg font-extrabold text-gray-900">{comm.postsCreated}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Posts</div>
+                <div className="text-lg font-extrabold text-[var(--text-strong)]">{comm.postsCreated}</div>
+                <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Posts</div>
               </div>
               <div>
-                <div className="text-lg font-extrabold text-gray-900">{comm.repliesCreated}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Replies</div>
+                <div className="text-lg font-extrabold text-[var(--text-strong)]">{comm.repliesCreated}</div>
+                <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Replies</div>
               </div>
               <div>
-                <div className="text-lg font-extrabold text-gray-900">{comm.helpfulReceived}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">Helpful</div>
+                <div className="text-lg font-extrabold text-[var(--text-strong)]">{comm.helpfulReceived}</div>
+                <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">Helpful</div>
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-xs text-gray-500">Community points</span>
-              <span className="text-sm font-extrabold text-primary-700">{comm.points} <span className="text-xs text-gray-400 font-medium">· {comm.badge || 'Newcomer'}</span></span>
+            <div className="mt-3 pt-3 border-t border-[var(--border-faint)] flex items-center justify-between">
+              <span className="text-xs text-[var(--text-muted)]">Community points</span>
+              <span className="text-sm font-extrabold text-primary-600 dark:text-primary-300">{comm.points} <span className="text-xs text-[var(--text-faint)] font-medium">· {comm.badge || 'Newcomer'}</span></span>
             </div>
           </div>
         </div>
@@ -275,26 +285,26 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
 
       {/* ── MCQ practice insights (full width) ─────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
           <div className="mb-3">
-            <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Practice</div>
-            <h3 className="text-base font-bold text-gray-900 tracking-tight mt-0.5">MCQ Practice Insights</h3>
+            <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)]">Practice</div>
+            <h3 className="text-base font-bold text-[var(--text-strong)] tracking-tight mt-0.5">MCQ Practice Insights</h3>
           </div>
 
           {/* Accuracy bar */}
           <div className="mb-4">
             <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-bold text-gray-700">Overall accuracy</span>
-              <span className="font-extrabold text-gray-900">{mcq.accuracy}%</span>
+              <span className="font-bold text-[var(--text)]">Overall accuracy</span>
+              <span className="font-extrabold text-[var(--text-strong)]">{mcq.accuracy}%</span>
             </div>
-            <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+            <div className="h-3 bg-[var(--bg-muted)] rounded-full overflow-hidden flex">
               <div className="h-full bg-emerald-500" style={{ width: `${pctOf(mcq.correctCount, mcq.correctCount + mcq.incorrectCount)}%` }} />
               <div className="h-full bg-rose-400" style={{ width: `${pctOf(mcq.incorrectCount, mcq.correctCount + mcq.incorrectCount)}%` }} />
             </div>
-            <div className="flex gap-4 mt-2 text-[11px] text-gray-500">
+            <div className="flex gap-4 mt-2 text-[11px] text-[var(--text-muted)]">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Correct {mcq.correctCount}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-400" /> Wrong {mcq.incorrectCount}</span>
-              <span className="text-gray-400 ml-auto">Unique MCQs touched: {mcq.uniqueMcqs}</span>
+              <span className="text-[var(--text-faint)] ml-auto">Unique MCQs touched: {mcq.uniqueMcqs}</span>
             </div>
           </div>
 
@@ -308,8 +318,8 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
         </div>
 
         {/* Quick access tiles */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400 mb-3">Shortcuts</div>
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
+          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--text-faint)] mb-3">Shortcuts</div>
           <div className="space-y-2">
             <QuickTile to="/student/courses" Icon={FiBook}    label="My Courses"  locked={!hasFeature('courses')} />
             <QuickTile to="/videos"          Icon={FiVideo}   label="Videos"      locked={!hasFeature('videos')} />
@@ -329,25 +339,29 @@ const StudentDashboard = ({ data, refreshing, onRefresh }) => {
 const pctOf = (n, d) => d > 0 ? (n / d) * 100 : 0;
 
 const MiniStat = ({ label, value }) => (
-  <div className="bg-gray-50 rounded-lg p-2 text-center">
-    <div className="text-lg font-extrabold text-gray-900">{value}</div>
-    <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mt-0.5">{label}</div>
+  <div className="bg-[var(--bg-muted)] rounded-lg p-2 text-center">
+    <div className="text-lg font-extrabold text-[var(--text-strong)]">{value}</div>
+    <div className="text-[10px] text-[var(--text-faint)] uppercase tracking-wider font-bold mt-0.5">{label}</div>
   </div>
 );
 
 const QuickTile = ({ to, Icon, label, locked }) => (
   <Link to={to} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
     locked
-      ? 'bg-amber-50/40 border-amber-100 hover:bg-amber-50'
-      : 'border-gray-100 hover:bg-gray-50'
+      ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/40 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+      : 'border-[var(--border-faint)] hover:bg-[var(--bg-muted)]'
   }`}>
-    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${locked ? 'bg-amber-100 text-amber-600' : 'bg-brand-gradient-soft text-primary-700'}`}>
+    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+      locked
+        ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300'
+        : 'bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300'
+    }`}>
       <Icon className="w-4 h-4" />
     </div>
-    <span className={`flex-1 text-sm font-bold ${locked ? 'text-gray-500' : 'text-gray-900'}`}>{label}</span>
+    <span className={`flex-1 text-sm font-bold ${locked ? 'text-[var(--text-muted)]' : 'text-[var(--text-strong)]'}`}>{label}</span>
     {locked
-      ? <FiLock className="w-3.5 h-3.5 text-amber-500" />
-      : <FiArrowRight className="w-3.5 h-3.5 text-gray-400" />}
+      ? <FiLock className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
+      : <FiArrowRight className="w-3.5 h-3.5 text-[var(--text-faint)]" />}
   </Link>
 );
 

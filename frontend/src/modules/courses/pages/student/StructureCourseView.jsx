@@ -8,8 +8,9 @@ import {
   FiExternalLink, FiPlay, FiLink, FiLock, FiClock,
   FiMenu, FiX, FiMaximize2, FiList,
 } from 'react-icons/fi';
+import { getBackendUrl } from '../../../../shared/utils/fixImageUrls';
 
-const STATIC_BASE = 'http://localhost:5000';
+const STATIC_BASE = getBackendUrl();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtDate = (v) => {

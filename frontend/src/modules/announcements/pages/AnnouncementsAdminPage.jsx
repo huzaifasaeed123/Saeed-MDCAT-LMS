@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { toast } from 'react-toastify';
-import { FiEdit2, FiTrash2, FiBookmark, FiRefreshCw, FiSend } from 'react-icons/fi';
+import { FiEdit2, FiTrash2, FiBookmark, FiRefreshCw, FiSend, FiPlus, FiList } from 'react-icons/fi';
 import useAuth from '../../../core/auth/useAuth';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 import {
   listAnnouncements,
   createAnnouncement,
@@ -32,6 +33,30 @@ const AUDIENCES = [
   { value: 'teachers', label: 'Teachers only' },
   { value: 'admins',   label: 'Admins only' },
 ];
+
+// Theme-aware overrides for the four announcement types. The shared
+// TYPE_META was authored for dark cards; here we map to flat surface
+// chips that work in both light and dark mode.
+const TYPE_CHIP = {
+  info:   'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  test:   'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  update: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  urgent: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+};
+
+const TYPE_ICON_WRAP = {
+  info:   'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+  test:   'bg-purple-100 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300',
+  update: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+  urgent: 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300',
+};
+
+const TYPE_ACCENT = {
+  info:   'border-l-blue-500',
+  test:   'border-l-purple-500',
+  update: 'border-l-emerald-500',
+  urgent: 'border-l-red-500',
+};
 
 // Admin/teacher console. The list on the right uses the SAME 16-fetch hasMore
 // pattern as the rest of the app. The SSE stream keeps it live: when one staff
@@ -161,12 +186,37 @@ const AnnouncementsAdminPage = () => {
     }
   };
 
+  // ── Page header ───────────────────────────────────────────────────────────
+  const pinnedCount = liveList.filter((a) => a.pinned).length;
+  const subtitle = liveList.length === 0
+    ? 'No announcements yet'
+    : `${liveList.length} announcement${liveList.length === 1 ? '' : 's'}${pinnedCount ? ` · ${pinnedCount} pinned` : ''}`;
+
+  // Memoise so PageHeaderContext doesn't see a fresh JSX object every render
+  // (would cause its effect to re-fire → setHeader → infinite re-render loop).
+  const headerAction = useMemo(() => (
+    <button
+      onClick={fetchFirstPage}
+      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+    >
+      <FiRefreshCw className="w-4 h-4" /> Refresh
+    </button>
+  ), [fetchFirstPage]);
+
+  usePageHeader({
+    title:    'Announcements',
+    subtitle,
+    action:   headerAction,
+  });
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Form */}
-      <div className="bg-slate-900 text-white rounded-2xl shadow-lg p-5 border border-slate-800">
-        <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
-          <span className="text-amber-400">📣</span>
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5">
+        <h2 className="font-display text-base font-bold text-[var(--text-strong)] mb-4 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-300">
+            <FiSend className="w-4 h-4" />
+          </span>
           {editingId ? 'Edit Announcement' : 'Create Announcement'}
         </h2>
 
@@ -178,7 +228,7 @@ const AnnouncementsAdminPage = () => {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="e.g. MDCAT Mock Test - Sunday 10am"
               maxLength={200}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+              className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               required
             />
           </Field>
@@ -190,7 +240,7 @@ const AnnouncementsAdminPage = () => {
               onChange={(e) => setForm({ ...form, message: e.target.value })}
               placeholder="Full details students should see"
               maxLength={5000}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400 resize-none"
+              className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
             />
           </Field>
 
@@ -199,7 +249,7 @@ const AnnouncementsAdminPage = () => {
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               >
                 {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -208,7 +258,7 @@ const AnnouncementsAdminPage = () => {
               <select
                 value={form.audience}
                 onChange={(e) => setForm({ ...form, audience: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               >
                 {AUDIENCES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
@@ -222,7 +272,7 @@ const AnnouncementsAdminPage = () => {
                 value={form.link}
                 onChange={(e) => setForm({ ...form, link: e.target.value })}
                 placeholder="https://..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               />
             </Field>
             <Field label="Button Text">
@@ -231,7 +281,7 @@ const AnnouncementsAdminPage = () => {
                 value={form.buttonText}
                 onChange={(e) => setForm({ ...form, buttonText: e.target.value })}
                 maxLength={40}
-                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               />
             </Field>
           </div>
@@ -241,7 +291,7 @@ const AnnouncementsAdminPage = () => {
               type="datetime-local"
               value={form.expiresAt}
               onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+              className="w-full bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
           </Field>
 
@@ -253,26 +303,26 @@ const AnnouncementsAdminPage = () => {
                 onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
                 className="sr-only peer"
               />
-              <span className="absolute inset-0 rounded-full bg-slate-700 peer-checked:bg-amber-500 transition-colors" />
-              <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-5 transition-transform" />
+              <span className="absolute inset-0 rounded-full bg-[var(--bg-muted)] border border-[var(--border)] peer-checked:bg-primary-500 peer-checked:border-primary-500 transition-colors" />
+              <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full peer-checked:translate-x-5 transition-transform shadow-sm" />
             </span>
-            <span className="text-sm">Pin to top</span>
+            <span className="text-sm text-[var(--text)]">Pin to top</span>
           </label>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pt-1">
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-medium py-2.5 rounded-md text-sm flex items-center justify-center gap-2"
+              className="btn-brand flex-1 justify-center text-sm py-2.5 disabled:opacity-50"
             >
-              <FiSend className="w-4 h-4" />
+              {editingId ? <FiSend className="w-4 h-4" /> : <FiPlus className="w-4 h-4" />}
               {editingId ? 'Save Changes' : 'Send Announcement'}
             </button>
             {editingId && (
               <button
                 type="button"
                 onClick={() => { setForm(empty); setEditingId(null); }}
-                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-md text-sm"
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
               >
                 Cancel
               </button>
@@ -280,7 +330,7 @@ const AnnouncementsAdminPage = () => {
             <button
               type="button"
               onClick={fetchFirstPage}
-              className="p-2.5 bg-slate-700 hover:bg-slate-600 rounded-md"
+              className="p-2.5 rounded-xl border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
               title="Refresh list"
             >
               <FiRefreshCw className="w-4 h-4" />
@@ -290,12 +340,17 @@ const AnnouncementsAdminPage = () => {
       </div>
 
       {/* List */}
-      <div className="bg-slate-900 text-white rounded-2xl shadow-lg p-5 border border-slate-800">
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold">≡ All Announcements</h2>
+          <h2 className="font-display text-base font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-secondary-50 dark:bg-secondary-950/40 text-secondary-600 dark:text-secondary-300">
+              <FiList className="w-4 h-4" />
+            </span>
+            All Announcements
+          </h2>
           <button
             onClick={fetchFirstPage}
-            className="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1"
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] flex items-center gap-1 transition-colors"
           >
             <FiRefreshCw className="w-3 h-3" />
             Refresh
@@ -303,9 +358,9 @@ const AnnouncementsAdminPage = () => {
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-400 py-6 text-center">Loading…</p>
+          <p className="text-sm text-[var(--text-faint)] py-6 text-center">Loading…</p>
         ) : liveList.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">No announcements yet</p>
+          <p className="text-sm text-[var(--text-faint)] py-6 text-center">No announcements yet</p>
         ) : (
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
             {liveList.map((a) => (
@@ -320,7 +375,7 @@ const AnnouncementsAdminPage = () => {
             {hasMore && (
               <button
                 onClick={loadMore}
-                className="w-full py-2 text-xs font-medium text-amber-400 hover:bg-slate-800 rounded-md"
+                className="w-full py-2 text-xs font-semibold text-primary-600 dark:text-primary-300 hover:bg-[var(--bg-muted)] rounded-xl transition-colors"
               >
                 Load more
               </button>
@@ -334,7 +389,7 @@ const AnnouncementsAdminPage = () => {
 
 const Field = ({ label, children }) => (
   <div>
-    <label className="block text-xs font-medium text-slate-300 mb-1">{label}</label>
+    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">{label}</label>
     {children}
   </div>
 );
@@ -342,48 +397,53 @@ const Field = ({ label, children }) => (
 const AdminAnnouncementRow = ({ a, onEdit, onDelete, onTogglePin }) => {
   const meta = TYPE_META[a.type] || TYPE_META.info;
   const Icon = meta.Icon;
+  const chipCls    = TYPE_CHIP[a.type]      || TYPE_CHIP.info;
+  const iconWrap   = TYPE_ICON_WRAP[a.type] || TYPE_ICON_WRAP.info;
+  const accentCls  = TYPE_ACCENT[a.type]    || TYPE_ACCENT.info;
   return (
-    <div className={`bg-slate-800/60 rounded-lg p-3 border-l-4 ${meta.accent}`}>
+    <div className={`bg-[var(--bg-muted)] rounded-xl p-3 border border-[var(--border)] border-l-4 ${accentCls}`}>
       <div className="flex items-start gap-3">
-        <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${meta.iconWrap}`}>
+        <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${iconWrap}`}>
           <Icon className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5 mb-1">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${meta.badgeClass}`}>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${chipCls}`}>
               {meta.label}
             </span>
-            {a.pinned && <FiBookmark className="w-3 h-3 text-amber-400" />}
-            <h3 className="text-sm font-semibold">{a.title}</h3>
+            {a.pinned && <FiBookmark className="w-3 h-3 text-primary-500" />}
+            <h3 className="text-sm font-semibold text-[var(--text-strong)]">{a.title}</h3>
           </div>
           {a.message && (
-            <p className="text-xs text-slate-300 whitespace-pre-wrap line-clamp-3">{a.message}</p>
+            <p className="text-xs text-[var(--text-muted)] whitespace-pre-wrap line-clamp-3">{a.message}</p>
           )}
-          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mt-2">
-            🌐 For {AUDIENCE_LABEL[a.audience]?.toLowerCase() || 'everyone'}
+          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 mt-2">
+            For {AUDIENCE_LABEL[a.audience]?.toLowerCase() || 'everyone'}
           </span>
-          <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3 mt-2 text-[11px] text-[var(--text-faint)]">
             <span>{timeAgo(a.createdAt)}</span>
             {a.expiresAt && <span>expires {new Date(a.expiresAt).toLocaleDateString()}</span>}
           </div>
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={() => onEdit(a)}
-              className="px-2 py-1 text-xs rounded border border-slate-600 hover:bg-slate-700 flex items-center gap-1"
+              className="px-2 py-1 text-xs font-semibold rounded-lg border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-surface)] flex items-center gap-1 transition-colors"
             >
               <FiEdit2 className="w-3 h-3" /> Edit
             </button>
             <button
               onClick={() => onTogglePin(a)}
-              className={`px-2 py-1 text-xs rounded border flex items-center gap-1 ${
-                a.pinned ? 'border-amber-400 text-amber-300 hover:bg-amber-500/10' : 'border-slate-600 hover:bg-slate-700'
+              className={`px-2 py-1 text-xs font-semibold rounded-lg border flex items-center gap-1 transition-colors ${
+                a.pinned
+                  ? 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-950/60'
+                  : 'border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-surface)]'
               }`}
             >
               <FiBookmark className="w-3 h-3" /> {a.pinned ? 'Unpin' : 'Pin'}
             </button>
             <button
               onClick={() => onDelete(a._id)}
-              className="px-2 py-1 text-xs rounded border border-red-500/50 text-red-400 hover:bg-red-500/10 flex items-center gap-1"
+              className="px-2 py-1 text-xs font-semibold rounded-lg border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-950/60 flex items-center gap-1 transition-colors"
             >
               <FiTrash2 className="w-3 h-3" />
             </button>

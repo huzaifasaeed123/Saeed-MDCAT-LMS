@@ -22,6 +22,7 @@ import useTheme from '../theme/useTheme';
 import apiClient from '../api/axiosConfig';
 import AnnouncementsSidebar from '../../modules/announcements/components/AnnouncementsSidebar';
 import { PageHeaderProvider, usePageHeaderState } from './PageHeaderContext';
+import { fixImageUrl } from '../../shared/utils/fixImageUrls';
 
 // Collapsed helpful notifications carry a `count > 1` — render accordingly.
 const NOTIF_LABELS = {
@@ -311,7 +312,7 @@ const DashboardLayoutInner = ({ children }) => {
           <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'md:justify-center md:gap-0' : ''}`}>
             {user?.profilePicture ? (
               <img
-                src={user.profilePicture.startsWith('http') ? user.profilePicture : `http://localhost:5000${user.profilePicture}`}
+                src={fixImageUrl(user.profilePicture)}
                 alt=""
                 className="flex-shrink-0 w-10 h-10 rounded-full object-cover ring-2 ring-[var(--bg-surface)] shadow-sm"
               />
@@ -335,10 +336,12 @@ const DashboardLayoutInner = ({ children }) => {
               • mobile menu toggle (mobile only)
               • page title + subtitle (pushed via PageHeaderContext)
               • action button slot (pushed via PageHeaderContext)
-              • theme toggle, announcements, notifications
-              • date eyebrow (lg+)                                        */}
+              • theme toggle, announcements, notifications                 */}
         <header className="bg-[var(--bg-surface)] border-b border-[var(--border)] z-20">
-          <div className="flex items-center min-h-[64px] sm:min-h-[80px] px-3 sm:px-5 gap-2 sm:gap-4 py-2">
+          {/* Height pinned to 68px so it lines up with the sidebar's logo bar
+              (logo image w-9 h-9 = 36px + p-4 = 68px total). Keeps the divider
+              line continuous across the top of the app on every breakpoint. */}
+          <div className="flex items-center min-h-[68px] px-3 sm:px-5 gap-2 sm:gap-4 py-2">
             {/* Mobile menu toggle */}
             <button
               onClick={toggleSidebar}
@@ -370,9 +373,6 @@ const DashboardLayoutInner = ({ children }) => {
               {pageHeader.action && (
                 <div className="hidden md:block mr-1">{pageHeader.action}</div>
               )}
-              <div className="font-mono text-[11px] tracking-[0.16em] uppercase text-[var(--text-faint)] hidden lg:block mr-2">
-                {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-              </div>
 
               {/* Theme toggle */}
               <button
@@ -416,40 +416,61 @@ const DashboardLayoutInner = ({ children }) => {
 
                 {/* Dropdown — anchored RIGHT, width capped on mobile to avoid overflow */}
                 {notifOpen && (
-                  <div className="absolute right-0 mt-2 w-[90vw] max-w-[20rem] sm:w-80 bg-[var(--bg-surface)] rounded-xl shadow-xl border border-[var(--border)] z-50 max-h-[70vh] overflow-y-auto">
-                    <div className="px-4 py-3 border-b border-[var(--border)] font-semibold text-[var(--text-strong)] text-sm">Notifications</div>
+                  <div className="absolute right-0 mt-2 w-[90vw] max-w-[20rem] sm:w-80 bg-[var(--bg-surface)] rounded-2xl shadow-2xl border border-[var(--border)] z-50 max-h-[70vh] overflow-y-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-muted)] rounded-t-2xl">
+                      <div className="flex items-center gap-2">
+                        <FiBell className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                        <span className="font-bold text-[var(--text-strong)] text-sm tracking-tight">Notifications</span>
+                      </div>
+                      {notifUnreadCount > 0 && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
+                          {notifUnreadCount} new
+                        </span>
+                      )}
+                    </div>
+
                     {notifications.length === 0 ? (
-                      <p className="text-center text-sm text-[var(--text-faint)] py-6">No notifications yet</p>
+                      <div className="text-center py-10 px-4">
+                        <div className="w-12 h-12 rounded-full bg-[var(--bg-muted)] text-[var(--text-faint)] mx-auto mb-3 flex items-center justify-center">
+                          <FiBell className="w-5 h-5" />
+                        </div>
+                        <p className="text-sm font-semibold text-[var(--text-strong)]">All caught up</p>
+                        <p className="text-xs text-[var(--text-faint)] mt-0.5">No notifications yet</p>
+                      </div>
                     ) : (
                       <>
-                        {notifications.map((n) => (
+                        {notifications.map((n, idx) => (
                           <Link
                             key={n._id}
                             to="/community"
                             onClick={() => setNotifOpen(false)}
-                            className={`flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-muted)] border-b border-[var(--border)] transition-colors
+                            className={`flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-muted)] transition-colors
+                              ${idx !== notifications.length - 1 ? 'border-b border-[var(--border-faint)]' : ''}
                               ${!n.isRead ? 'bg-primary-50/60 dark:bg-primary-950/30' : ''}`}
                           >
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 text-xs font-bold">
+                            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-primary-100 dark:bg-primary-950/40 flex items-center justify-center text-primary-700 dark:text-primary-300 text-xs font-extrabold ring-2 ring-[var(--bg-surface)]">
                               {n.actorName?.charAt(0) || '?'}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm text-[var(--text-strong)] leading-snug">
                                 {NOTIF_LABELS[n.type]?.(n) || 'New notification'}
                               </p>
-                              {n.snippet && <p className="text-xs text-[var(--text-faint)] mt-0.5 truncate">{n.snippet}</p>}
-                              <p className="text-xs text-[var(--text-faint)] mt-0.5">
+                              {n.snippet && <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">{n.snippet}</p>}
+                              <p className="text-[11px] text-[var(--text-faint)] mt-1 font-medium">
                                 {new Date(n.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
-                            {!n.isRead && <span className="flex-shrink-0 w-2 h-2 bg-primary-500 rounded-full mt-1" />}
+                            {!n.isRead && (
+                              <span className="flex-shrink-0 w-2 h-2 bg-primary-500 rounded-full mt-1.5 ring-2 ring-primary-100 dark:ring-primary-950/60" />
+                            )}
                           </Link>
                         ))}
                         {hasMore && (
                           <button
                             onClick={loadOlder}
                             disabled={loadingMore}
-                            className="w-full px-4 py-3 text-xs font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/30 disabled:opacity-50 transition-colors"
+                            className="w-full px-4 py-3 text-xs font-bold text-primary-700 dark:text-primary-300 hover:bg-[var(--bg-muted)] disabled:opacity-50 transition-colors border-t border-[var(--border-faint)] rounded-b-2xl"
                           >
                             {loadingMore ? 'Loading…' : 'Load older notifications'}
                           </button>

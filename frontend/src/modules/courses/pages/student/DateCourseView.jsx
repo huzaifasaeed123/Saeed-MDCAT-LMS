@@ -9,8 +9,9 @@ import {
   FiVideo, FiFileText, FiCheckSquare, FiLink,
   FiExternalLink, FiPlay, FiMenu, FiX,
 } from 'react-icons/fi';
+import { getBackendUrl } from '../../../../shared/utils/fixImageUrls';
 
-const STATIC_BASE = 'http://localhost:5000';
+const STATIC_BASE = getBackendUrl();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const pkt = (v, opts) => {

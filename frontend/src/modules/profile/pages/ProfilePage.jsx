@@ -1,19 +1,19 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
 import useAuth from '../../../core/auth/useAuth';
 import { updateProfile } from '../../users/services/userService';
 import apiClient from '../../../core/api/axiosConfig';
-import { FiUser, FiMail, FiPhone, FiShield, FiEdit, FiSave, FiX, FiCamera, FiLock, FiKey, FiCalendar, FiUsers, FiMapPin, FiBookOpen, FiAward, FiHome } from 'react-icons/fi';
+import {
+  FiUser, FiMail, FiPhone, FiShield, FiEdit, FiSave, FiX, FiCamera,
+  FiLock, FiKey, FiCalendar, FiUsers, FiMapPin, FiBookOpen, FiAward, FiHome,
+} from 'react-icons/fi';
 import StudentProfileFields from '../../../shared/components/StudentProfileFields';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
+import { getBackendUrl } from '../../../shared/utils/fixImageUrls';
 
-// SKN-branded profile.
-//   • Gradient hero card with avatar + name + role chip.
-//   • Info grid in view mode.
-//   • Edit mode: Plus Jakarta Sans form with brand focus rings + a clearly
-//     separated "Change password" section that requires the current password
-//     (verified by the backend).
+// ── Validation ───────────────────────────────────────────────────────────────
 const ProfileSchema = Yup.object().shape({
   fullName: Yup.string().required('Full name is required').max(50, 'Full name cannot be more than 50 characters'),
   contactNumber: Yup.string().required('Contact number is required').matches(/^\+?[0-9]{10,14}$/, 'Invalid contact number format'),
@@ -25,36 +25,89 @@ const ProfileSchema = Yup.object().shape({
   }),
 });
 
-const getBackendUrl = () => {
-  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-  const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.REACT_APP_API_URL || '';
-  if (apiUrl) return apiUrl.replace(/\/api\/?$/, '');
-  return 'http://localhost:5000';
+const ROLE_CHIP = {
+  admin:   'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+  teacher: 'bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300',
+  student: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
-const InfoRow = ({ Icon, label, value }) => (
-  <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
-    <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 flex-shrink-0">
+// ── Building blocks ──────────────────────────────────────────────────────────
+// Single info field rendered as label-above-value, no row separator.
+// We pack these into a responsive grid so groups read like a structured card,
+// not a long stacked list.
+const InfoField = ({ Icon, label, value }) => (
+  <div className="flex items-start gap-3">
+    <div className="w-9 h-9 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-300 flex items-center justify-center flex-shrink-0">
       <Icon className="w-4 h-4" />
     </div>
     <div className="min-w-0 flex-1">
-      <div className="text-[11px] font-mono tracking-[0.16em] uppercase text-gray-400">{label}</div>
-      <div className="text-sm font-semibold text-gray-900 mt-0.5 truncate">{value || '—'}</div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-faint)]">
+        {label}
+      </div>
+      <div className="text-sm font-semibold text-[var(--text-strong)] mt-0.5 break-words">
+        {value || <span className="text-[var(--text-faint)] font-normal italic">Not set</span>}
+      </div>
     </div>
   </div>
 );
 
-const ROLE_CHIP = {
-  admin:   'bg-purple-100 text-purple-800',
-  teacher: 'bg-green-100 text-green-800',
-  student: 'bg-blue-100 text-blue-800',
-};
+// Themed section card — used by every info group in view mode and every form
+// group in edit mode. Keeps the page rhythm consistent.
+const SectionCard = ({ title, subtitle, icon: Icon, children, className = '' }) => (
+  <section className={`bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 ${className}`}>
+    {(title || subtitle) && (
+      <header className="mb-4 sm:mb-5">
+        <div className="flex items-center gap-2">
+          {Icon && (
+            <span className="w-7 h-7 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-300 flex items-center justify-center">
+              <Icon className="w-4 h-4" />
+            </span>
+          )}
+          <h3 className="text-sm font-bold text-[var(--text-strong)]">{title}</h3>
+        </div>
+        {subtitle && (
+          <p className="text-xs text-[var(--text-faint)] mt-1 ml-9">{subtitle}</p>
+        )}
+      </header>
+    )}
+    {children}
+  </section>
+);
 
+// Reusable themed input wrapper used in the edit form so every field looks
+// identical (icon + label + ring/border).
+const TextField = ({ Icon, name, label, type = 'text', placeholder, autoComplete, disabled, required, hint }) => (
+  <div>
+    <label className="block text-xs font-bold text-[var(--text-strong)] mb-1.5">
+      {label}
+      {required && <span className="ml-1 text-rose-500">*</span>}
+      {hint && <span className="ml-1.5 text-[var(--text-faint)] font-normal">{hint}</span>}
+    </label>
+    <div className="relative">
+      {Icon && (
+        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-faint)] pointer-events-none" />
+      )}
+      <Field
+        type={type}
+        name={name}
+        autoComplete={autoComplete}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`w-full ${Icon ? 'pl-10' : 'pl-3'} pr-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/15 placeholder:text-[var(--text-faint)] disabled:bg-[var(--bg-muted)] disabled:cursor-not-allowed transition`}
+      />
+    </div>
+    <ErrorMessage name={name} component="div" className="text-xs text-rose-600 dark:text-rose-300 mt-1" />
+  </div>
+);
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 const ProfilePage = () => {
   const { user, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [uploadingPic, setUploadingPic] = useState(false);
   const fileInputRef = useRef(null);
+
+  const isStudent = (user?.role || 'student') === 'student';
 
   const profilePicUrl = user?.profilePicture
     ? user.profilePicture.startsWith('http')
@@ -143,32 +196,46 @@ const ProfilePage = () => {
     }
   };
 
+  // Navbar action — memoised so PageHeaderContext doesn't loop.
+  const headerAction = useMemo(() => (
+    isEditing ? null : (
+      <button onClick={() => setIsEditing(true)} className="btn-brand text-sm">
+        <FiEdit className="w-4 h-4" /> Edit Profile
+      </button>
+    )
+  ), [isEditing]);
+
+  usePageHeader({
+    title:    'My Profile',
+    subtitle: 'Manage your account details and security',
+    action:   headerAction,
+  });
+
   return (
-    <div className="max-w-4xl mx-auto py-6">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Account</div>
-          <h1 className="text-2xl font-extrabold tracking-[-0.025em] text-gray-900 mt-0.5">My Profile</h1>
-        </div>
-        {!isEditing && (
+    <div className="space-y-5">
+      {/* Mobile-only Edit button — navbar action slot is desktop-only */}
+      {!isEditing && (
+        <div className="md:hidden">
           <button
             onClick={() => setIsEditing(true)}
-            className="btn-brand text-sm"
+            className="btn-brand text-sm w-full justify-center"
           >
             <FiEdit className="w-4 h-4" /> Edit Profile
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* ── Hero card with avatar + identity ─────────────────────────────── */}
-      <div className="relative overflow-hidden bg-brand-gradient text-white rounded-2xl mb-6">
-        <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full" style={{ background: 'radial-gradient(circle, rgba(255,255,255,.2), transparent 70%)' }} />
-        <div className="absolute -bottom-24 left-1/3 w-64 h-64 rounded-full" style={{ background: 'radial-gradient(circle, rgba(252,211,77,.3), transparent 70%)' }} />
+      {/* ── HERO ──────────────────────────────────────────────────────────── */}
+      {/* Brand gradient banner with avatar + identity. Decorative soft circles
+          to add depth. Role chip + joined date + email pinned in a clean row
+          below the name. */}
+      <div className="relative overflow-hidden bg-brand-gradient text-white rounded-2xl shadow-md">
+        <span aria-hidden className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-white/10 blur-2xl" />
+        <span aria-hidden className="absolute -bottom-24 left-1/4 w-64 h-64 rounded-full bg-white/10 blur-2xl" />
 
-        <div className="relative z-10 flex items-center gap-5 p-6 sm:p-7">
-          {/* Avatar with camera-overlay (same UX as before) */}
-          <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex-shrink-0 group">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-5 p-5 sm:p-7">
+          {/* Avatar with camera overlay */}
+          <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex-shrink-0 group mx-auto sm:mx-0">
             {profilePicUrl ? (
               <img src={profilePicUrl} alt="" className="w-full h-full rounded-2xl object-cover ring-4 ring-white/30 shadow-xl" />
             ) : (
@@ -190,18 +257,27 @@ const ProfilePage = () => {
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handlePictureChange} />
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="font-mono text-[11px] tracking-[0.18em] uppercase opacity-85">Welcome back</div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] mt-1 truncate">{user?.fullName || 'Student'}</h2>
-            <p className="text-sm opacity-90 truncate mt-1">{user?.email}</p>
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] truncate">
+              {user?.fullName || 'Welcome'}
+            </h2>
+            <p className="text-sm opacity-90 truncate mt-1 flex items-center gap-1.5 justify-center sm:justify-start">
+              <FiMail className="w-3.5 h-3.5 opacity-80" /> {user?.email}
+            </p>
+            <div className="mt-3 flex items-center gap-2 flex-wrap justify-center sm:justify-start">
               <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${ROLE_CHIP[user?.role || 'student']}`}>
                 {user?.role || 'student'}
               </span>
               {user?.createdAt && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold opacity-85">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold opacity-90 bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-0.5">
                   <FiCalendar className="w-3 h-3" />
                   Joined {new Date(user.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                </span>
+              )}
+              {user?.contactNumber && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold opacity-90 bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-0.5">
+                  <FiPhone className="w-3 h-3" />
+                  {user.contactNumber}
                 </span>
               )}
             </div>
@@ -209,139 +285,161 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* ── Edit mode form OR view-mode info grid ────────────────────────── */}
-      {isEditing ? (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
-          <div className="mb-5">
-            <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Edit details</div>
-            <h3 className="text-lg font-bold text-gray-900 tracking-tight mt-0.5">Update your profile</h3>
-          </div>
+      {/* ── VIEW mode: grouped cards ─────────────────────────────────────── */}
+      {!isEditing ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Personal Information — every role */}
+          <SectionCard title="Personal Information" icon={FiUser}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+              <InfoField Icon={FiUser}  label="Full Name"      value={user?.fullName} />
+              {isStudent && (
+                <InfoField Icon={FiUsers} label="Father Name"    value={user?.fatherName} />
+              )}
+              <InfoField Icon={FiPhone} label="Contact Number" value={user?.contactNumber} />
+              <InfoField Icon={FiMail}  label="Email"          value={user?.email} />
+            </div>
+          </SectionCard>
 
-          <Formik
-            initialValues={{
-              fullName: user?.fullName || '',
-              contactNumber: user?.contactNumber || '',
-              password: '',
-              currentPassword: '',
-              // Optional student profile fields — empty strings make them controlled inputs.
-              fatherName:     user?.fatherName     || '',
-              province:       user?.province       || '',
-              district:       user?.district       || '',
-              studentClass:   user?.studentClass   || '',
-              studentStatus:  user?.studentStatus  || '',
-              fscCollegeName: user?.fscCollegeName || '',
-              fscBoard:       user?.fscBoard       || '',
-            }}
-            validationSchema={ProfileSchema}
-            onSubmit={handleUpdateProfile}
-          >
-            {({ isSubmitting, values }) => (
-              <Form className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-900 mb-1.5">Full Name</label>
-                  <div className="relative">
-                    <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <Field type="text" name="fullName"
-                      className="w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/15 transition"
-                      placeholder="Your full name" />
-                  </div>
-                  <ErrorMessage name="fullName" component="div" className="text-xs text-rose-600 mt-1" />
-                </div>
+          {/* Account & Security — every role */}
+          <SectionCard title="Account &amp; Security" icon={FiShield}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+              <InfoField Icon={FiShield}   label="Role" value={user?.role} />
+              <InfoField
+                Icon={FiCalendar}
+                label="Account Created"
+                value={user?.createdAt
+                  ? new Date(user.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+                  : null}
+              />
+              <InfoField Icon={FiKey} label="Password" value="••••••••" />
+            </div>
+          </SectionCard>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-900 mb-1.5">Contact Number</label>
-                  <div className="relative">
-                    <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <Field type="text" name="contactNumber"
-                      className="w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/15 transition"
-                      placeholder="Your contact number" />
-                  </div>
-                  <ErrorMessage name="contactNumber" component="div" className="text-xs text-rose-600 mt-1" />
-                </div>
+          {/* Location — students only */}
+          {isStudent && (
+            <SectionCard title="Location" icon={FiMapPin}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <InfoField Icon={FiMapPin} label="Province" value={user?.province} />
+                <InfoField Icon={FiMapPin} label="District" value={user?.district} />
+              </div>
+            </SectionCard>
+          )}
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-900 mb-1.5">Email <span className="text-gray-400 font-normal">(cannot be changed)</span></label>
-                  <div className="relative">
-                    <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <input type="text" value={user?.email || ''} disabled
-                      className="w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500 cursor-not-allowed" />
-                  </div>
-                </div>
-
-                {/* ── Optional student profile fields ────────────────────── */}
-                <div className="border-t border-gray-200 pt-5 mt-2 space-y-4">
-                  <StudentProfileFields variant="brand" title="Student details (optional)" />
-                </div>
-
-                {/* ── Change password — current pwd required server-side ── */}
-                <div className="border-t border-gray-200 pt-5 mt-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <FiKey className="w-4 h-4 text-gray-500" />
-                    <h4 className="text-sm font-bold text-gray-900">Change Password</h4>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">Leave both fields empty to keep your current password.</p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-900 mb-1.5">New Password</label>
-                      <div className="relative">
-                        <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                        <Field type="password" name="password" autoComplete="new-password"
-                          className="w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/15 transition"
-                          placeholder="New password (optional)" />
-                      </div>
-                      <ErrorMessage name="password" component="div" className="text-xs text-rose-600 mt-1" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-900 mb-1.5">
-                        Current Password
-                        {values.password && values.password.trim() !== '' && <span className="ml-1 text-rose-500">*</span>}
-                      </label>
-                      <div className="relative">
-                        <FiShield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                        <Field type="password" name="currentPassword" autoComplete="current-password"
-                          disabled={!values.password || values.password.trim() === ''}
-                          className="w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/15 disabled:bg-gray-50 disabled:cursor-not-allowed transition"
-                          placeholder={values.password && values.password.trim() !== '' ? 'Confirm with current password' : 'Enter a new password first'} />
-                      </div>
-                      <ErrorMessage name="currentPassword" component="div" className="text-xs text-rose-600 mt-1" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button type="submit" disabled={isSubmitting} className="btn-brand text-sm disabled:opacity-60 disabled:cursor-not-allowed">
-                    {isSubmitting ? <>Saving…</> : <><FiSave className="w-4 h-4" /> Save Changes</>}
-                  </button>
-                  <button type="button" onClick={() => setIsEditing(false)} disabled={isSubmitting}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-colors disabled:opacity-60">
-                    <FiX className="w-4 h-4" /> Cancel
-                  </button>
-                </div>
-              </Form>
-            )}
-          </Formik>
+          {/* Academic Details — students only */}
+          {isStudent && (
+            <SectionCard title="Academic Details" icon={FiBookOpen}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <InfoField Icon={FiBookOpen} label="Class"            value={user?.studentClass} />
+                <InfoField Icon={FiAward}    label="Status"           value={user?.studentStatus} />
+                <InfoField Icon={FiHome}     label="FSC College Name" value={user?.fscCollegeName} />
+                <InfoField Icon={FiBookOpen} label="FSC Board"        value={user?.fscBoard} />
+              </div>
+            </SectionCard>
+          )}
         </div>
       ) : (
-        // Single Details panel — every field is rendered in a fixed sequence
-        // so the layout is identical for students who filled their profile and
-        // those who haven't. Empty fields show "—" via InfoRow's fallback.
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
-          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400 mb-3">Details</div>
-          <InfoRow Icon={FiUser}     label="Full Name"       value={user?.fullName} />
-          <InfoRow Icon={FiUsers}    label="Father Name"     value={user?.fatherName} />
-          <InfoRow Icon={FiMail}     label="Email"           value={user?.email} />
-          <InfoRow Icon={FiPhone}    label="Contact Number"  value={user?.contactNumber} />
-          <InfoRow Icon={FiMapPin}   label="Province"        value={user?.province} />
-          <InfoRow Icon={FiMapPin}   label="District"        value={user?.district} />
-          <InfoRow Icon={FiBookOpen} label="Class"           value={user?.studentClass} />
-          <InfoRow Icon={FiAward}    label="Status"          value={user?.studentStatus} />
-          <InfoRow Icon={FiHome}     label="FSC College Name" value={user?.fscCollegeName} />
-          <InfoRow Icon={FiBookOpen} label="FSC Board"       value={user?.fscBoard} />
-          <InfoRow Icon={FiShield}   label="Role"            value={user?.role} />
-          <InfoRow Icon={FiCalendar} label="Account Created" value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' }) : null} />
-        </div>
+        // ── EDIT mode: grouped form sections ──────────────────────────────
+        <Formik
+          initialValues={{
+            fullName: user?.fullName || '',
+            contactNumber: user?.contactNumber || '',
+            password: '',
+            currentPassword: '',
+            fatherName:     user?.fatherName     || '',
+            province:       user?.province       || '',
+            district:       user?.district       || '',
+            studentClass:   user?.studentClass   || '',
+            studentStatus:  user?.studentStatus  || '',
+            fscCollegeName: user?.fscCollegeName || '',
+            fscBoard:       user?.fscBoard       || '',
+          }}
+          validationSchema={ProfileSchema}
+          onSubmit={handleUpdateProfile}
+        >
+          {({ isSubmitting, values }) => (
+            <Form className="space-y-5">
+              {/* Personal Information */}
+              <SectionCard title="Personal Information" icon={FiUser}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <TextField Icon={FiUser}  name="fullName"       label="Full Name"      placeholder="Your full name" required />
+                  <TextField Icon={FiPhone} name="contactNumber"  label="Contact Number" placeholder="Your contact number" required />
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-[var(--text-strong)] mb-1.5">
+                      Email <span className="ml-1 text-[var(--text-faint)] font-normal">(cannot be changed)</span>
+                    </label>
+                    <div className="relative">
+                      <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-faint)] pointer-events-none" />
+                      <input
+                        type="text" value={user?.email || ''} disabled
+                        className="w-full pl-10 pr-3 py-2.5 bg-[var(--bg-muted)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-muted)] cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {/* Student-only fields */}
+              {isStudent && (
+                <SectionCard
+                  title="Student Details"
+                  icon={FiBookOpen}
+                  subtitle="Optional — fill these to help us tailor your dashboard."
+                >
+                  <StudentProfileFields variant="brand" title="" />
+                </SectionCard>
+              )}
+
+              {/* Password change */}
+              <SectionCard
+                title="Change Password"
+                icon={FiKey}
+                subtitle="Leave both fields empty to keep your current password."
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <TextField
+                    Icon={FiLock}
+                    name="password"
+                    label="New Password"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="New password (optional)"
+                  />
+                  <TextField
+                    Icon={FiShield}
+                    name="currentPassword"
+                    label="Current Password"
+                    type="password"
+                    autoComplete="current-password"
+                    disabled={!values.password || values.password.trim() === ''}
+                    required={!!(values.password && values.password.trim() !== '')}
+                    placeholder={values.password && values.password.trim() !== '' ? 'Confirm with current password' : 'Enter a new password first'}
+                  />
+                </div>
+              </SectionCard>
+
+              {/* Save / Cancel — sticky-feel footer card */}
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border)] hover:bg-[var(--bg-muted)] text-[var(--text)] text-sm font-semibold transition-colors disabled:opacity-60"
+                >
+                  <FiX className="w-4 h-4" /> Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-brand text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting
+                    ? <>Saving…</>
+                    : <><FiSave className="w-4 h-4" /> Save Changes</>}
+                </button>
+              </div>
+            </Form>
+          )}
+        </Formik>
       )}
     </div>
   );

@@ -1,19 +1,20 @@
 // Shared folder/file browser for both Notes and Videos sections.
 // Props:
 //   apiBase        — 'notes' or 'videos' (maps to /api/{apiBase}/*)
-//   pageTitle      — heading text
-//   pageDesc       — subtitle text
+//   pageTitle      — heading text (pushed to top navbar)
+//   pageDesc       — subtitle text (pushed to top navbar)
 //   fileTypeHint   — shown in AddFile modal (e.g. "PDFs and Google Docs")
 //   renderViewer   — (file, files, onClose) => ReactNode
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   FiFolder, FiFile, FiX, FiPlus, FiUpload, FiHome, FiChevronRight,
   FiMoreVertical, FiEdit2, FiTrash2, FiLoader,
-  FiLock, FiGlobe, FiVideo,
+  FiLock, FiGlobe, FiVideo, FiSearch, FiGrid, FiList, FiPlayCircle,
 } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import useAuth from '../../core/auth/useAuth';
 import apiClient from '../../core/api/axiosConfig';
+import { usePageHeader } from '../../core/layouts/PageHeaderContext';
 
 // ── MIME type label map ───────────────────────────────────────────────────────
 const MIME_LABELS = {
@@ -27,10 +28,10 @@ const MIME_LABELS = {
   'video/x-matroska':                     'MKV',
 };
 
-const getTypeLabel = (mime = '') => MIME_LABELS[mime] || (mime.startsWith('video/') ? 'Video' : 'File');
+const getTypeLabel = (mime = '') =>
+  MIME_LABELS[mime] || (mime.startsWith('video/') ? 'Video' : 'File');
 
-// ── Small reusable components ─────────────────────────────────────────────────
-
+// ── Item three-dot menu ──────────────────────────────────────────────────────
 const ItemMenu = ({ onRename, onDelete }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -42,24 +43,25 @@ const ItemMenu = ({ onRename, onDelete }) => {
   }, []);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
-        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        onClick={() => setOpen(v => !v)}
+        className="p-1.5 text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--bg-muted)] rounded-lg transition-colors"
+        aria-label="Item actions"
       >
         <FiMoreVertical className="w-4 h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-1">
+        <div className="absolute right-0 mt-1 w-40 bg-[var(--bg-surface)] rounded-xl shadow-lg border border-[var(--border)] z-20 py-1">
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); onRename(); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => { setOpen(false); onRename(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text)] hover:bg-[var(--bg-muted)]"
           >
             <FiEdit2 className="w-3.5 h-3.5" /> Rename
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete(); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
           >
             <FiTrash2 className="w-3.5 h-3.5" /> Delete
           </button>
@@ -69,99 +71,143 @@ const ItemMenu = ({ onRename, onDelete }) => {
   );
 };
 
+// ── Cards ─────────────────────────────────────────────────────────────────────
 const FolderCard = ({ folder, isStaff, onOpen, onRename, onDelete }) => (
   <div
     onClick={onOpen}
-    className="group bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-md cursor-pointer transition-all flex items-center gap-3"
+    className="group bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-3 sm:p-4 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md cursor-pointer transition-all flex items-center gap-3"
   >
-    <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-      <FiFolder className="w-5 h-5 text-blue-600" />
+    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-primary-50 dark:bg-primary-950/40 rounded-xl flex items-center justify-center flex-shrink-0">
+      <FiFolder className="w-5 h-5 text-primary-600 dark:text-primary-300" />
     </div>
-    <p className="flex-1 min-w-0 text-sm font-medium text-gray-800 truncate">{folder.name}</p>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-semibold text-[var(--text-strong)] truncate">{folder.name}</p>
+      <p className="text-[11px] text-[var(--text-faint)] mt-0.5">Folder</p>
+    </div>
     {isStaff && <ItemMenu onRename={() => onRename(folder)} onDelete={() => onDelete(folder)} />}
   </div>
 );
 
-const FileCard = ({ file, isStaff, onOpen, onRename, onDelete }) => {
+// Single shared FileCard for both Notes and Videos. Video files get the play
+// icon + violet tint, PDFs get the red tint, other files get the muted tint.
+const FileCard = ({ file, view, isStaff, onOpen, onRename, onDelete }) => {
   const isVideo = file.mimeType?.startsWith('video/');
+  const isPdf   = file.mimeType === 'application/pdf';
+
+  const iconBox = isVideo
+    ? 'bg-secondary-50 dark:bg-secondary-950/40 text-secondary-600 dark:text-secondary-300'
+    : isPdf
+      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300'
+      : 'bg-[var(--bg-muted)] text-[var(--text-muted)]';
+
+  const IconComp = isVideo ? FiPlayCircle : isPdf ? FiFile : FiFile;
+
+  // ── Grid (default): bigger card with icon block on top
+  if (view === 'grid') {
+    return (
+      <div
+        onClick={onOpen}
+        className="group bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-3 sm:p-4 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md cursor-pointer transition-all flex items-center gap-3"
+      >
+        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBox}`}>
+          {file.isProtected
+            ? <FiLock className="w-5 h-5" />
+            : <IconComp className="w-5 h-5" />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-[var(--text-strong)] truncate">{file.name}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-[var(--text-faint)]">
+            <span>{getTypeLabel(file.mimeType)}</span>
+            <span>·</span>
+            <span className={file.isProtected ? 'text-emerald-600 dark:text-emerald-300 font-medium' : ''}>
+              {file.isProtected ? 'Protected' : 'Public'}
+            </span>
+            <span>·</span>
+            <span>drive</span>
+          </div>
+        </div>
+        {isStaff && <ItemMenu onRename={() => onRename(file)} onDelete={() => onDelete(file)} />}
+      </div>
+    );
+  }
+
+  // ── List view: compact row layout
   return (
     <div
       onClick={onOpen}
-      className="group bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-md cursor-pointer transition-all flex items-center gap-3"
+      className="group bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl px-3 py-2.5 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm cursor-pointer transition-all flex items-center gap-3"
     >
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${file.isProtected ? 'bg-green-50' : isVideo ? 'bg-purple-50' : 'bg-red-50'}`}>
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBox}`}>
         {file.isProtected
-          ? <FiLock   className="w-5 h-5 text-green-600" />
-          : isVideo
-            ? <FiVideo  className="w-5 h-5 text-purple-600" />
-            : <FiFile   className="w-5 h-5 text-red-600" />
+          ? <FiLock className="w-4 h-4" />
+          : <IconComp className="w-4 h-4" />
         }
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-xs text-gray-400">{getTypeLabel(file.mimeType)}</span>
-          {file.isProtected
-            ? <span className="text-xs text-green-600 font-medium">· Protected</span>
-            : <span className="text-xs text-gray-400 font-medium">· Public</span>
-          }
-        </div>
+        <p className="text-sm font-semibold text-[var(--text-strong)] truncate">{file.name}</p>
+        <p className="text-[11px] text-[var(--text-faint)] mt-0.5">
+          {getTypeLabel(file.mimeType)} · {file.isProtected ? 'Protected' : 'Public'}
+        </p>
       </div>
+      <FiChevronRight className="w-4 h-4 text-[var(--text-faint)] flex-shrink-0" />
       {isStaff && <ItemMenu onRename={() => onRename(file)} onDelete={() => onDelete(file)} />}
     </div>
   );
 };
 
-const Breadcrumb = ({ chain, onNavigate }) => (
-  <div className="flex items-center gap-1 flex-wrap mb-4 bg-white rounded-xl border border-gray-200 px-3 py-2">
+// ── Breadcrumb (Home → folder chain) ─────────────────────────────────────────
+const Breadcrumb = ({ rootLabel, chain, onNavigate }) => (
+  <nav className="flex items-center gap-1 flex-wrap min-w-0">
     <button
       onClick={() => onNavigate(null)}
-      className="flex items-center gap-1 px-2 py-1 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+      className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-[var(--text-muted)] hover:text-primary-600 dark:hover:text-primary-300 hover:bg-[var(--bg-muted)] rounded-lg transition-colors"
     >
-      <FiHome className="w-4 h-4" /> Root
+      <FiHome className="w-4 h-4" /> {rootLabel}
     </button>
     {chain.map((folder, i) => (
-      <div key={folder._id} className="flex items-center gap-1">
-        <FiChevronRight className="w-4 h-4 text-gray-300" />
+      <div key={folder._id} className="flex items-center gap-1 min-w-0">
+        <FiChevronRight className="w-4 h-4 text-[var(--text-faint)] flex-shrink-0" />
         {i === chain.length - 1 ? (
-          <span className="px-2 py-1 text-sm font-semibold text-gray-900">{folder.name}</span>
+          <span className="px-2 py-1 text-sm font-bold text-[var(--text-strong)] truncate">
+            {folder.name}
+          </span>
         ) : (
           <button
             onClick={() => onNavigate(folder._id)}
-            className="px-2 py-1 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            className="px-2 py-1 text-sm font-medium text-[var(--text-muted)] hover:text-primary-600 dark:hover:text-primary-300 hover:bg-[var(--bg-muted)] rounded-lg transition-colors truncate"
           >
             {folder.name}
           </button>
         )}
       </div>
     ))}
-  </div>
+  </nav>
 );
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-
 const NewFolderModal = ({ open, onClose, onSubmit, busy }) => {
   const [name, setName] = useState('');
   useEffect(() => { if (open) setName(''); }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-4">New folder</h2>
+      <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-[var(--text-strong)] mb-4">New folder</h2>
         <input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) onSubmit(name.trim()); }}
           placeholder="Folder name"
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="w-full px-4 py-2.5 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
         />
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] rounded-xl">Cancel</button>
           <button
             onClick={() => name.trim() && onSubmit(name.trim())}
             disabled={!name.trim() || busy}
-            className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+            className="btn-brand text-sm px-4 py-2 disabled:opacity-50"
           >
             {busy ? 'Creating…' : 'Create'}
           </button>
@@ -180,31 +226,39 @@ const AddFileModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, file
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-1">Add file from Drive</h2>
-        <p className="text-xs text-gray-500 mb-4">Paste the share link of a {fileTypeHint}.</p>
+      <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-[var(--text-strong)] mb-1">Add file from Drive</h2>
+        <p className="text-xs text-[var(--text-muted)] mb-4">Paste the share link of a {fileTypeHint}.</p>
 
-        <div className="flex rounded-xl overflow-hidden border border-gray-200 mb-4">
+        <div className="flex rounded-xl overflow-hidden border border-[var(--border)] mb-4">
           <button
             type="button"
             onClick={() => setIsProtected(false)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${!isProtected ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+              !isProtected
+                ? 'bg-primary-500 text-white'
+                : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
           >
             <FiGlobe className="w-4 h-4" /> Public
           </button>
           <button
             type="button"
             onClick={() => setIsProtected(true)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${isProtected ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+              isProtected
+                ? 'bg-emerald-600 text-white'
+                : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
           >
             <FiLock className="w-4 h-4" /> Protected
           </button>
         </div>
 
         {isProtected ? (
-          <div className="flex gap-2 bg-green-50 border border-green-200 rounded-xl p-2.5 mb-3">
-            <FiLock className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-green-700">
+          <div className="flex gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 rounded-xl p-2.5 mb-3">
+            <FiLock className="w-4 h-4 text-emerald-600 dark:text-emerald-300 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
               File stays <span className="font-semibold">private</span> on Drive — streamed via service account.
               {serviceAccountEmail
                 ? <> Share it with <span className="font-mono font-semibold break-all"> {serviceAccountEmail}</span>.</>
@@ -213,9 +267,9 @@ const AddFileModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, file
             </p>
           </div>
         ) : (
-          <div className="flex gap-2 bg-blue-50 border border-blue-200 rounded-xl p-2.5 mb-3">
-            <FiGlobe className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700">
+          <div className="flex gap-2 bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-900/60 rounded-xl p-2.5 mb-3">
+            <FiGlobe className="w-4 h-4 text-primary-600 dark:text-primary-300 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-primary-700 dark:text-primary-300">
               File must be shared as <span className="font-semibold">"Anyone with the link can view"</span>.
             </p>
           </div>
@@ -226,22 +280,24 @@ const AddFileModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, file
             value={driveUrl}
             onChange={(e) => setDriveUrl(e.target.value)}
             placeholder="https://drive.google.com/file/d/…"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full px-4 py-2.5 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
           />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Display name (optional — auto-detected if API key is set)"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full px-4 py-2.5 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
           />
         </div>
 
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] rounded-xl">Cancel</button>
           <button
             onClick={() => driveUrl.trim() && onSubmit({ driveUrl: driveUrl.trim(), name: name.trim(), isProtected })}
             disabled={!driveUrl.trim() || busy}
-            className={`px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 ${isProtected ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+            className={`px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 ${
+              isProtected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-primary-500 hover:bg-primary-600'
+            }`}
           >
             {busy ? 'Adding…' : 'Add file'}
           </button>
@@ -259,33 +315,41 @@ const ImportDriveModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-1">Import folder from Drive</h2>
-        <p className="text-xs text-gray-500 mb-4">
+      <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-[var(--text-strong)] mb-1">Import folder from Drive</h2>
+        <p className="text-xs text-[var(--text-muted)] mb-4">
           Paste a Drive folder share link. The entire structure ({fileTypeHint}) will be imported.
         </p>
 
-        <div className="flex rounded-xl overflow-hidden border border-gray-200 mb-4">
+        <div className="flex rounded-xl overflow-hidden border border-[var(--border)] mb-4">
           <button
             type="button"
             onClick={() => setIsProtected(false)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${!isProtected ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+              !isProtected
+                ? 'bg-primary-500 text-white'
+                : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
           >
             <FiGlobe className="w-4 h-4" /> Public
           </button>
           <button
             type="button"
             onClick={() => setIsProtected(true)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${isProtected ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+              isProtected
+                ? 'bg-emerald-600 text-white'
+                : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
           >
             <FiLock className="w-4 h-4" /> Protected
           </button>
         </div>
 
         {isProtected ? (
-          <div className="flex gap-2 bg-green-50 border border-green-200 rounded-xl p-2.5 mb-3">
-            <FiLock className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-green-700">
+          <div className="flex gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 rounded-xl p-2.5 mb-3">
+            <FiLock className="w-4 h-4 text-emerald-600 dark:text-emerald-300 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
               All files marked <span className="font-semibold">Protected</span> — streamed via service account.
               {serviceAccountEmail
                 ? <> Share folder with <span className="font-mono font-semibold break-all"> {serviceAccountEmail}</span>.</>
@@ -294,9 +358,9 @@ const ImportDriveModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, 
             </p>
           </div>
         ) : (
-          <div className="flex gap-2 bg-blue-50 border border-blue-200 rounded-xl p-2.5 mb-3">
-            <FiGlobe className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700">
+          <div className="flex gap-2 bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-900/60 rounded-xl p-2.5 mb-3">
+            <FiGlobe className="w-4 h-4 text-primary-600 dark:text-primary-300 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-primary-700 dark:text-primary-300">
               Folder must be shared as <span className="font-semibold">"Anyone with the link can view"</span>. Requires a Drive API key in Settings.
             </p>
           </div>
@@ -306,15 +370,17 @@ const ImportDriveModal = ({ open, onClose, onSubmit, busy, serviceAccountEmail, 
           value={driveUrl}
           onChange={(e) => setDriveUrl(e.target.value)}
           placeholder="https://drive.google.com/drive/folders/…"
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="w-full px-4 py-2.5 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
         />
 
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] rounded-xl">Cancel</button>
           <button
             onClick={() => driveUrl.trim() && onSubmit(driveUrl.trim(), isProtected)}
             disabled={!driveUrl.trim() || busy}
-            className={`px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 ${isProtected ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+            className={`px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50 ${
+              isProtected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-secondary-600 hover:bg-secondary-700'
+            }`}
           >
             {busy ? 'Importing…' : 'Start import'}
           </button>
@@ -330,21 +396,21 @@ const RenameModal = ({ item, onClose, onSubmit, busy }) => {
   if (!item) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Rename</h2>
+      <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-[var(--text-strong)] mb-4">Rename</h2>
         <input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) onSubmit(name.trim()); }}
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="w-full px-4 py-2.5 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
         />
         <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-muted)] rounded-xl">Cancel</button>
           <button
             onClick={() => name.trim() && onSubmit(name.trim())}
             disabled={!name.trim() || busy}
-            className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50"
+            className="btn-brand text-sm px-4 py-2 disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
@@ -354,8 +420,17 @@ const RenameModal = ({ item, onClose, onSubmit, busy }) => {
   );
 };
 
-// ── Main exported component ───────────────────────────────────────────────────
+// ── Section label ─────────────────────────────────────────────────────────────
+const SectionLabel = ({ children, right }) => (
+  <div className="flex items-end justify-between mb-2">
+    <h2 className="text-[10px] font-bold tracking-[0.18em] uppercase text-[var(--text-faint)]">
+      {children}
+    </h2>
+    {right && <span className="text-[11px] text-[var(--text-faint)]">{right}</span>}
+  </div>
+);
 
+// ── Main exported component ───────────────────────────────────────────────────
 const DriveContentPage = ({
   apiBase,
   pageTitle,
@@ -365,6 +440,9 @@ const DriveContentPage = ({
 }) => {
   const { isAdmin, isTeacher } = useAuth();
   const isStaff = isAdmin || isTeacher;
+
+  // Page title + tagline live in the top navbar.
+  usePageHeader({ title: pageTitle, subtitle: pageDesc });
 
   const [currentFolder, setCurrentFolder] = useState(null);
   const [folders,       setFolders]       = useState([]);
@@ -379,6 +457,12 @@ const DriveContentPage = ({
   const [importOpen,    setImportOpen]    = useState(false);
   const [renaming,      setRenaming]      = useState(null);
   const [busy,          setBusy]          = useState(false);
+
+  // Frontend-only state — search filter (current folder + filename),
+  // view toggle (grid vs list). Both reset when entering a new folder so
+  // the user starts fresh inside each level of the tree.
+  const [search, setSearch] = useState('');
+  const [view,   setView]   = useState('grid'); // 'grid' | 'list'
 
   useEffect(() => {
     if (!isStaff) return;
@@ -403,6 +487,10 @@ const DriveContentPage = ({
   }, [apiBase]);
 
   useEffect(() => { load(currentFolder); }, [currentFolder, load]);
+
+  // Reset search when moving between folders — keeps the input from filtering
+  // away the contents of a freshly opened folder.
+  useEffect(() => { setSearch(''); }, [currentFolder]);
 
   const navigateTo = (folderId) => {
     setCurrentFolder(folderId);
@@ -490,62 +578,137 @@ const DriveContentPage = ({
     }
   };
 
+  // ── Derived: frontend search filter (matches folder + file names) ─────────
+  const q = search.trim().toLowerCase();
+  const visibleFolders = useMemo(
+    () => q ? folders.filter((f) => f.name.toLowerCase().includes(q)) : folders,
+    [folders, q]
+  );
+  const visibleFiles = useMemo(
+    () => q ? files.filter((f) => f.name.toLowerCase().includes(q)) : files,
+    [files, q]
+  );
+  const totalCount = visibleFiles.length;
+
+  // Section labels — "Lectures" for videos, "Files" for everything else.
+  const filesSectionLabel = apiBase === 'videos' ? 'Lectures' : 'Files';
+  // Root crumb label — "Videos" or "Notes" depending on the section.
+  const rootLabel = apiBase === 'videos' ? 'Videos' : 'Notes';
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-gray-400">Library</div>
-          <h1 className="text-2xl font-extrabold tracking-[-0.025em] text-gray-900 mt-0.5">
-            <span className="text-brand-gradient">{pageTitle}</span>
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">{pageDesc}</p>
+      {/* ── Staff toolbar (top) ── */}
+      {isStaff && (
+        <div className="flex gap-2 flex-wrap mb-4">
+          <button
+            onClick={() => setNewFolderOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-primary-600 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-950/60 rounded-xl transition-colors"
+          >
+            <FiPlus className="w-4 h-4" /> New folder
+          </button>
+          <button
+            onClick={() => setAddFileOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 rounded-xl transition-colors"
+          >
+            <FiUpload className="w-4 h-4" /> {apiBase === 'videos' ? 'Add video' : 'Add file'}
+          </button>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-secondary-600 dark:text-secondary-300 bg-secondary-50 dark:bg-secondary-950/40 hover:bg-secondary-100 dark:hover:bg-secondary-950/60 rounded-xl transition-colors"
+          >
+            <FiPlus className="w-4 h-4" /> Import from Drive
+          </button>
         </div>
-        {isStaff && (
-          <div className="flex gap-2 flex-wrap justify-end">
+      )}
+
+      {/* ── Toolbar: breadcrumb (left) + search + view toggle (right) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-2 sm:p-3">
+        {/* Breadcrumb — anchors the location, scrolls horizontally on tight phones */}
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <Breadcrumb rootLabel={rootLabel} chain={breadcrumb} onNavigate={navigateTo} />
+        </div>
+
+        {/* Search + view toggle */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="relative flex-1 sm:flex-initial">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={apiBase === 'videos' ? 'Search videos…' : 'Search notes…'}
+              className="w-full sm:w-64 pl-9 pr-8 py-2 text-sm bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+                aria-label="Clear search"
+              >
+                <FiX className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Grid / List view toggle */}
+          <div className="flex bg-[var(--bg-muted)] rounded-xl border border-[var(--border)] p-0.5 flex-shrink-0">
             <button
-              onClick={() => setNewFolderOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl"
+              type="button"
+              onClick={() => setView('grid')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                view === 'grid'
+                  ? 'bg-[var(--bg-surface)] text-primary-600 dark:text-primary-300 shadow-sm'
+                  : 'text-[var(--text-faint)] hover:text-[var(--text)]'
+              }`}
+              aria-label="Grid view"
+              aria-pressed={view === 'grid'}
             >
-              <FiPlus className="w-4 h-4" /> New folder
+              <FiGrid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setAddFileOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-green-600 bg-green-50 hover:bg-green-100 rounded-xl"
+              type="button"
+              onClick={() => setView('list')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                view === 'list'
+                  ? 'bg-[var(--bg-surface)] text-primary-600 dark:text-primary-300 shadow-sm'
+                  : 'text-[var(--text-faint)] hover:text-[var(--text)]'
+              }`}
+              aria-label="List view"
+              aria-pressed={view === 'list'}
             >
-              <FiPlus className="w-4 h-4" /> Add file
-            </button>
-            <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-xl"
-            >
-              <FiUpload className="w-4 h-4" /> Import from Drive
+              <FiList className="w-4 h-4" />
             </button>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Breadcrumb */}
-      <Breadcrumb chain={breadcrumb} onNavigate={navigateTo} />
-
-      {/* Grid */}
+      {/* ── Content ── */}
       {loading ? (
         <div className="flex justify-center py-12">
-          <FiLoader className="animate-spin w-6 h-6 text-gray-400" />
+          <FiLoader className="animate-spin w-6 h-6 text-[var(--text-faint)]" />
         </div>
       ) : (folders.length === 0 && files.length === 0) ? (
-        <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-gray-200">
-          <FiFolder className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+        <div className="text-center py-16 text-[var(--text-faint)] bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
+          <FiFolder className="w-10 h-10 mx-auto mb-2 text-[var(--text-faint)]" />
           <p className="text-sm">This folder is empty.</p>
           {isStaff && <p className="text-xs mt-1">Use the buttons above to add folders or files.</p>}
         </div>
+      ) : (visibleFolders.length === 0 && visibleFiles.length === 0) ? (
+        <div className="text-center py-16 text-[var(--text-faint)] bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
+          <FiSearch className="w-10 h-10 mx-auto mb-2 text-[var(--text-faint)]" />
+          <p className="text-sm">No matches for "{search}"</p>
+          <p className="text-xs mt-1">Search only looks inside this folder.</p>
+        </div>
       ) : (
         <>
-          {folders.length > 0 && (
-            <>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Folders</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-                {folders.map((f) => (
+          {visibleFolders.length > 0 && (
+            <section className="mb-6">
+              <SectionLabel>Folders</SectionLabel>
+              <div className={
+                view === 'grid'
+                  ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3'
+                  : 'grid grid-cols-1 sm:grid-cols-2 gap-2'
+              }>
+                {visibleFolders.map((f) => (
                   <FolderCard
                     key={f._id} folder={f} isStaff={isStaff}
                     onOpen={() => navigateTo(f._id)}
@@ -554,22 +717,29 @@ const DriveContentPage = ({
                   />
                 ))}
               </div>
-            </>
+            </section>
           )}
-          {files.length > 0 && (
-            <>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Files</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {files.map((f) => (
+
+          {visibleFiles.length > 0 && (
+            <section>
+              <SectionLabel right={`${totalCount} ${totalCount === 1 ? 'item' : 'items'}`}>
+                {filesSectionLabel}
+              </SectionLabel>
+              <div className={
+                view === 'grid'
+                  ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'
+                  : 'flex flex-col gap-2'
+              }>
+                {visibleFiles.map((f) => (
                   <FileCard
-                    key={f._id} file={f} isStaff={isStaff}
+                    key={f._id} file={f} view={view} isStaff={isStaff}
                     onOpen={() => setViewingFile(f)}
                     onRename={(item) => setRenaming({ ...item, kind: 'file' })}
                     onDelete={handleDeleteFile}
                   />
                 ))}
               </div>
-            </>
+            </section>
           )}
         </>
       )}
@@ -589,7 +759,8 @@ const DriveContentPage = ({
       <RenameModal item={renaming} onClose={() => setRenaming(null)} onSubmit={handleRename} busy={busy} />
 
       {/* Viewer — rendered via render prop so Notes/Videos can use different viewers.
-          onNavigate(file|null): null closes, a file object switches to that file. */}
+          onNavigate(file|null): null closes the viewer (returns to grid), a file
+          object switches to that file. */}
       {viewingFile && renderViewer(viewingFile, files, (next = null) => setViewingFile(next))}
     </div>
   );

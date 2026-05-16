@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle, FiBookOpen, FiRotateCcw } from 'react-icons/fi';
+import {
+  FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle,
+  FiBookOpen, FiRotateCcw, FiInfo, FiArrowLeft, FiAward,
+  FiZap, FiLock,
+} from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 
 // Speed multipliers — 1x = 60s/Q, 1.5x = 40s/Q, 2x = 30s/Q
 const TIME_MULTIPLIERS = [
-  { label: 'Standard (1×)',  value: 1.0, description: '60 sec / question', secsPerQ: 60 },
-  { label: 'Fast (1.5×)',    value: 1.5, description: '40 sec / question', secsPerQ: 40 },
-  { label: 'Very Fast (2×)', value: 2.0, description: '30 sec / question', secsPerQ: 30 },
+  { label: 'Standard',  value: 1.0, sub: '1× · 60s / question', secsPerQ: 60 },
+  { label: 'Fast',      value: 1.5, sub: '1.5× · 40s / question', secsPerQ: 40 },
+  { label: 'Very Fast', value: 2.0, sub: '2× · 30s / question',  secsPerQ: 30 },
 ];
 
 const TestStartPage = () => {
@@ -17,7 +21,12 @@ const TestStartPage = () => {
   const location = useLocation();
 
   const [test, setTest] = useState(null);
-  const [selectedMode, setSelectedMode] = useState('tutor');
+  // null = no preselection. Mode is only auto-set when the admin has locked
+  // the test to a single mode, or when we're resuming an in-progress attempt
+  // (which carries its own mode). On a fresh retake of a multi-mode test the
+  // student MUST pick again — we don't silently inherit a previous attempt's
+  // mode (that was the bug we're fixing here).
+  const [selectedMode, setSelectedMode] = useState(null);
   const [timeMultiplier, setTimeMultiplier] = useState(1.0);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -46,11 +55,12 @@ const TestStartPage = () => {
 
         const active = activeRes.data.data;
         if (active) {
+          // Resume → carry over the in-progress attempt's mode (it can't change).
           setExistingAttempt(active);
           setSelectedMode(active.mode);
         } else {
-          // If the test is locked to a single mode, preselect it so the user
-          // doesn't have to make a choice that isn't theirs to make.
+          // Fresh attempt: only preselect when admin locks the test to a single mode.
+          // When both modes are allowed, leave it null so the student must pick.
           const allowed = Array.isArray(t?.allowedModes) && t.allowedModes.length > 0
             ? t.allowedModes
             : ['tutor', 'timer'];
@@ -66,8 +76,8 @@ const TestStartPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
       </div>
     );
   }
@@ -94,6 +104,7 @@ const TestStartPage = () => {
     ? test.allowedModes
     : ['tutor', 'timer'];
   const modeLocked = allowedModes.length === 1;
+  const lockedMode = modeLocked ? allowedModes[0] : null;
 
   // Attempt-limit derived state. maxAttempts comes from the test summary
   // we already loaded — NO extra server read for it. attemptsRemaining===0
@@ -104,7 +115,18 @@ const TestStartPage = () => {
   const attemptsRemaining = isUnlimited ? null : Math.max(0, maxAttempts - completedAttempts);
   const limitReached      = !isUnlimited && attemptsRemaining === 0 && !existingAttempt;
 
+  // Start is disabled when: starting / no questions / out of attempts / mode
+  // not picked yet (multi-mode + fresh attempt).
+  const startDisabled = starting
+    || totalQuestions === 0
+    || limitReached
+    || (!modeLocked && !existingAttempt && !selectedMode);
+
   const handleStart = async () => {
+    if (!selectedMode) {
+      toast.info('Please select a test mode first.');
+      return;
+    }
     setStarting(true);
     try {
       const res = await apiClient.post('/user-tests/start', {
@@ -113,18 +135,12 @@ const TestStartPage = () => {
         totalDurationSec: calculatedDurationSec || null,
       });
       const attempt = res.data.data;
-      // Pass attempt data via state so TestPlayerPage skips an extra GET /user-tests/:id call
       navigate(
         `/student/tests/${testId}/play?attemptId=${attempt._id}`,
         { state: { attemptData: attempt } }
       );
     } catch (err) {
-      // attemptLimitReached comes back from startTest when a student has used
-      // all allowed attempts. Sync local state so the UI flips into the
-      // locked-out view without another /active round-trip.
       if (err.response?.data?.attemptLimitReached) {
-        // Sync the local counter so the UI flips into locked-out without
-        // another round-trip. maxAttempts comes from the test object.
         setCompletedAttempts(err.response.data.usedAttempts ?? completedAttempts);
       }
       toast.error(err.response?.data?.message || 'Failed to start test');
@@ -150,273 +166,368 @@ const TestStartPage = () => {
     }
   };
 
+  const diffTone = {
+    Easy:   'text-emerald-700 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/40',
+    Medium: 'text-amber-700   bg-amber-50   dark:text-amber-300   dark:bg-amber-950/40',
+    Hard:   'text-rose-700    bg-rose-50    dark:text-rose-300    dark:bg-rose-950/40',
+  };
+
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      {/* Header card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">{test?.title}</h1>
-        {test?.description && <p className="text-gray-500 text-sm mb-4">{test.description}</p>}
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
+      {/* Back link */}
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+      >
+        <FiArrowLeft className="w-4 h-4" /> Back
+      </button>
 
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          <div className="flex flex-col items-center bg-blue-50 rounded-xl p-4">
-            <FiList className="text-blue-500 w-6 h-6 mb-1" />
-            <span className="text-2xl font-bold text-blue-700">{totalQuestions}</span>
-            <span className="text-xs text-blue-500 mt-1">Questions</span>
-          </div>
-          <div className="flex flex-col items-center bg-purple-50 rounded-xl p-4">
-            <FiTarget className="text-purple-500 w-6 h-6 mb-1" />
-            <span className="text-2xl font-bold text-purple-700">{test?.passingScore ?? 50}%</span>
-            <span className="text-xs text-purple-500 mt-1">Passing</span>
-          </div>
-          <div className="flex flex-col items-center bg-green-50 rounded-xl p-4">
-            <span className="text-2xl mb-1">🎯</span>
-            <span className="text-lg font-bold text-green-700">{test?.difficultyLevel || 'Mixed'}</span>
-            <span className="text-xs text-green-500 mt-1">Difficulty</span>
-          </div>
-        </div>
+      {/* HERO */}
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
+        {/* Brand gradient accent strip */}
+        <div className="h-1.5 bg-brand-gradient" />
 
-        {test?.instructions && (
-          <div className="mt-5 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-            <p className="text-sm font-semibold text-yellow-800 mb-1">Instructions</p>
-            <p className="text-sm text-yellow-700">{test.instructions}</p>
-          </div>
-        )}
-
-        {/* Attempts row — derived from server-side count + test.maxAttempts.
-            Shows "Unlimited" for the default, or "X of N used" when limited. */}
-        <div className="mt-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200">
-          <FiRotateCcw className="text-gray-500 w-4 h-4 flex-shrink-0" />
-          <div className="flex-1 text-sm">
-            <span className="font-semibold text-gray-800">Attempts: </span>
-            {isUnlimited ? (
-              <span className="text-emerald-600 font-medium">Unlimited</span>
-            ) : (
-              <>
-                <span className={attemptsRemaining === 0 ? 'text-red-600 font-medium' : 'text-gray-800'}>
-                  {completedAttempts} of {maxAttempts} used
-                </span>
-                {attemptsRemaining > 0 && (
-                  <span className="text-gray-500"> · {attemptsRemaining} remaining</span>
+        <div className="p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {test?.difficultyLevel && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${diffTone[test.difficultyLevel] || diffTone.Medium}`}>
+                    <FiZap className="w-3 h-3" /> {test.difficultyLevel}
+                  </span>
                 )}
-              </>
-            )}
+                {modeLocked && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
+                    <FiLock className="w-3 h-3" /> {lockedMode === 'tutor' ? 'Tutor only' : 'Timed only'}
+                  </span>
+                )}
+              </div>
+              <h1 className="font-display text-2xl sm:text-3xl lg:text-[34px] font-bold text-[var(--text-strong)] leading-tight">
+                {test?.title || 'Untitled Test'}
+              </h1>
+              {test?.description && (
+                <p className="text-[var(--text-muted)] mt-2 text-sm sm:text-base max-w-3xl">
+                  {test.description}
+                </p>
+              )}
+            </div>
+
+          </div>
+
+          {/* STAT TILES */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+            <StatTile Icon={FiList} label="Questions" value={totalQuestions || '—'} tone="orange" />
+            <StatTile
+              Icon={FiClock}
+              label={selectedMode === 'timer' ? 'Total time' : 'Time'}
+              value={selectedMode === 'timer' ? `${calculatedDurationMin}m` : 'Untimed'}
+              tone="blue"
+            />
+            <StatTile Icon={FiTarget} label="Passing" value={`${test?.passingScore ?? 50}%`} tone="violet" />
+            <StatTile
+              Icon={FiRotateCcw}
+              label="Attempts"
+              value={isUnlimited ? '∞' : `${completedAttempts} / ${maxAttempts}`}
+              valueClass={!isUnlimited && attemptsRemaining === 0 ? 'text-rose-500' : ''}
+              tone="emerald"
+            />
           </div>
         </div>
       </div>
 
-      {/* Syllabus — auto-derived from the MCQs added to this test
-          (Test.subjects/chapters/topics are kept in sync server-side). */}
-      {hasSyllabus && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
-            <FiBookOpen className="text-primary-500 w-5 h-5" /> Test Syllabus
-          </h2>
-          <div className="space-y-3">
-            {syllabus.subjects.length > 0 && (
-              <SyllabusRow label="Subjects" items={syllabus.subjects} color="blue" />
-            )}
-            {syllabus.chapters.length > 0 && (
-              <SyllabusRow label="Chapters" items={syllabus.chapters} color="purple" />
-            )}
-            {syllabus.topics.length > 0 && (
-              <SyllabusRow label="Topics" items={syllabus.topics} color="emerald" />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Resume banner */}
+      {/* RESUME BANNER — only when an in-progress attempt exists */}
       {existingAttempt && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <FiAlertCircle className="text-blue-500 w-5 h-5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-blue-800">You have an unfinished attempt</p>
-              <p className="text-xs text-blue-600">
-                {existingAttempt.answeredCount} / {existingAttempt.totalCount} answered
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-4 sm:p-5 flex flex-wrap items-center gap-4">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 flex-shrink-0">
+              <FiAlertCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-blue-900 dark:text-blue-200">
+                You paused this test
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-0.5">
+                {existingAttempt.answeredCount} of {existingAttempt.totalCount} answered ·
+                <span className="capitalize"> {existingAttempt.mode}</span> mode
               </p>
             </div>
           </div>
           <button
             onClick={handleResume}
             disabled={starting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm disabled:opacity-50 transition-colors"
           >
-            {starting ? '…' : 'Resume'}
+            Resume attempt
           </button>
         </div>
       )}
 
-      {/* Locked-mode notice + time multiplier (when the test is locked to
-          timer mode the multiplier sub-picker is still meaningful). */}
-      {!existingAttempt && modeLocked && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <FiCheckCircle className="w-5 h-5 text-orange-500" />
-            <h2 className="text-base font-semibold text-gray-800">
-              {selectedMode === 'tutor' ? 'Tutor mode' : 'Timed mode'}
-            </h2>
-            <span className="text-xs text-gray-500">Set by the test creator</span>
-          </div>
-          {selectedMode === 'timer' && (
-            <>
-              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-orange-500" /> Time Allocation
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {TIME_MULTIPLIERS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setTimeMultiplier(opt.value)}
-                    className={`p-3 rounded-xl border-2 text-center transition-all ${
-                      timeMultiplier === opt.value
-                        ? 'border-orange-400 bg-orange-50'
-                        : 'border-gray-200 hover:border-orange-200'
-                    }`}
-                  >
-                    <p className="text-sm font-bold text-gray-900">{opt.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{opt.description}</p>
-                  </button>
-                ))}
-              </div>
-              {totalQuestions > 0 && (
-                <div className="mt-3 flex items-center gap-2 text-sm text-orange-700 bg-orange-50 rounded-xl px-4 py-2.5">
-                  <FiClock className="w-4 h-4 flex-shrink-0" />
-                  <span>
-                    Total time: <strong>{calculatedDurationMin} min</strong>
-                    {' '}({totalQuestions} questions × {selectedMultiplier?.secsPerQ ?? 60} sec each)
-                  </span>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Mode selection (hidden when resuming, hidden when locked to a single mode) */}
-      {!existingAttempt && !modeLocked && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Select Test Mode</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setSelectedMode('tutor')}
-              className={`relative p-5 rounded-xl border-2 text-left transition-all ${
-                selectedMode === 'tutor' ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200'
-              }`}
-            >
-              {selectedMode === 'tutor' && <FiCheckCircle className="absolute top-3 right-3 text-orange-500 w-5 h-5" />}
-              <div className="text-2xl mb-2">🎓</div>
-              <h3 className="font-semibold text-gray-900">Tutor Mode</h3>
-              <p className="text-xs text-gray-500 mt-1">Instant feedback after each answer with explanation</p>
-            </button>
-
-            <button
-              onClick={() => setSelectedMode('timer')}
-              className={`relative p-5 rounded-xl border-2 text-left transition-all ${
-                selectedMode === 'timer' ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200'
-              }`}
-            >
-              {selectedMode === 'timer' && <FiCheckCircle className="absolute top-3 right-3 text-orange-500 w-5 h-5" />}
-              <div className="text-2xl mb-2">⏱️</div>
-              <h3 className="font-semibold text-gray-900">Timed Mode</h3>
-              <p className="text-xs text-gray-500 mt-1">Complete within time limit. Results shown at end.</p>
-            </button>
-          </div>
-
-          {/* Time multiplier — shown only in timer mode */}
-          {selectedMode === 'timer' && (
-            <div className="mt-5 pt-5 border-t border-gray-100">
-              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <FiClock className="w-4 h-4 text-orange-500" /> Time Allocation
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {TIME_MULTIPLIERS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setTimeMultiplier(opt.value)}
-                    className={`p-3 rounded-xl border-2 text-center transition-all ${
-                      timeMultiplier === opt.value
-                        ? 'border-orange-400 bg-orange-50'
-                        : 'border-gray-200 hover:border-orange-200'
-                    }`}
-                  >
-                    <p className="text-sm font-bold text-gray-900">{opt.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{opt.description}</p>
-                  </button>
-                ))}
-              </div>
-              {totalQuestions > 0 && (
-                <div className="mt-3 flex items-center gap-2 text-sm text-orange-700 bg-orange-50 rounded-xl px-4 py-2.5">
-                  <FiClock className="w-4 h-4 flex-shrink-0" />
-                  <span>
-                    Total time: <strong>{calculatedDurationMin} min</strong>
-                    {' '}({totalQuestions} questions × {selectedMultiplier?.secsPerQ ?? 60} sec each)
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Attempt-limit lockout banner. Resume is still available even when
-          locked out — the in-progress attempt was already counted. */}
+      {/* LIMIT REACHED BANNER */}
       {limitReached && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
-          <FiAlertCircle className="text-red-500 w-5 h-5 flex-shrink-0" />
+        <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-4 sm:p-5 flex items-start gap-3">
+          <div className="w-10 h-10 flex items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300 flex-shrink-0">
+            <FiLock className="w-5 h-5" />
+          </div>
           <div>
-            <p className="text-sm font-semibold text-red-800">You've used all attempts</p>
-            <p className="text-xs text-red-600">
+            <p className="font-semibold text-rose-900 dark:text-rose-200">
+              You've used all attempts
+            </p>
+            <p className="text-sm text-rose-700 dark:text-rose-300 mt-0.5">
               You've completed all {maxAttempts} allowed attempts for this test.
             </p>
           </div>
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex gap-3">
+      {/* MAIN GRID — mode/instructions on the left, syllabus/attempts/tips on the right */}
+      <div className="grid lg:grid-cols-3 gap-5">
+        {/* LEFT COLUMN */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* MODE SELECTOR — hidden when resuming (mode is fixed to the in-progress attempt's mode) */}
+          {!existingAttempt && (
+            <SectionCard
+              icon={<FiAward className="w-4 h-4" />}
+              title="Test mode"
+              subtitle={modeLocked
+                ? 'Set by the test creator — locked for this test.'
+                : 'Pick how you want to take this test.'}
+            >
+              {modeLocked ? (
+                <ModeCard mode={lockedMode} selected locked onClick={() => {}} />
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <ModeCard
+                    mode="tutor"
+                    selected={selectedMode === 'tutor'}
+                    onClick={() => setSelectedMode('tutor')}
+                  />
+                  <ModeCard
+                    mode="timer"
+                    selected={selectedMode === 'timer'}
+                    onClick={() => setSelectedMode('timer')}
+                  />
+                </div>
+              )}
+
+              {/* Time multiplier — only when timer mode is selected/locked */}
+              {selectedMode === 'timer' && (
+                <div className="mt-5 pt-5 border-t border-[var(--border)]">
+                  <p className="text-sm font-semibold text-[var(--text-strong)] mb-3 flex items-center gap-2">
+                    <FiClock className="w-4 h-4 text-primary-500" /> Time allocation
+                  </p>
+                  <div className="grid sm:grid-cols-3 gap-2.5">
+                    {TIME_MULTIPLIERS.map((opt) => {
+                      const isActive = timeMultiplier === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTimeMultiplier(opt.value)}
+                          className={`p-3 rounded-xl border-2 text-left transition-all ${
+                            isActive
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30'
+                              : 'border-[var(--border)] hover:border-primary-300 dark:hover:border-primary-700'
+                          }`}
+                        >
+                          <p className="text-sm font-bold text-[var(--text-strong)]">{opt.label}</p>
+                          <p className="text-[11px] text-[var(--text-faint)] mt-0.5">{opt.sub}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {totalQuestions > 0 && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/30 rounded-xl px-4 py-2.5">
+                      <FiClock className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        Total time: <strong>{calculatedDurationMin} min</strong>
+                        {' '}({totalQuestions} × {selectedMultiplier?.secsPerQ ?? 60}s each)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </SectionCard>
+          )}
+
+          {/* DESKTOP ACTION BAR — sits directly below the mode card so the CTA
+              is in the natural reading flow. Mobile gets the sticky bottom bar. */}
+          <div className="hidden lg:flex items-center justify-end gap-2">
+            {existingAttempt && (
+              <button
+                onClick={handleResume}
+                disabled={starting}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-50 transition-colors"
+              >
+                <FiPlayCircle className="w-5 h-5" /> Resume
+              </button>
+            )}
+            <button
+              onClick={handleStart}
+              disabled={startDisabled}
+              className="btn-brand text-base px-6 py-2.5"
+            >
+              {starting
+                ? <span className="inline-block w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <FiPlayCircle className="w-5 h-5" />}
+              {starting ? 'Starting…' : existingAttempt ? 'Start Fresh' : 'Start Test'}
+            </button>
+          </div>
+
+          {/* INSTRUCTIONS */}
+          {test?.instructions && (
+            <SectionCard icon={<FiInfo className="w-4 h-4" />} title="Instructions">
+              <p className="text-sm text-[var(--text-muted)] leading-relaxed whitespace-pre-line">
+                {test.instructions}
+              </p>
+            </SectionCard>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="space-y-5">
+          {/* SYLLABUS */}
+          {hasSyllabus ? (
+            <SectionCard
+              icon={<FiBookOpen className="w-4 h-4" />}
+              title="Test syllabus"
+              subtitle="Auto-synced from this test's questions."
+            >
+              <div className="space-y-3">
+                {syllabus.subjects.length > 0 && (
+                  <SyllabusRow label="Subjects" items={syllabus.subjects} tone="blue" />
+                )}
+                {syllabus.chapters.length > 0 && (
+                  <SyllabusRow label="Chapters" items={syllabus.chapters} tone="violet" />
+                )}
+                {syllabus.topics.length > 0 && (
+                  <SyllabusRow label="Topics" items={syllabus.topics} tone="emerald" />
+                )}
+              </div>
+            </SectionCard>
+          ) : null}
+        </div>
+      </div>
+
+      {/* STICKY MOBILE ACTION BAR */}
+      <div className="lg:hidden sticky bottom-0 -mx-3 sm:-mx-6 px-3 sm:px-6 py-3 bg-[var(--bg-surface)]/95 backdrop-blur border-t border-[var(--border)] flex gap-2 z-10">
         {existingAttempt && (
           <button
             onClick={handleResume}
             disabled={starting}
-            className="flex-1 py-3 px-6 rounded-xl border-2 border-blue-300 text-blue-600 font-semibold hover:bg-blue-50 disabled:opacity-50"
+            className="flex-1 py-3 rounded-xl border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-semibold disabled:opacity-50"
           >
-            Resume Test
+            Resume
           </button>
         )}
         <button
           onClick={handleStart}
-          disabled={starting || totalQuestions === 0 || limitReached}
-          className="flex-1 flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={startDisabled}
+          className="btn-brand flex-1 py-3 text-base"
         >
           {starting
-            ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-            : <FiPlayCircle className="w-6 h-6" />}
-          {starting ? 'Starting...' : existingAttempt ? 'Start Fresh' : 'Start Test'}
+            ? <span className="inline-block w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            : <FiPlayCircle className="w-5 h-5" />}
+          {starting ? 'Starting…' : existingAttempt ? 'Start fresh' : 'Start test'}
         </button>
       </div>
 
       {totalQuestions === 0 && (
-        <p className="text-center text-sm text-red-500 mt-3">This test has no questions yet.</p>
+        <p className="text-center text-sm text-rose-500">This test has no questions yet.</p>
       )}
     </div>
   );
 };
 
-const SYLLABUS_COLORS = {
-  blue:    'bg-blue-50 text-blue-700 border-blue-200',
-  purple:  'bg-purple-50 text-purple-700 border-purple-200',
-  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+const StatTile = ({ Icon, label, value, tone = 'orange', valueClass = '' }) => {
+  const TONES = {
+    orange:  'bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300',
+    blue:    'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+    violet:  'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+  };
+  return (
+    <div className="bg-[var(--bg-muted)] rounded-xl border border-[var(--border)] p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+      <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${TONES[tone]}`}>
+        <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</div>
+        <div className={`text-base sm:text-lg font-bold text-[var(--text-strong)] leading-tight truncate ${valueClass}`}>{value}</div>
+      </div>
+    </div>
+  );
 };
 
-const SyllabusRow = ({ label, items, color }) => (
+const SectionCard = ({ icon, title, subtitle, children }) => (
+  <section className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
+    <header className="mb-4">
+      <h2 className="text-sm font-semibold text-[var(--text-strong)] flex items-center gap-2">
+        <span className="w-6 h-6 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-300 flex items-center justify-center">
+          {icon}
+        </span>
+        {title}
+      </h2>
+      {subtitle && <p className="text-xs text-[var(--text-faint)] mt-1 ml-8">{subtitle}</p>}
+    </header>
+    {children}
+  </section>
+);
+
+const MODE_META = {
+  tutor: {
+    emoji: '🎓',
+    title: 'Tutor mode',
+    sub: 'Instant feedback and explanation after each answer.',
+  },
+  timer: {
+    emoji: '⏱️',
+    title: 'Timed mode',
+    sub: 'Complete within the time limit — results shown at the end.',
+  },
+};
+
+const ModeCard = ({ mode, selected, locked, onClick }) => {
+  const m = MODE_META[mode];
+  return (
+    <button
+      onClick={onClick}
+      disabled={locked}
+      type="button"
+      className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+        selected
+          ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30'
+          : 'border-[var(--border)] hover:border-primary-300 dark:hover:border-primary-700'
+      } ${locked ? 'cursor-default' : ''}`}
+    >
+      {selected && !locked && (
+        <FiCheckCircle className="absolute top-3 right-3 w-5 h-5 text-primary-500" />
+      )}
+      {locked && (
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/50 px-2 py-0.5 rounded-full">
+          <FiLock className="w-3 h-3" /> Locked
+        </span>
+      )}
+      <div className="text-2xl mb-1.5">{m.emoji}</div>
+      <h3 className="font-semibold text-[var(--text-strong)]">{m.title}</h3>
+      <p className="text-xs text-[var(--text-muted)] mt-1">{m.sub}</p>
+    </button>
+  );
+};
+
+const SYLLABUS_TONES = {
+  blue:    'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/60',
+  violet:  'bg-secondary-50 text-secondary-700 border-secondary-200 dark:bg-secondary-950/40 dark:text-secondary-300 dark:border-secondary-900/60',
+  emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60',
+};
+
+const SyllabusRow = ({ label, items, tone }) => (
   <div>
-    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
+    <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)] mb-1.5">{label}</p>
     <div className="flex flex-wrap gap-1.5">
       {items.map((v) => (
-        <span key={v} className={`px-2.5 py-1 text-xs font-medium rounded-full border ${SYLLABUS_COLORS[color]}`}>
+        <span key={v} className={`px-2.5 py-1 text-xs font-medium rounded-full border ${SYLLABUS_TONES[tone]}`}>
           {v}
         </span>
       ))}

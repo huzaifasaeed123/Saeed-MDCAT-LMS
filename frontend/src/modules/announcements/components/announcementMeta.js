@@ -2,34 +2,37 @@
 // (sidebar, dashboard widget, admin list) so styling stays consistent.
 import { FiInfo, FiCalendar, FiAlertTriangle, FiRefreshCw } from 'react-icons/fi';
 
+// Each type's chip / icon-tile / left-accent. Light values for light mode,
+// dark: variants for dark mode — works on every surface the cards land on
+// (dashboard widget, sidebar slide-out, admin list).
 export const TYPE_META = {
   info: {
     label: 'INFO',
     Icon: FiInfo,
-    badgeClass: 'bg-blue-500/20 text-blue-300 border border-blue-500/40',
-    iconWrap:   'bg-blue-500/20 text-blue-300',
-    accent:     'border-blue-400',
+    badgeClass: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    iconWrap:   'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+    accent:     'border-blue-400 dark:border-blue-600',
   },
   test: {
     label: 'TEST',
     Icon: FiCalendar,
-    badgeClass: 'bg-purple-500/20 text-purple-300 border border-purple-500/40',
-    iconWrap:   'bg-purple-500/20 text-purple-300',
-    accent:     'border-purple-400',
+    badgeClass: 'bg-secondary-100 text-secondary-700 dark:bg-secondary-950/40 dark:text-secondary-300',
+    iconWrap:   'bg-secondary-100 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+    accent:     'border-secondary-400 dark:border-secondary-600',
   },
   update: {
     label: 'UPDATE',
     Icon: FiRefreshCw,
-    badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
-    iconWrap:   'bg-emerald-500/20 text-emerald-300',
-    accent:     'border-emerald-400',
+    badgeClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    iconWrap:   'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+    accent:     'border-emerald-400 dark:border-emerald-600',
   },
   urgent: {
     label: 'URGENT',
     Icon: FiAlertTriangle,
-    badgeClass: 'bg-red-500/90 text-white border border-red-400',
-    iconWrap:   'bg-red-500/30 text-red-300',
-    accent:     'border-red-400',
+    badgeClass: 'bg-rose-500 text-white',
+    iconWrap:   'bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300',
+    accent:     'border-rose-400 dark:border-rose-600',
   },
 };
 
@@ -39,6 +42,11 @@ export const AUDIENCE_LABEL = {
   teachers: 'TEACHERS',
   admins:   'ADMINS',
 };
+
+// Audience chip used by every variant. Subtle so it doesn't compete with the
+// type badge.
+export const AUDIENCE_BADGE_CLASS =
+  'bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border)]';
 
 // Tiny "3d ago" formatter — avoids pulling in date-fns just for this widget.
 export const timeAgo = (date) => {

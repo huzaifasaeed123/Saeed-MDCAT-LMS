@@ -12,8 +12,9 @@ import StructureCourseView from './StructureCourseView';
 import DateCourseView      from './DateCourseView';
 import useAuth from '../../../../core/auth/useAuth';
 import LockedFeaturePage from '../../../access/pages/LockedFeaturePage';
+import { getBackendUrl } from '../../../../shared/utils/fixImageUrls';
 
-const STATIC_BASE = 'http://localhost:5000';
+const STATIC_BASE = getBackendUrl();
 
 const CourseDetailPage = () => {
   const { id } = useParams();

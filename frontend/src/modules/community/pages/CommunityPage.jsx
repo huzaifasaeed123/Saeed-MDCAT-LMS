@@ -3,13 +3,15 @@ import {
   FiSend, FiX, FiMoreVertical, FiEdit2, FiTrash2, FiMapPin,
   FiBookmark, FiThumbsUp, FiChevronDown, FiChevronUp,
   FiLoader, FiBarChart2, FiAward, FiCheck, FiImage,
-  FiPlusSquare, FiSearch, FiRefreshCw,
+  FiPlusSquare, FiSearch, FiRefreshCw, FiSliders, FiMessageCircle,
+  FiCornerDownRight,
 } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import useAuth from '../../../core/auth/useAuth';
 import * as svc from '../services/communityService';
 import { getBackendUrl, fixImageUrls } from '../../../shared/utils/fixImageUrls';
 import RichTextEditor from '../../../shared/components/RichTextEditor';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -22,28 +24,29 @@ const CATEGORIES = [
   { key: 'general',           label: 'General' },
 ];
 
+// Dark-mode aware semantic chips. Light values unchanged from before.
 const TYPE_COLORS = {
-  doubt:        'bg-orange-100 text-orange-700',
-  discussion:   'bg-blue-100 text-blue-700',
-  poll:         'bg-purple-100 text-purple-700',
-  announcement: 'bg-red-100 text-red-700',
+  doubt:        'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
+  discussion:   'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  poll:         'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  announcement: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
 };
 
 const CAT_COLORS = {
-  physics:           'bg-yellow-100 text-yellow-700',
-  chemistry:         'bg-green-100 text-green-700',
-  biology:           'bg-teal-100 text-teal-700',
-  english:           'bg-indigo-100 text-indigo-700',
-  logical_reasoning: 'bg-pink-100 text-pink-700',
-  general:           'bg-gray-100 text-gray-600',
+  physics:           'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
+  chemistry:         'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  biology:           'bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300',
+  english:           'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
+  logical_reasoning: 'bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
+  general:           'bg-[var(--bg-muted)] text-[var(--text-muted)]',
 };
 
 const BADGE_STYLES = {
-  Beginner: 'bg-gray-100 text-gray-600',
-  Scholar:  'bg-blue-100 text-blue-700',
-  Expert:   'bg-purple-100 text-purple-700',
-  Legend:   'bg-yellow-100 text-yellow-700',
-  Pro:      'bg-red-100 text-red-700',
+  Beginner: 'bg-[var(--bg-muted)] text-[var(--text-muted)]',
+  Scholar:  'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  Expert:   'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  Legend:   'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300',
+  Pro:      'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
 };
 
 const getBadge = (pts = 0) => {
@@ -53,6 +56,11 @@ const getBadge = (pts = 0) => {
   if (pts >= 1000) return 'Scholar';
   return 'Beginner';
 };
+
+// Community-points badges (Beginner/Scholar/Expert/Legend/Pro) are a student
+// progression tier — they don't apply to admins or teachers. Use this to decide
+// whether to render BadgeChip alongside the author's name on posts and replies.
+const isStaffRole = (role) => role === 'admin' || role === 'teacher';
 
 const fmtTime = (date) => {
   const d    = new Date(date);
@@ -89,8 +97,9 @@ const BadgeChip = ({ pts }) => {
 
 const RoleBadge = ({ role }) => (
   <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium capitalize ${
-    role === 'admin' ? 'bg-red-100 text-red-700' :
-    role === 'teacher' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+    role === 'admin' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' :
+    role === 'teacher' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' :
+    'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300'
   }`}>{role}</span>
 );
 
@@ -102,32 +111,32 @@ const PollBuilder = ({ poll, onChange }) => {
   const editOpt    = (i, text) => setOptions(poll.options.map((o, idx) => idx === i ? { ...o, text } : o));
 
   return (
-    <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+    <div className="mt-3 p-4 bg-[var(--bg-muted)] rounded-xl border border-[var(--border)]">
       <div className="flex items-center justify-between mb-3">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text)]">
           <FiBarChart2 className="w-4 h-4" /> Poll options
         </span>
-        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+        <label className="flex items-center gap-2 text-sm text-[var(--text-muted)] cursor-pointer select-none">
           <input
             type="checkbox" checked={poll.isQuizMode}
             onChange={(e) => onChange({ ...poll, isQuizMode: e.target.checked, correctOption: null })}
-            className="accent-blue-600"
+            className="accent-primary-500"
           />
           Quiz mode
-          <span className="text-xs text-gray-400 cursor-help" title="Mark the correct answer; voters get instant feedback after voting">ⓘ</span>
+          <span className="text-xs text-[var(--text-faint)] cursor-help" title="Mark the correct answer; voters get instant feedback after voting">ⓘ</span>
         </label>
       </div>
 
       {poll.options.map((opt, i) => (
         <div key={i} className="flex items-center gap-2 mb-2">
-          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs flex items-center justify-center font-semibold">
+          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] text-xs flex items-center justify-center font-semibold">
             {String.fromCharCode(65 + i)}
           </span>
           <input
             value={opt.text}
             onChange={(e) => editOpt(i, e.target.value)}
             placeholder={`Option ${String.fromCharCode(65 + i)}`}
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="flex-1 px-3 py-1.5 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
           {poll.isQuizMode && (
             <button
@@ -135,25 +144,25 @@ const PollBuilder = ({ poll, onChange }) => {
               onClick={() => onChange({ ...poll, correctOption: poll.correctOption === i ? null : i })}
               title="Mark as correct answer"
               className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                poll.correctOption === i ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 hover:border-green-400'
+                poll.correctOption === i ? 'border-green-500 bg-green-500 text-white' : 'border-[var(--border)] hover:border-green-400'
               }`}
             >
               {poll.correctOption === i && <FiCheck className="w-3 h-3" />}
             </button>
           )}
           {poll.options.length > 2 && (
-            <button onClick={() => removeOpt(i)} className="text-gray-400 hover:text-red-500 flex-shrink-0"><FiX className="w-4 h-4" /></button>
+            <button onClick={() => removeOpt(i)} className="text-[var(--text-faint)] hover:text-red-500 flex-shrink-0"><FiX className="w-4 h-4" /></button>
           )}
         </div>
       ))}
 
-      <div className="flex items-center gap-3 mt-2">
+      <div className="flex items-center gap-3 mt-2 flex-wrap">
         {poll.options.length < 5 && (
-          <button type="button" onClick={addOption} className="text-sm font-semibold text-blue-600 hover:text-blue-800">
+          <button type="button" onClick={addOption} className="text-sm font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-300">
             + Add option
           </button>
         )}
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-[var(--text-faint)]">
           {poll.isQuizMode ? '2-5 options · click the green circle next to the correct answer' : '2-5 options · pick the answer to enable quiz mode'}
         </span>
       </div>
@@ -164,7 +173,7 @@ const PollBuilder = ({ poll, onChange }) => {
           onChange={(e) => onChange({ ...poll, explanation: e.target.value })}
           rows={2}
           placeholder="(Optional) Explanation shown to voters after they answer — only used in Quiz mode"
-          className="w-full mt-3 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none italic text-gray-500"
+          className="w-full mt-3 px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none italic placeholder:text-[var(--text-faint)]"
         />
       )}
     </div>
@@ -221,26 +230,26 @@ const PostComposer = ({ user, isStaff, onPost }) => {
       {/* ── Trigger card ── */}
       <div
         onClick={() => setOpen(true)}
-        className="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex items-center gap-3 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
+        className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4 mb-4 flex items-center gap-3 cursor-pointer hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm transition-all group"
       >
         <Avatar name={user?.fullName} picture={user?.profilePicture} />
-        <div className="flex-1 px-4 py-2.5 bg-gray-100 group-hover:bg-blue-50 rounded-full text-sm text-gray-400 group-hover:text-blue-500 transition-colors select-none">
+        <div className="flex-1 px-4 py-2.5 bg-[var(--bg-muted)] group-hover:bg-primary-50 dark:group-hover:bg-primary-950/30 rounded-full text-sm text-[var(--text-faint)] group-hover:text-primary-600 dark:group-hover:text-primary-300 transition-colors select-none truncate">
           What's on your mind? Click to write a post…
         </div>
-        <button className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-full transition-colors flex-shrink-0">
-          <FiPlusSquare className="w-4 h-4" /> New Post
+        <button className="flex items-center gap-1.5 text-sm font-semibold text-primary-600 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-950/60 px-4 py-2 rounded-full transition-colors flex-shrink-0">
+          <FiPlusSquare className="w-4 h-4" /> <span className="hidden sm:inline">New Post</span>
         </button>
       </div>
 
       {/* ── Modal ── */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-10 px-4" onClick={(e) => { if (e.target === e.currentTarget) reset(); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-6 sm:pt-10 px-4" onClick={(e) => { if (e.target === e.currentTarget) reset(); }}>
+          <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
 
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
-              <h2 className="text-lg font-bold text-gray-900">Create Post</h2>
-              <button onClick={reset} className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] flex-shrink-0">
+              <h2 className="text-lg font-bold text-[var(--text-strong)]">Create Post</h2>
+              <button onClick={reset} className="text-[var(--text-faint)] hover:text-[var(--text)] p-1 rounded-lg hover:bg-[var(--bg-muted)]">
                 <FiX className="w-5 h-5" />
               </button>
             </div>
@@ -250,12 +259,12 @@ const PostComposer = ({ user, isStaff, onPost }) => {
               <div className="flex items-center gap-3 mb-3">
                 <Avatar name={user?.fullName} picture={user?.profilePicture} />
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{user?.fullName}</p>
+                  <p className="text-sm font-semibold text-[var(--text-strong)]">{user?.fullName}</p>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                      className="text-xs border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400"
                     >
                       {CATEGORIES.filter(c => c.key !== 'all').map(c => (
                         <option key={c.key} value={c.key}>{c.label}</option>
@@ -267,7 +276,9 @@ const PostComposer = ({ user, isStaff, onPost }) => {
                         type="button"
                         onClick={() => setType(t)}
                         className={`capitalize text-xs px-3 py-1 rounded-full font-semibold transition-colors ${
-                          type === t ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+                          type === t
+                            ? 'bg-primary-500 text-white'
+                            : 'border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
                         }`}
                       >
                         {t}
@@ -282,13 +293,13 @@ const PostComposer = ({ user, isStaff, onPost }) => {
             <div className="flex-1 overflow-y-auto px-5 pb-2">
               {type === 'poll' ? (
                 <div>
-                  <p className="text-sm text-gray-500 mb-2">Add a question or context for your poll:</p>
+                  <p className="text-sm text-[var(--text-muted)] mb-2">Add a question or context for your poll:</p>
                   <textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     rows={2}
                     placeholder="Poll question (optional)…"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-1"
+                    className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none mb-1 placeholder:text-[var(--text-faint)]"
                   />
                   <PollBuilder poll={poll} onChange={setPoll} />
                 </div>
@@ -305,14 +316,14 @@ const PostComposer = ({ user, isStaff, onPost }) => {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200 flex-shrink-0">
-              <button onClick={reset} className="text-sm text-gray-500 hover:text-gray-800 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors">
+            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[var(--border)] flex-shrink-0">
+              <button onClick={reset} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] px-4 py-2 rounded-xl hover:bg-[var(--bg-muted)] transition-colors">
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={posting}
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors"
+                className="btn-brand text-sm px-6 py-2 disabled:opacity-50"
               >
                 {posting ? <FiLoader className="animate-spin w-4 h-4" /> : <FiSend className="w-4 h-4" />}
                 {posting ? 'Posting…' : 'Post'}
@@ -362,15 +373,15 @@ const PollWidget = ({ poll, postId, onVote }) => {
             onClick={() => handleVote(i)}
             disabled={voting || (localPoll.isQuizMode && voted)}
             className={`w-full text-left px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all relative overflow-hidden ${
-              isCorrect ? 'border-green-500 text-green-700' :
-              isWrong   ? 'border-red-400 text-red-700' :
-              isVoted   ? 'border-blue-500 text-blue-700' :
-              'border-gray-200 text-gray-700 hover:border-blue-300 disabled:hover:border-gray-200'
+              isCorrect ? 'border-green-500 text-green-700 dark:text-green-300' :
+              isWrong   ? 'border-red-400 text-red-700 dark:text-red-300' :
+              isVoted   ? 'border-primary-500 text-primary-700 dark:text-primary-300' :
+              'border-[var(--border)] text-[var(--text)] hover:border-primary-300 dark:hover:border-primary-700 disabled:hover:border-[var(--border)]'
             }`}
           >
             {voted && (
               <div
-                className={`absolute inset-0 opacity-15 ${isCorrect ? 'bg-green-400' : isWrong ? 'bg-red-400' : isVoted ? 'bg-blue-400' : 'bg-gray-300'}`}
+                className={`absolute inset-0 opacity-15 ${isCorrect ? 'bg-green-400' : isWrong ? 'bg-red-400' : isVoted ? 'bg-primary-400' : 'bg-[var(--bg-muted)]'}`}
                 style={{ width: `${pct}%` }}
               />
             )}
@@ -381,20 +392,24 @@ const PollWidget = ({ poll, postId, onVote }) => {
                 </span>
                 {opt.text}
               </span>
-              {voted && <span className="text-xs text-gray-500 ml-2">{pct}%</span>}
+              {voted && <span className="text-xs text-[var(--text-muted)] ml-2">{pct}%</span>}
             </span>
           </button>
         );
       })}
 
-      <p className="text-xs text-gray-400">{total} vote{total !== 1 ? 's' : ''}</p>
+      <p className="text-xs text-[var(--text-faint)]">{total} vote{total !== 1 ? 's' : ''}</p>
 
       {localPoll.isQuizMode && voted && (
-        <div className={`text-sm px-3 py-2 rounded-lg ${localPoll.myVoteIndex === localPoll.correctOption ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+        <div className={`text-sm px-3 py-2 rounded-lg border ${
+          localPoll.myVoteIndex === localPoll.correctOption
+            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-900/60'
+            : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/60'
+        }`}>
           {localPoll.myVoteIndex === localPoll.correctOption
             ? '✓ Correct!'
             : `✗ Incorrect. Correct answer: ${String.fromCharCode(65 + localPoll.correctOption)}`}
-          {localPoll.explanation && <p className="mt-1 text-gray-600 italic">{localPoll.explanation}</p>}
+          {localPoll.explanation && <p className="mt-1 text-[var(--text-muted)] italic">{localPoll.explanation}</p>}
         </div>
       )}
     </div>
@@ -417,22 +432,22 @@ const PostMenu = ({ post, userId, isStaff, onEdit, onDelete, onPin }) => {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(v => !v)} className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100">
+      <button onClick={() => setOpen(v => !v)} className="p-1 text-[var(--text-faint)] hover:text-[var(--text)] rounded-lg hover:bg-[var(--bg-muted)]">
         <FiMoreVertical className="w-4 h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-40 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-1">
+        <div className="absolute right-0 mt-1 w-40 bg-[var(--bg-surface)] rounded-xl shadow-lg border border-[var(--border)] z-20 py-1">
           {isOwner && (
-            <button onClick={() => { setOpen(false); onEdit(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <button onClick={() => { setOpen(false); onEdit(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text)] hover:bg-[var(--bg-muted)]">
               <FiEdit2 className="w-4 h-4" /> Edit
             </button>
           )}
           {isStaff && (
-            <button onClick={() => { setOpen(false); onPin(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <button onClick={() => { setOpen(false); onPin(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text)] hover:bg-[var(--bg-muted)]">
               <FiMapPin className="w-4 h-4" /> {post.isPinned ? 'Unpin' : 'Pin'}
             </button>
           )}
-          <button onClick={() => { setOpen(false); onDelete(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+          <button onClick={() => { setOpen(false); onDelete(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40">
             <FiTrash2 className="w-4 h-4" /> Delete
           </button>
         </div>
@@ -468,19 +483,40 @@ const ReplyItem = ({ reply, userId, isStaff, onDelete, onMarkAnswer, onHelpful, 
   };
 
   return (
-    <div className={`flex gap-3 py-3 border-b border-gray-50 last:border-0 ${reply.isAnswer ? 'bg-green-50 -mx-4 px-4 rounded-lg' : ''}`}>
+    <div className={`flex gap-3 py-3 border-b border-[var(--border-faint)] last:border-0 ${
+      reply.isAnswer
+        ? 'bg-green-50 dark:bg-green-950/30 -mx-3 px-3 rounded-lg'
+        : ''
+    }`}>
       <Avatar name={reply.author?.fullName} picture={reply.author?.profilePicture} size="sm" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-gray-900">{reply.author?.fullName}</span>
-          {reply.author?.communityPoints !== undefined && <BadgeChip pts={reply.author.communityPoints} />}
-          <RoleBadge role={reply.author?.role} />
+          <span className="text-sm font-semibold text-[var(--text-strong)]">{reply.author?.fullName}</span>
+
+          {/* Mobile: one identity badge only (Beginner for student, Admin/Teacher for staff).
+              Desktop sm+: both badges for students, role only for staff. */}
+          {isStaffRole(reply.author?.role) ? (
+            <RoleBadge role={reply.author?.role} />
+          ) : (
+            <>
+              {reply.author?.communityPoints !== undefined && (
+                <BadgeChip pts={reply.author.communityPoints} />
+              )}
+              <span className="hidden sm:inline-flex">
+                <RoleBadge role={reply.author?.role} />
+              </span>
+            </>
+          )}
+
+          {/* Best-answer chip is shown on every breakpoint — it's the most
+              important signal on a reply, so we keep the explicit badge even
+              on mobile (the green background reinforces it). */}
           {reply.isAnswer && (
-            <span className="flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-950/50 px-2 py-0.5 rounded-full">
               <FiAward className="w-3 h-3" /> Best Answer
             </span>
           )}
-          <span className="text-xs text-gray-400 ml-auto">{fmtTime(reply.createdAt)}{reply.isEdited && ' (edited)'}</span>
+          <span className="text-xs text-[var(--text-faint)] ml-auto whitespace-nowrap">{fmtTime(reply.createdAt)}{reply.isEdited && ' (edited)'}</span>
         </div>
 
         {editing ? (
@@ -489,24 +525,24 @@ const ReplyItem = ({ reply, userId, isStaff, onDelete, onMarkAnswer, onHelpful, 
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               rows={3}
-              className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              className="w-full text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
             />
             <div className="flex gap-2 mt-1">
-              <button onClick={handleSaveEdit} disabled={saving} className="text-sm text-white bg-blue-600 px-3 py-1 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={handleSaveEdit} disabled={saving} className="text-sm text-white bg-primary-500 hover:bg-primary-600 px-3 py-1 rounded-lg disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button onClick={() => { setEditing(false); setEditText(reply.content); }} className="text-sm text-gray-500 px-3 py-1 rounded-lg hover:bg-gray-100">
+              <button onClick={() => { setEditing(false); setEditText(reply.content); }} className="text-sm text-[var(--text-muted)] px-3 py-1 rounded-lg hover:bg-[var(--bg-muted)]">
                 Cancel
               </button>
             </div>
           </div>
         ) : (
           <>
-            <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words">{reply.content}</p>
+            <p className="text-sm text-[var(--text)] mt-1 whitespace-pre-wrap break-words">{reply.content}</p>
             {reply.images?.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {reply.images.map((url, i) => (
-                  <img key={i} src={fixImg(url)} alt="" className="max-h-40 rounded-lg object-cover border border-gray-200" />
+                  <img key={i} src={fixImg(url)} alt="" className="max-h-40 rounded-lg object-cover border border-[var(--border)]" />
                 ))}
               </div>
             )}
@@ -515,19 +551,39 @@ const ReplyItem = ({ reply, userId, isStaff, onDelete, onMarkAnswer, onHelpful, 
 
         {/* Reply footer: helpful + answer + menu */}
         <div className="flex items-center gap-2 mt-2">
-          <button
-            onClick={() => onHelpful(reply._id)}
-            className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
-              reply.isHelpful ? 'border-blue-400 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:border-blue-300'
-            }`}
-          >
-            <FiThumbsUp className="w-3 h-3" /> {reply.helpfulCount || 0} Helpful
-          </button>
+          {/* Helpful — interactive for everyone except the reply's own author.
+              Backend rejects self-helpful with a 400, so we hide the button
+              client-side too (zero API cost — purely a JSX gate). Owners still
+              see the count as a static badge when at least one person voted,
+              so they can track how their reply is landing. */}
+          {isOwner ? (
+            (reply.helpfulCount || 0) > 0 && (
+              <span
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-muted)]"
+                title="You can't mark your own reply as helpful"
+              >
+                <FiThumbsUp className="w-3 h-3" /> {reply.helpfulCount} Helpful
+              </span>
+            )
+          ) : (
+            <button
+              onClick={() => onHelpful(reply._id)}
+              className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
+                reply.isHelpful
+                  ? 'border-primary-400 text-primary-600 bg-primary-50 dark:bg-primary-950/30 dark:text-primary-300 dark:border-primary-700'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:border-primary-300 dark:hover:border-primary-700'
+              }`}
+            >
+              <FiThumbsUp className="w-3 h-3" /> {reply.helpfulCount || 0} Helpful
+            </button>
+          )}
           {isStaff && (
             <button
               onClick={() => onMarkAnswer(reply._id)}
               className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
-                reply.isAnswer ? 'border-green-500 text-green-700 bg-green-50' : 'border-gray-200 text-gray-500 hover:border-green-400'
+                reply.isAnswer
+                  ? 'border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-300 dark:border-green-700'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:border-green-400'
               }`}
             >
               <FiAward className="w-3 h-3" /> {reply.isAnswer ? 'Unmark Answer' : 'Mark Answer'}
@@ -535,17 +591,17 @@ const ReplyItem = ({ reply, userId, isStaff, onDelete, onMarkAnswer, onHelpful, 
           )}
           {(isOwner || isStaff) && (
             <div className="relative ml-auto" ref={menuRef}>
-              <button onClick={() => setMenuOpen(v => !v)} className="text-gray-400 hover:text-gray-700 p-1">
+              <button onClick={() => setMenuOpen(v => !v)} className="text-[var(--text-faint)] hover:text-[var(--text)] p-1">
                 <FiMoreVertical className="w-3.5 h-3.5" />
               </button>
               {menuOpen && (
-                <div className="absolute right-0 bottom-7 w-32 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-1">
+                <div className="absolute right-0 bottom-7 w-32 bg-[var(--bg-surface)] rounded-xl shadow-lg border border-[var(--border)] z-20 py-1">
                   {isOwner && (
-                    <button onClick={() => { setMenuOpen(false); setEditing(true); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <button onClick={() => { setMenuOpen(false); setEditing(true); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--text)] hover:bg-[var(--bg-muted)]">
                       <FiEdit2 className="w-3 h-3" /> Edit
                     </button>
                   )}
-                  <button onClick={() => { setMenuOpen(false); onDelete(reply._id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                  <button onClick={() => { setMenuOpen(false); onDelete(reply._id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40">
                     <FiTrash2 className="w-3 h-3" /> Delete
                   </button>
                 </div>
@@ -559,6 +615,9 @@ const ReplyItem = ({ reply, userId, isStaff, onDelete, onMarkAnswer, onHelpful, 
 };
 
 // ── Reply Section (expandable) ────────────────────────────────────────────────
+// When opened, the reply panel sits in an inset card with a left "thread"
+// accent and a small header so it's visually clear the replies belong to the
+// post above. The footer (toggle + Save) stays at the bottom of the post card.
 const ReplySection = ({ postId, replyCount, userId, isStaff, onReplyCountChange, renderFooterExtras }) => {
   const [open,        setOpen]       = useState(false);
   const [replies,     setReplies]    = useState([]);
@@ -646,71 +705,103 @@ const ReplySection = ({ postId, replyCount, userId, isStaff, onReplyCountChange,
   };
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100">
+    <div className="mt-3 pt-3 border-t border-[var(--border-faint)]">
       {open && (
-        <div className="mb-3">
-          {loading ? (
-            <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-gray-400" /></div>
-          ) : (
-            <>
-              {replies.map(r => (
-                <ReplyItem
-                  key={r._id} reply={r} userId={userId} isStaff={isStaff} postId={postId}
-                  onDelete={handleDelete} onMarkAnswer={handleMarkAnswer}
-                  onHelpful={handleHelpful} onEdit={handleEdit}
-                />
-              ))}
-              {hasMore && (
-                <div className="flex justify-center mt-2">
-                  <button
-                    onClick={() => loadReplies(page + 1, true)}
-                    disabled={loadingMore}
-                    className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-blue-300 disabled:opacity-50 transition-colors"
-                  >
-                    {loadingMore && <FiLoader className="animate-spin w-3 h-3" />}
-                    {loadingMore ? 'Loading…' : 'Load more replies'}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+        <div className="mb-3 relative pl-2 sm:pl-4">
+          {/* Left thread connector — anchors the panel to the post above */}
+          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 rounded-full bg-gradient-to-b from-primary-400 via-primary-300/60 to-transparent dark:from-primary-500 dark:via-primary-700/60" />
 
-          {/* Reply input */}
-          <div className="mt-3 flex gap-2 items-end">
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              rows={1}
-              placeholder="Write a reply… (Enter to send, Shift+Enter for newline)"
-              className="flex-1 resize-none border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              style={{ minHeight: '38px', maxHeight: '120px' }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="p-2 text-gray-500 hover:text-blue-600 border border-gray-300 rounded-xl hover:border-blue-400"
-              title="Attach image"
-            >
-              {uploading ? <FiLoader className="animate-spin w-4 h-4" /> : <FiImage className="w-4 h-4" />}
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { handleImageAttach(e.target.files[0]); e.target.value = ''; }} />
-            <button
-              onClick={handleSend}
-              disabled={!content.trim() || sending}
-              className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50 transition-colors"
-            >
-              {sending ? <FiLoader className="animate-spin w-4 h-4" /> : <FiSend className="w-4 h-4" />}
-            </button>
+          <div className="bg-[var(--bg-muted)] rounded-xl border border-[var(--border)] p-2.5 sm:p-4">
+            {/* Panel header — makes the "↳ Replies to this post" relationship obvious.
+                Label shortens to just "Replies" on small screens to save horizontal space. */}
+            <div className="flex items-center gap-1.5 mb-3 text-[11px] sm:text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+              <FiCornerDownRight className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+              <span className="sm:hidden">Replies</span>
+              <span className="hidden sm:inline">Replies on this post</span>
+              <span className="ml-auto text-[var(--text-faint)] normal-case tracking-normal font-medium">
+                {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-[var(--text-faint)]" /></div>
+            ) : (
+              <>
+                {replies.length === 0 ? (
+                  <p className="text-xs text-[var(--text-faint)] italic py-2">
+                    No replies yet — be the first to respond.
+                  </p>
+                ) : (
+                  replies.map(r => (
+                    <ReplyItem
+                      key={r._id} reply={r} userId={userId} isStaff={isStaff} postId={postId}
+                      onDelete={handleDelete} onMarkAnswer={handleMarkAnswer}
+                      onHelpful={handleHelpful} onEdit={handleEdit}
+                    />
+                  ))
+                )}
+                {hasMore && (
+                  <div className="flex justify-center mt-2">
+                    <button
+                      onClick={() => loadReplies(page + 1, true)}
+                      disabled={loadingMore}
+                      className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:border-primary-300 dark:hover:border-primary-700 disabled:opacity-50 transition-colors"
+                    >
+                      {loadingMore && <FiLoader className="animate-spin w-3 h-3" />}
+                      {loadingMore ? 'Loading…' : 'Load more replies'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Reply input — sits inside the same inset card so it's clearly part of this thread.
+                Mobile uses a shorter placeholder + compact icon buttons so the row fits. */}
+            <div className="mt-3 pt-3 border-t border-[var(--border-faint)] flex gap-1.5 sm:gap-2 items-end">
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                rows={1}
+                placeholder="Write a reply…"
+                className="flex-1 min-w-0 resize-none border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                style={{ minHeight: '38px', maxHeight: '120px' }}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex-shrink-0 w-9 h-9 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-primary-600 dark:hover:text-primary-300 border border-[var(--border)] rounded-xl hover:border-primary-300 dark:hover:border-primary-700"
+                title="Attach image"
+              >
+                {uploading ? <FiLoader className="animate-spin w-4 h-4" /> : <FiImage className="w-4 h-4" />}
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => { handleImageAttach(e.target.files[0]); e.target.value = ''; }} />
+              <button
+                onClick={handleSend}
+                disabled={!content.trim() || sending}
+                className="flex-shrink-0 w-9 h-9 inline-flex items-center justify-center bg-primary-500 hover:bg-primary-600 text-white rounded-xl disabled:opacity-50 transition-colors"
+                title="Send reply (Enter)"
+              >
+                {sending ? <FiLoader className="animate-spin w-4 h-4" /> : <FiSend className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Footer: reply toggle + extras (save button) — same line */}
       <div className="flex items-center gap-3">
-        <button onClick={toggle} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors">
-          {open ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
+        <button
+          onClick={toggle}
+          className={`flex items-center gap-1.5 text-sm transition-colors ${
+            open
+              ? 'text-primary-600 dark:text-primary-300 font-semibold'
+              : 'text-[var(--text-muted)] hover:text-primary-600 dark:hover:text-primary-300'
+          }`}
+        >
+          <FiMessageCircle className="w-4 h-4" />
           {replyCount} {replyCount === 1 ? 'Reply' : 'Replies'}
+          {open ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
         </button>
         {renderFooterExtras}
       </div>
@@ -758,40 +849,70 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
   };
 
   return (
-    <div className={`bg-white rounded-xl border ${post.isPinned ? 'border-yellow-300' : 'border-gray-200'} p-5 mb-3`}>
+    <div className={`bg-[var(--bg-surface)] rounded-xl border p-3 sm:p-5 mb-3 ${
+      post.isPinned
+        ? 'border-yellow-300 dark:border-yellow-700'
+        : 'border-[var(--border)]'
+    }`}>
       {post.isPinned && (
-        <div className="flex items-center gap-1 text-xs text-yellow-600 font-semibold mb-2">
+        <div className="flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-300 font-semibold mb-2">
           <FiMapPin className="w-3 h-3" /> PINNED
         </div>
       )}
 
-      {/* Author row */}
+      {/* Author row — one consolidated row.
+          Mobile: name + a SINGLE identity badge (Beginner for students,
+            Admin/Teacher for staff). Topic chips (type/category/answered) are
+            hidden — the filter bar at the top of the feed surfaces those.
+          sm+:   name + role + (points for students) + type + category + answered
+            all inline. flex-wrap is a safety net for narrow laptops. */}
       <div className="flex items-start gap-3">
         <Avatar name={post.author?.fullName} picture={post.author?.profilePicture} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 text-sm">{post.author?.fullName}</span>
-            <BadgeChip pts={post.author?.communityPoints || 0} />
-            <RoleBadge role={post.author?.role} />
-            <span className="text-xs text-gray-400 ml-auto">{fmtTime(post.createdAt)}{post.isEdited && ' (edited)'}</span>
-            <PostMenu
-              post={post} userId={userId} isStaff={isStaff}
-              onEdit={() => { setEditing(true); setEditorKey(k => k + 1); }}
-              onDelete={() => { if (window.confirm('Delete this post?')) onDelete(post._id); }}
-              onPin={handlePin}
-            />
-          </div>
-          {/* Type + category + answered badges */}
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${TYPE_COLORS[post.type]}`}>{post.type}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${CAT_COLORS[post.category]}`}>
-              {post.category.replace('_', ' ')}
-            </span>
-            {post.isAnswered && (
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700 flex items-center gap-1">
-                <FiCheck className="w-3 h-3" /> Answered
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-semibold text-[var(--text-strong)] text-sm leading-tight">
+                {post.author?.fullName}
               </span>
-            )}
+
+              {/* Identity badge(s) — mobile shows just one; desktop shows both for students. */}
+              {isStaffRole(post.author?.role) ? (
+                <RoleBadge role={post.author?.role} />
+              ) : (
+                <>
+                  <BadgeChip pts={post.author?.communityPoints || 0} />
+                  <span className="hidden sm:inline-flex">
+                    <RoleBadge role={post.author?.role} />
+                  </span>
+                </>
+              )}
+
+              {/* Topic chips — desktop only. The classification data still drives
+                  the category/filter buttons at the top of the feed, so no
+                  filter logic depends on these chips being rendered. */}
+              <span className={`hidden sm:inline-flex text-[11px] px-2 py-0.5 rounded-full font-semibold capitalize ${TYPE_COLORS[post.type]}`}>
+                {post.type}
+              </span>
+              <span className={`hidden sm:inline-flex text-[11px] px-2 py-0.5 rounded-full font-semibold capitalize ${CAT_COLORS[post.category]}`}>
+                {post.category.replace('_', ' ')}
+              </span>
+              {post.isAnswered && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300">
+                  <FiCheck className="w-3 h-3" /> Answered
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className="text-xs text-[var(--text-faint)] whitespace-nowrap">
+                {fmtTime(post.createdAt)}{post.isEdited && ' (edited)'}
+              </span>
+              <PostMenu
+                post={post} userId={userId} isStaff={isStaff}
+                onEdit={() => { setEditing(true); setEditorKey(k => k + 1); }}
+                onDelete={() => { if (window.confirm('Delete this post?')) onDelete(post._id); }}
+                onPin={handlePin}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -804,7 +925,7 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               rows={3}
-              className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+              className="w-full text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
             />
           ) : (
             <RichTextEditor
@@ -819,10 +940,10 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
           <>
             {post.content && (
               post.type === 'poll' ? (
-                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{post.content}</p>
+                <p className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{post.content}</p>
               ) : (
                 <div
-                  className="prose prose-sm max-w-none text-gray-700"
+                  className="prose prose-sm max-w-none text-[var(--text)] dark:prose-invert"
                   dangerouslySetInnerHTML={{ __html: fixImageUrls(post.content) }}
                 />
               )
@@ -830,7 +951,7 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
             {post.images?.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {post.images.map((url, i) => (
-                  <img key={i} src={fixImg(url)} alt="" className="max-h-60 rounded-xl object-cover border border-gray-200" />
+                  <img key={i} src={fixImg(url)} alt="" className="max-h-60 rounded-xl object-cover border border-[var(--border)]" />
                 ))}
               </div>
             )}
@@ -842,10 +963,10 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
 
         {editing && (
           <div className="flex gap-2 mt-2">
-            <button onClick={handleSaveEdit} disabled={saving} className="text-sm text-white bg-blue-600 px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={handleSaveEdit} disabled={saving} className="text-sm text-white bg-primary-500 hover:bg-primary-600 px-4 py-1.5 rounded-lg disabled:opacity-50">
               {saving ? 'Saving…' : 'Save changes'}
             </button>
-            <button onClick={handleCancelEdit} className="text-sm text-gray-500 px-4 py-1.5 rounded-lg hover:bg-gray-100">
+            <button onClick={handleCancelEdit} className="text-sm text-[var(--text-muted)] px-4 py-1.5 rounded-lg hover:bg-[var(--bg-muted)]">
               Cancel
             </button>
           </div>
@@ -863,7 +984,9 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
           <button
             onClick={handleSave}
             className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
-              post.isSaved ? 'border-blue-400 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:border-blue-300'
+              post.isSaved
+                ? 'border-primary-400 text-primary-600 bg-primary-50 dark:bg-primary-950/30 dark:text-primary-300 dark:border-primary-700'
+                : 'border-[var(--border)] text-[var(--text-muted)] hover:border-primary-300 dark:hover:border-primary-700'
             }`}
           >
             <FiBookmark className="w-3.5 h-3.5" /> {post.isSaved ? 'Saved' : 'Save'}
@@ -874,54 +997,13 @@ const PostCard = ({ post: initialPost, userId, isStaff, onDelete }) => {
   );
 };
 
-// ── Staff Performance Panel (admin sidebar) ───────────────────────────────────
-const StaffPerformancePanel = () => {
-  const [data,    setData]    = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    svc.getStaffPerformance()
-      .then(r => setData(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="font-bold text-gray-900 mb-3 text-sm">Staff Activity</h3>
-      {loading ? (
-        <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-gray-400" /></div>
-      ) : data.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-3">No staff activity yet</p>
-      ) : (
-        <div className="space-y-3">
-          {data.map(s => (
-            <div key={s._id} className="flex items-start gap-2">
-              <Avatar name={s.fullName} picture={s.profilePicture} size="sm" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{s.fullName}</p>
-                  <RoleBadge role={s.role} />
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                  <span className="text-xs text-gray-500"><span className="font-semibold text-gray-700">{s.postCount}</span> posts</span>
-                  <span className="text-xs text-gray-500"><span className="font-semibold text-gray-700">{s.replyCount}</span> replies</span>
-                  <span className="text-xs text-gray-500"><span className="font-semibold text-green-600">{s.answersGiven}</span> answered</span>
-                  <span className="text-xs text-gray-500"><span className="font-semibold text-blue-600">{s.helpfulReceived}</span> helpful</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── Leaderboard Sidebar ───────────────────────────────────────────────────────
-const LeaderboardSidebar = ({ userId, isAdmin }) => {
-  const [data,        setData]        = useState(null);
-  const [refreshing,  setRefreshing]  = useState(false);
+// ── Leaderboard hooks ─────────────────────────────────────────────────────────
+// Data fetching is lifted up so the page can render leaderboard pieces in
+// multiple spots (mobile: personal rank at top + leaderboard at bottom;
+// desktop: full sidebar) without firing the API or SSE subscription twice.
+const useCommunityLeaderboard = () => {
+  const [data,       setData]       = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     svc.getLeaderboard().then(r => setData(r.data)).catch(() => {});
@@ -971,106 +1053,167 @@ const LeaderboardSidebar = ({ userId, isAdmin }) => {
     }
   };
 
-  const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+  return { data, refreshing, handleRefresh };
+};
 
+// Staff performance — separate endpoint, admin only. Lifted to a hook so it
+// only fetches once even if rendered in both the mobile bottom and the
+// desktop sidebar slots.
+const useStaffPerformance = (enabled) => {
+  const [data,    setData]    = useState([]);
+  const [loading, setLoading] = useState(enabled);
+
+  useEffect(() => {
+    if (!enabled) return;
+    svc.getStaffPerformance()
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [enabled]);
+
+  return { data, loading };
+};
+
+// ── Leaderboard cards ─────────────────────────────────────────────────────────
+// Each card is purely presentational — receives data via props, renders
+// nothing if there's nothing to show. Cards are composed in the page itself
+// so we can lay them out differently on mobile (top + bottom) vs desktop
+// (single sidebar column).
+
+// User's own rank (students) OR their points (staff). On mobile this sits
+// above the category tabs so the student sees their progression first.
+const PersonalRankCard = ({ data }) => {
+  if (!data) return null;
+  if (data.isStaff) {
+    return (
+      <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4">
+        <p className="text-xs text-[var(--text-muted)] font-medium">Community Points</p>
+        <p className="text-2xl font-bold text-primary-500">{data.myPoints}</p>
+      </div>
+    );
+  }
   return (
-    <div className="space-y-4">
-      {/* Staff performance — admin only */}
-      {isAdmin && <StaffPerformancePanel />}
-
-      {/* User's own rank (students only) */}
-      {data && !data.isStaff && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Your Rank</p>
-              <p className="text-2xl font-bold text-orange-500">#{data.myRank}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500 font-medium">Points</p>
-              <p className="text-2xl font-bold text-orange-500">{data.myPoints}</p>
-            </div>
-          </div>
-          <div className="mt-2"><BadgeChip pts={data.myPoints} /></div>
+    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-[var(--text-muted)] font-medium">Your Rank</p>
+          <p className="text-2xl font-bold text-primary-500">#{data.myRank}</p>
         </div>
-      )}
-
-      {/* Staff own points (non-ranked) */}
-      {data && data.isStaff && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 font-medium">Community Points</p>
-          <p className="text-2xl font-bold text-orange-500">{data.myPoints}</p>
-        </div>
-      )}
-
-      {/* Top 10 student leaderboard */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-start justify-between mb-1">
-          <h3 className="font-bold text-gray-900">🏆 Leaderboard</h3>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title="Refresh leaderboard"
-            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50 transition-colors"
-          >
-            <FiRefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-        <p className="text-xs text-gray-400 mb-3">
-          Top student contributors · updates every 5 minutes
-        </p>
-        {!data ? (
-          <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-gray-400" /></div>
-        ) : (
-          <div className="space-y-2.5">
-            {data.leaderboard.map((u, i) => (
-              <div key={u._id} className={`flex items-center gap-2 ${u._id.toString() === userId ? 'bg-blue-50 -mx-2 px-2 rounded-lg py-0.5' : ''}`}>
-                <span className="text-base w-6 text-center flex-shrink-0">
-                  {i < 3 ? RANK_MEDALS[i] : <span className="text-xs font-bold text-gray-500">#{i + 1}</span>}
-                </span>
-                <Avatar name={u.fullName} picture={u.profilePicture} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{u.fullName}</p>
-                  <BadgeChip pts={u.communityPoints} />
-                </div>
-                <span className="text-sm font-bold text-orange-500 flex-shrink-0">{u.communityPoints}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* How to earn points */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h3 className="font-semibold text-gray-900 mb-2 text-sm">How to earn points</h3>
-        <div className="space-y-1.5 text-xs text-gray-600">
-          <div className="flex justify-between"><span>Create a post</span><span className="font-bold text-green-600">+2</span></div>
-          <div className="flex justify-between"><span>Write a reply</span><span className="font-bold text-green-600">+1</span></div>
-          <div className="flex justify-between"><span>Reply marked helpful</span><span className="font-bold text-green-600">+1 (max 10)</span></div>
-          <div className="flex justify-between"><span>Reply marked as answer</span><span className="font-bold text-green-600">+15</span></div>
-        </div>
-        <div className="mt-3 border-t pt-3 space-y-1.5 text-xs">
-          <p className="font-semibold text-gray-700 mb-1">Badge tiers</p>
-          {[['Beginner','0–999'],['Scholar','1k–1.9k'],['Expert','2k–2.9k'],['Legend','3k–3.9k'],['Pro','4k+']].map(([b, r]) => (
-            <div key={b} className="flex items-center gap-2">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${BADGE_STYLES[b]}`}>{b}</span>
-              <span className="text-gray-400">{r} pts</span>
-            </div>
-          ))}
+        <div className="text-right">
+          <p className="text-xs text-[var(--text-muted)] font-medium">Points</p>
+          <p className="text-2xl font-bold text-primary-500">{data.myPoints}</p>
         </div>
       </div>
+      <div className="mt-2"><BadgeChip pts={data.myPoints} /></div>
     </div>
   );
 };
 
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+const TopLeaderboardCard = ({ data, userId, refreshing, onRefresh }) => (
+  <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4">
+    <div className="flex items-start justify-between mb-1">
+      <h3 className="font-bold text-[var(--text-strong)]">🏆 Leaderboard</h3>
+      <button
+        onClick={onRefresh}
+        disabled={refreshing}
+        title="Refresh leaderboard"
+        className="p-1.5 text-[var(--text-faint)] hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-950/30 rounded-lg disabled:opacity-50 transition-colors"
+      >
+        <FiRefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+      </button>
+    </div>
+    <p className="text-xs text-[var(--text-faint)] mb-3">
+      Top student contributors · updates every 5 minutes
+    </p>
+    {!data ? (
+      <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-[var(--text-faint)]" /></div>
+    ) : (
+      <div className="space-y-2.5">
+        {data.leaderboard.map((u, i) => (
+          <div key={u._id} className={`flex items-center gap-2 ${
+            u._id.toString() === userId
+              ? 'bg-primary-50 dark:bg-primary-950/30 -mx-2 px-2 rounded-lg py-0.5'
+              : ''
+          }`}>
+            <span className="text-base w-6 text-center flex-shrink-0">
+              {i < 3 ? RANK_MEDALS[i] : <span className="text-xs font-bold text-[var(--text-muted)]">#{i + 1}</span>}
+            </span>
+            <Avatar name={u.fullName} picture={u.profilePicture} size="sm" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-strong)] truncate">{u.fullName}</p>
+              <BadgeChip pts={u.communityPoints} />
+            </div>
+            <span className="text-sm font-bold text-primary-500 flex-shrink-0">{u.communityPoints}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const HowToEarnPointsCard = () => (
+  <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4">
+    <h3 className="font-semibold text-[var(--text-strong)] mb-2 text-sm">How to earn points</h3>
+    <div className="space-y-1.5 text-xs text-[var(--text-muted)]">
+      <div className="flex justify-between"><span>Create a post</span><span className="font-bold text-green-600 dark:text-green-300">+2</span></div>
+      <div className="flex justify-between"><span>Write a reply</span><span className="font-bold text-green-600 dark:text-green-300">+1</span></div>
+      <div className="flex justify-between"><span>Reply marked helpful</span><span className="font-bold text-green-600 dark:text-green-300">+1 (max 10)</span></div>
+      <div className="flex justify-between"><span>Reply marked as answer</span><span className="font-bold text-green-600 dark:text-green-300">+15</span></div>
+    </div>
+    <div className="mt-3 border-t border-[var(--border)] pt-3 space-y-1.5 text-xs">
+      <p className="font-semibold text-[var(--text)] mb-1">Badge tiers</p>
+      {[['Beginner','0–999'],['Scholar','1k–1.9k'],['Expert','2k–2.9k'],['Legend','3k–3.9k'],['Pro','4k+']].map(([b, r]) => (
+        <div key={b} className="flex items-center gap-2">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${BADGE_STYLES[b]}`}>{b}</span>
+          <span className="text-[var(--text-faint)]">{r} pts</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const StaffPerformanceCard = ({ data, loading }) => (
+  <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-4">
+    <h3 className="font-bold text-[var(--text-strong)] mb-3 text-sm">Staff Activity</h3>
+    {loading ? (
+      <div className="flex justify-center py-4"><FiLoader className="animate-spin w-5 h-5 text-[var(--text-faint)]" /></div>
+    ) : data.length === 0 ? (
+      <p className="text-xs text-[var(--text-faint)] text-center py-3">No staff activity yet</p>
+    ) : (
+      <div className="space-y-3">
+        {data.map(s => (
+          <div key={s._id} className="flex items-start gap-2">
+            <Avatar name={s.fullName} picture={s.profilePicture} size="sm" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-[var(--text-strong)] truncate">{s.fullName}</p>
+                <RoleBadge role={s.role} />
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                <span className="text-xs text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">{s.postCount}</span> posts</span>
+                <span className="text-xs text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">{s.replyCount}</span> replies</span>
+                <span className="text-xs text-[var(--text-muted)]"><span className="font-semibold text-green-600 dark:text-green-300">{s.answersGiven}</span> answered</span>
+                <span className="text-xs text-[var(--text-muted)]"><span className="font-semibold text-primary-600 dark:text-primary-300">{s.helpfulReceived}</span> helpful</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
 // ── Filter Tabs ───────────────────────────────────────────────────────────────
 // `staffOnly` filters are hidden from students. The "Unanswered" tab is staff-only:
 // it surfaces doubts that need a teacher's attention, which is irrelevant to students.
+// `primary: true` = always visible inline on mobile (the rest hide behind "More").
 const ALL_FILTER_TABS = [
-  { key: 'all',           label: 'All' },
-  { key: 'mine',          label: 'My Posts' },
-  { key: 'doubts',        label: 'Doubts' },
-  { key: 'unanswered',    label: 'Unanswered',  staffOnly: true },
+  { key: 'all',           label: 'All',           primary: true },
+  { key: 'mine',          label: 'My Posts',      primary: true },
+  { key: 'doubts',        label: 'Doubts',        primary: true },
+  { key: 'unanswered',    label: 'Unanswered',    staffOnly: true },
   { key: 'answered',      label: 'Answered' },
   { key: 'discussions',   label: 'Discussions' },
   { key: 'announcements', label: 'Announcements' },
@@ -1085,6 +1228,21 @@ const CommunityPage = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const isStaff = isAdmin || isTeacher;
 
+  // Push the page title + tagline up to the top navbar (DashboardLayout
+  // renders it via usePageHeaderState). Subtitle hides below sm in the
+  // top bar — that's intentional, the mobile bar is space-constrained.
+  usePageHeader({
+    title:    'Community',
+    subtitle: 'Ask doubts, share insights, and learn together with the SKN community.',
+  });
+
+  // Lifted leaderboard + staff-perf data — single fetch + SSE subscription,
+  // re-used by the cards in the mobile-top / mobile-bottom / desktop-sidebar
+  // slots below.
+  const { data: lbData, refreshing, handleRefresh } = useCommunityLeaderboard();
+  const { data: staffData, loading: staffLoading }  = useStaffPerformance(isAdmin);
+  const myUserId = user?.id || user?._id;
+
   const [category,     setCategory]     = useState('all');
   const [filter,       setFilter]       = useState('all');
   // `searchDraft` = what the user is typing. `search` = what we've actually
@@ -1098,8 +1256,24 @@ const CommunityPage = () => {
   const [page,         setPage]         = useState(1);
   const [loadingMore,  setLoadingMore]  = useState(false);
 
+  // Mobile "More filters" panels. On desktop these panels are always open inline.
+  const [moreOpen,    setMoreOpen]    = useState(false); // filter tabs
+  const [catMoreOpen, setCatMoreOpen] = useState(false); // category tabs
+
   // Filter tabs: students don't see staff-only filters (e.g., "Unanswered").
   const visibleFilterTabs = ALL_FILTER_TABS.filter(t => isStaff || !t.staffOnly);
+  const primaryTabs       = visibleFilterTabs.filter(t => t.primary);
+  const secondaryTabs     = visibleFilterTabs.filter(t => !t.primary);
+  // Dot indicator: when a non-primary filter/category is active on mobile, the
+  // collapsed "More" pill shows a dot so the user knows a hidden selection exists.
+  const activeIsSecondary = secondaryTabs.some(t => t.key === filter);
+
+  // Categories: first 3 stay visible on mobile, the rest hide behind "More".
+  // On sm+ all categories render inline so desktop layout is unchanged.
+  const PRIMARY_CAT_KEYS    = ['all', 'physics', 'chemistry'];
+  const primaryCats         = CATEGORIES.filter(c => PRIMARY_CAT_KEYS.includes(c.key));
+  const secondaryCats       = CATEGORIES.filter(c => !PRIMARY_CAT_KEYS.includes(c.key));
+  const activeCatIsSecondary = secondaryCats.some(c => c.key === category);
 
   const fetchPosts = useCallback(async (pg = 1, replace = true) => {
     if (pg === 1) setLoading(true); else setLoadingMore(true);
@@ -1131,39 +1305,148 @@ const CommunityPage = () => {
       {/* ── Left: main feed ── */}
       <div className="flex-1 min-w-0">
 
-        {/* Category tabs */}
-        <div className="flex gap-1.5 flex-wrap mb-4">
-          {CATEGORIES.map(c => (
-            <button
-              key={c.key}
-              onClick={() => setCategory(c.key)}
-              className={`text-sm px-3 py-1.5 rounded-xl font-medium transition-colors ${
-                category === c.key ? 'bg-blue-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
+        {/* MOBILE TOP: personal rank / staff points card. Hidden on desktop
+            where the sidebar already shows it on the right. */}
+        <div className="lg:hidden mb-4">
+          <PersonalRankCard data={lbData} />
+        </div>
+
+        {/* Category tabs — mobile: 3 primary + More toggle; sm+: all inline */}
+        <div className="mb-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Mobile: 3 primary categories */}
+            <div className="flex flex-wrap sm:hidden items-center gap-1.5">
+              {primaryCats.map(c => (
+                <CategoryPill
+                  key={c.key}
+                  active={category === c.key}
+                  onClick={() => setCategory(c.key)}
+                >
+                  {c.label}
+                </CategoryPill>
+              ))}
+              {/* Sized to match CategoryPill exactly (text-sm px-3 py-1.5
+                  rounded-xl) so it sits flush with the other pills. */}
+              <button
+                type="button"
+                onClick={() => setCatMoreOpen(v => !v)}
+                className={`inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-xl font-medium transition-colors border ${
+                  catMoreOpen || activeCatIsSecondary
+                    ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300'
+                    : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+                }`}
+                aria-expanded={catMoreOpen}
+                aria-label={activeCatIsSecondary ? 'More categories (1 active)' : 'More categories'}
+              >
+                <FiSliders className="w-3.5 h-3.5" />
+                More
+                {activeCatIsSecondary && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-500" aria-hidden />
+                )}
+              </button>
+            </div>
+
+            {/* sm+: all categories inline (desktop layout preserved) */}
+            <div className="hidden sm:flex flex-wrap items-center gap-1.5">
+              {CATEGORIES.map(c => (
+                <CategoryPill
+                  key={c.key}
+                  active={category === c.key}
+                  onClick={() => setCategory(c.key)}
+                >
+                  {c.label}
+                </CategoryPill>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile: secondary categories revealed under the More pill.
+              Flex-wrap so each pill sizes to its label (matches the primary
+              row's behaviour) — Biology and Physics end up the same width
+              instead of getting forced into equal grid columns. */}
+          {catMoreOpen && (
+            <div className="sm:hidden mt-2 flex flex-wrap gap-1.5">
+              {secondaryCats.map(c => (
+                <CategoryPill
+                  key={c.key}
+                  active={category === c.key}
+                  onClick={() => { setCategory(c.key); setCatMoreOpen(false); }}
+                >
+                  {c.label}
+                </CategoryPill>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Post composer trigger + modal */}
         <PostComposer user={user} isStaff={isStaff} onPost={handleNewPost} />
 
         {/* Filter tabs + search */}
-        <div className="bg-white rounded-xl border border-gray-200 p-3 mb-4">
-          <div className="flex flex-wrap gap-1.5">
-            {visibleFilterTabs.map(f => (
-              <button
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] p-3 mb-4">
+          {/* Primary row: always-visible filters + the More toggle (mobile only) */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {primaryTabs.map(f => (
+              <FilterPill
                 key={f.key}
+                active={filter === f.key}
                 onClick={() => setFilter(f.key)}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  filter === f.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-                }`}
               >
                 {f.label}
-              </button>
+              </FilterPill>
             ))}
+
+            {/* Mobile-only "More" toggle. On md+ secondary tabs render inline.
+                Uses a tiny dot (not a "1" badge) so the pill stays compact
+                and the row doesn't wrap when a secondary filter is active. */}
+            <button
+              type="button"
+              onClick={() => setMoreOpen(v => !v)}
+              className={`md:hidden inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors border ${
+                moreOpen || activeIsSecondary
+                  ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+              }`}
+              aria-expanded={moreOpen}
+              aria-label={activeIsSecondary ? 'More filters (1 active)' : 'More filters'}
+            >
+              <FiSliders className="w-3.5 h-3.5" />
+              More
+              {activeIsSecondary && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-500" aria-hidden />
+              )}
+            </button>
+
+            {/* Inline secondary tabs (md+) — same line so desktop layout is unchanged */}
+            <div className="hidden md:flex flex-wrap items-center gap-1.5">
+              {secondaryTabs.map(f => (
+                <FilterPill
+                  key={f.key}
+                  active={filter === f.key}
+                  onClick={() => setFilter(f.key)}
+                >
+                  {f.label}
+                </FilterPill>
+              ))}
+            </div>
           </div>
+
+          {/* Mobile More-panel: collapsible secondary tabs as flex-wrapped pills.
+              Sizing-to-content keeps every pill the same height as the primary
+              row, regardless of label length (no awkward 2-line "Announcements"). */}
+          {moreOpen && (
+            <div className="md:hidden mt-2 pt-2 border-t border-[var(--border-faint)] flex flex-wrap gap-1.5">
+              {secondaryTabs.map(f => (
+                <FilterPill
+                  key={f.key}
+                  active={filter === f.key}
+                  onClick={() => { setFilter(f.key); setMoreOpen(false); }}
+                >
+                  {f.label}
+                </FilterPill>
+              ))}
+            </div>
+          )}
 
           {/* Search — only fires API on submit (Enter or click). No live query. */}
           <div className="mt-2 flex gap-2">
@@ -1171,19 +1454,19 @@ const CommunityPage = () => {
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') submitSearch(); }}
-              placeholder="Search by post content or author name…"
-              className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="Search posts or authors…"
+              className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
             />
             <button
               onClick={submitSearch}
-              className="flex items-center gap-1 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
+              className="flex items-center gap-1 px-3 sm:px-4 py-1.5 text-xs font-semibold text-white bg-primary-500 hover:bg-primary-600 rounded-xl transition-colors flex-shrink-0"
             >
-              <FiSearch className="w-3.5 h-3.5" /> Search
+              <FiSearch className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Search</span>
             </button>
             {search && (
               <button
                 onClick={clearSearch}
-                className="px-3 py-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] bg-[var(--bg-muted)] hover:bg-[var(--border)] rounded-xl transition-colors flex-shrink-0"
               >
                 Clear
               </button>
@@ -1193,9 +1476,9 @@ const CommunityPage = () => {
 
         {/* Posts */}
         {loading ? (
-          <div className="flex justify-center py-12"><FiLoader className="animate-spin w-6 h-6 text-gray-400" /></div>
+          <div className="flex justify-center py-12"><FiLoader className="animate-spin w-6 h-6 text-[var(--text-faint)]" /></div>
         ) : posts.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
+          <div className="text-center py-12 text-[var(--text-faint)]">
             <p className="text-lg font-medium mb-1">No posts found</p>
             <p className="text-sm">Be the first to post!</p>
           </div>
@@ -1215,7 +1498,7 @@ const CommunityPage = () => {
                 <button
                   onClick={() => fetchPosts(page + 1, false)}
                   disabled={loadingMore}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl text-sm font-medium text-[var(--text)] hover:bg-[var(--bg-muted)] disabled:opacity-50 transition-colors"
                 >
                   {loadingMore && <FiLoader className="animate-spin w-4 h-4" />}
                   {loadingMore ? 'Loading…' : 'Load more'}
@@ -1224,14 +1507,66 @@ const CommunityPage = () => {
             )}
           </>
         )}
+
+        {/* MOBILE BOTTOM: leaderboard details under the post list. Hidden on
+            desktop — the right sidebar already shows these. */}
+        <div className="lg:hidden mt-6 space-y-4">
+          {isAdmin && <StaffPerformanceCard data={staffData} loading={staffLoading} />}
+          <TopLeaderboardCard
+            data={lbData}
+            userId={myUserId}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+          />
+          <HowToEarnPointsCard />
+        </div>
       </div>
 
-      {/* ── Right: sidebar ── */}
-      <div className="hidden lg:block w-72 flex-shrink-0">
-        <LeaderboardSidebar userId={user?.id || user?._id} isAdmin={isAdmin} />
-      </div>
+      {/* ── Right: sidebar (desktop only) ── */}
+      <aside className="hidden lg:block w-72 flex-shrink-0">
+        <div className="space-y-4">
+          {isAdmin && <StaffPerformanceCard data={staffData} loading={staffLoading} />}
+          <PersonalRankCard data={lbData} />
+          <TopLeaderboardCard
+            data={lbData}
+            userId={myUserId}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+          />
+          <HowToEarnPointsCard />
+        </div>
+      </aside>
     </div>
   );
 };
+
+// Small filter pill used by the primary + secondary tab rows + mobile More grid.
+const FilterPill = ({ active, onClick, children, fullWidth = false }) => (
+  <button
+    onClick={onClick}
+    className={`${fullWidth ? 'w-full' : ''} text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+      active
+        ? 'bg-primary-500 text-white'
+        : 'text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+    }`}
+  >
+    {children}
+  </button>
+);
+
+// Category pill — larger than FilterPill and outlined so it matches the
+// original category strip styling on desktop.
+const CategoryPill = ({ active, onClick, children, fullWidth = false }) => (
+  <button
+    onClick={onClick}
+    className={`${fullWidth ? 'w-full' : ''} text-sm px-3 py-1.5 rounded-xl font-medium transition-colors flex-shrink-0 ${
+      active
+        ? 'bg-primary-500 text-white shadow-sm'
+        : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+    }`}
+  >
+    {children}
+  </button>
+);
 
 export default CommunityPage;

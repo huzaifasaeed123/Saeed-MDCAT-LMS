@@ -1,10 +1,11 @@
 // modules/questionbank/pages/QuestionBankFormPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiDatabase, FiArrowLeft, FiSave } from 'react-icons/fi';
+import { FiArrowLeft, FiSave, FiLoader } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import QBHierarchyBuilder from '../components/QBHierarchyBuilder';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const QuestionBankFormPage = () => {
   const { id } = useParams();
@@ -71,40 +72,56 @@ const QuestionBankFormPage = () => {
     }
   };
 
+  // Memoise back link so PageHeaderContext doesn't re-fire on every render.
+  const headerAction = useMemo(() => (
+    <button
+      onClick={() => navigate('/admin/question-banks')}
+      className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] group"
+    >
+      <FiArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+      Back to Question Banks
+    </button>
+  ), [navigate]);
+
+  usePageHeader({
+    title:    isEdit ? 'Edit Question Bank' : 'Create Question Bank',
+    subtitle: isEdit ? 'Update structure and details' : 'Build a new MCQ repository',
+    action:   headerAction,
+  });
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500" />
+      <div className="flex justify-center items-center py-16">
+        <FiLoader className="animate-spin w-8 h-8 text-[var(--text-faint)]" />
+        <span className="ml-3 text-sm text-[var(--text-muted)]">Loading question bank…</span>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-4xl">
-      {/* Back */}
-      <button
-        onClick={() => navigate('/admin/question-banks')}
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-5 group"
-      >
-        <FiArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-        Back to Question Banks
-      </button>
-
-      <div className="flex items-center gap-3 mb-6">
-        <FiDatabase className="w-7 h-7 text-indigo-600" />
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEdit ? 'Edit Question Bank' : 'Create Question Bank'}
-        </h1>
+    <div>
+      {/* Mobile-only back button (the navbar action slot is desktop-only) */}
+      <div className="md:hidden mb-4">
+        <button
+          onClick={() => navigate('/admin/question-banks')}
+          className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+        >
+          <FiArrowLeft className="w-4 h-4" />
+          Back to Question Banks
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {/* Basic info */}
-        <div className="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
-          <h2 className="font-semibold text-gray-700 text-base">Basic Information</h2>
+        <section className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 space-y-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-[var(--text-strong)]">Basic Information</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Name, description, and visibility</p>
+          </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">
+              Title <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -112,20 +129,20 @@ const QuestionBankFormPage = () => {
               value={formData.title}
               onChange={handleChange}
               placeholder="e.g. MDCAT 2025 Question Bank"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none focus:ring-2 focus:ring-primary-400 transition-colors"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Description</label>
             <textarea
               name="description"
               value={formData.description}
               onChange={handleChange}
               placeholder="Brief description of this question bank…"
               rows={3}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full px-4 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none transition-colors"
             />
           </div>
 
@@ -135,35 +152,37 @@ const QuestionBankFormPage = () => {
               name="isActive"
               checked={formData.isActive}
               onChange={handleChange}
-              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              className="w-4 h-4 text-primary-600 border-[var(--border)] rounded focus:ring-primary-400"
             />
-            <span className="text-sm font-medium text-gray-700">Active (visible to teachers for test creation)</span>
+            <span className="text-sm font-medium text-[var(--text-strong)]">Active (visible to teachers for test creation)</span>
           </label>
-        </div>
+        </section>
 
         {/* Hierarchy */}
-        <div className="bg-white rounded-2xl shadow-sm border p-6">
-          <h2 className="font-semibold text-gray-700 text-base mb-1">Content Hierarchy</h2>
-          <p className="text-xs text-gray-400 mb-4">Build Subject → Chapter → Topic structure for this bank</p>
+        <section className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="font-display text-base font-bold text-[var(--text-strong)]">Content Hierarchy</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Build Subject → Chapter → Topic structure for this bank</p>
+          </div>
           <QBHierarchyBuilder
             subjects={formData.subjects}
             onChange={(subjects) => setFormData((prev) => ({ ...prev, subjects }))}
           />
-        </div>
+        </section>
 
         {/* Submit */}
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={() => navigate('/admin/question-banks')}
-            className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-[var(--text-muted)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-muted)] transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-60"
+            className="btn-brand text-sm disabled:opacity-60"
           >
             <FiSave className="w-4 h-4" />
             {saving ? 'Saving…' : isEdit ? 'Update Question Bank' : 'Create Question Bank'}

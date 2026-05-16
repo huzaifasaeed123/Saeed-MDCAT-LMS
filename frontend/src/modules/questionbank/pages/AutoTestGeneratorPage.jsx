@@ -503,9 +503,23 @@ const AutoTestGeneratorPage = () => {
       // Only send allowedModes when creating a NEW test (not when appending).
       if (!existingTest) payload.allowedModes = allowedModes;
 
+      // For students creating a brand-new test, ask the backend to ALSO create
+      // the attempt in the same round trip (saves ~6 DB trips and one HTTP
+      // round trip vs chaining /user-tests/start separately). For appends or
+      // staff, fall back to the create-only flow.
+      const isStudentNewTest = isStudent && !existingTest;
+      if (isStudentNewTest) {
+        payload.startImmediately   = true;
+        payload.mode               = allowedModes[0] || 'tutor';
+        payload.totalDurationSec   = payload.mode === 'timer'
+          ? Math.max(1, finalCount) * secsPerQ
+          : null;
+      }
+
       const res = await apiClient.post('/question-banks/generate-test', payload);
       if (!res.data.success) throw new Error(res.data.message || 'Failed');
       const testData = res.data.data;
+      const attempt  = res.data.attempt; // present iff startImmediately=true
 
       // ── Branch on role ────────────────────────────────────────────────
       if (existingTest) {
@@ -522,23 +536,30 @@ const AutoTestGeneratorPage = () => {
         return;
       }
 
-      // Student: chain start immediately so the test goes straight into play.
-      // The locked single mode in allowedModes drives which mode we start in.
-      const mode = allowedModes[0] || 'tutor';
-      const totalDurationSec = mode === 'timer'
-        ? Math.max(1, finalCount) * secsPerQ
-        : null;
-      const startRes = await apiClient.post('/user-tests/start', {
-        testId: testData._id,
-        mode,
-        totalDurationSec,
-      });
-      if (!startRes.data.success) throw new Error(startRes.data.message || 'Could not start test');
-      const attempt = startRes.data.data;
+      // Student path: backend should have already created the attempt and
+      // returned it on `res.data.attempt`. Navigate straight to /play.
+      // Defensive fallback: if the backend somehow didn't include the
+      // attempt (older deployment, downgrade), chain start manually so the
+      // UX still works.
+      let attemptToUse = attempt;
+      if (!attemptToUse) {
+        const mode = allowedModes[0] || 'tutor';
+        const totalDurationSec = mode === 'timer'
+          ? Math.max(1, finalCount) * secsPerQ
+          : null;
+        const startRes = await apiClient.post('/user-tests/start', {
+          testId: testData._id,
+          mode,
+          totalDurationSec,
+        });
+        if (!startRes.data.success) throw new Error(startRes.data.message || 'Could not start test');
+        attemptToUse = startRes.data.data;
+      }
+
       toast.success('Test started!');
       navigate(
-        `/student/tests/${testData._id}/play?attemptId=${attempt._id}`,
-        { state: { attemptData: attempt } }
+        `/student/tests/${testData._id}/play?attemptId=${attemptToUse._id}`,
+        { state: { attemptData: attemptToUse } }
       );
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Failed to generate test');

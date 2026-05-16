@@ -1,8 +1,32 @@
 const Course = require('../models/CourseModel');
+const UserTestAttempt = require('../models/UserTestAttempt');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+
+// Walk a course's subjects/chapters/topics tree and collect every embedded
+// test resource's testId. Used by the catalog endpoint to compute testCount
+// and per-user progress without an extra round-trip.
+const collectCourseTestIds = (course) => {
+  const ids = [];
+  for (const subject of (course.subjects || [])) {
+    for (const r of (subject.resources || [])) {
+      if (r.type === 'test' && r.testId) ids.push(String(r.testId));
+    }
+    for (const chapter of (subject.chapters || [])) {
+      for (const r of (chapter.resources || [])) {
+        if (r.type === 'test' && r.testId) ids.push(String(r.testId));
+      }
+      for (const topic of (chapter.topics || [])) {
+        for (const r of (topic.resources || [])) {
+          if (r.type === 'test' && r.testId) ids.push(String(r.testId));
+        }
+      }
+    }
+  }
+  return ids;
+};
 
 // ─── Multer: Feature Image ────────────────────────────────────────────────────
 
@@ -153,15 +177,49 @@ const cleanSubjects = (subjects = []) =>
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-// GET /api/courses  — list (no subjects content for performance)
+// GET /api/courses  — student catalog list.
+// Pulls subjects so we can compute testCount per course in JS, then strips
+// them from the response (clients don't need the full tree here). Progress %
+// is derived from the user's completed test attempts using ONE batched query
+// instead of N — fine for the typical course-catalog size.
 exports.getCourses = async (req, res) => {
   try {
     const courses = await Course.find()
       .populate('createdBy', 'fullName')
-      .select('-subjects')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json({ success: true, count: courses.length, data: courses });
+    // Compute testIds per course before stripping subjects.
+    const enriched = courses.map((c) => {
+      const testIds = collectCourseTestIds(c);
+      delete c.subjects;
+      return { ...c, _testIds: testIds, testCount: testIds.length };
+    });
+
+    // Fetch the current user's completed test attempts in a single query,
+    // then compute per-course attempted counts via Set intersection.
+    let attempted = new Set();
+    if (req.user?._id) {
+      const allTestIds = new Set(enriched.flatMap((c) => c._testIds));
+      if (allTestIds.size > 0) {
+        const rows = await UserTestAttempt.find({
+          user:   req.user._id,
+          status: 'completed',
+          test:   { $in: Array.from(allTestIds) },
+        }).select('test').lean();
+        attempted = new Set(rows.map((r) => String(r.test)));
+      }
+    }
+
+    const data = enriched.map((c) => {
+      const total          = c.testCount;
+      const attemptedCount = c._testIds.filter((id) => attempted.has(id)).length;
+      const progressPct    = total > 0 ? Math.round((attemptedCount / total) * 100) : 0;
+      delete c._testIds;
+      return { ...c, attemptedTestCount: attemptedCount, progressPct };
+    });
+
+    res.json({ success: true, count: data.length, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

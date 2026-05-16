@@ -1,13 +1,27 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { FiEdit2, FiTrash2, FiPlus, FiUpload, FiRefreshCw, FiSave, FiX } from 'react-icons/fi';
 import * as svc from '../services/syllabusService';
 import { subjectClass } from '../components/syllabusMeta';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const emptyTopic = {
   subject: '', unitNumber: 1, unitTitle: '',
   outcomeCode: '', outcomeText: '', sortOrder: '',
 };
+
+// Theme-aware subject chip — wraps the existing subjectClass() helper (which
+// only emits light variants) and layers on dark-mode classes so chips stay
+// legible in both themes.
+const SUBJECT_DARK = {
+  Biology:             'dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50',
+  Chemistry:           'dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/50',
+  Physics:             'dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900/50',
+  English:             'dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50',
+  'Logical Reasoning': 'dark:bg-red-950/40 dark:text-red-300 dark:border-red-900/50',
+};
+const subjectChipCls = (s) =>
+  `${subjectClass(s)} ${SUBJECT_DARK[s] || 'dark:bg-[var(--bg-muted)] dark:text-[var(--text-muted)] dark:border-[var(--border)]'}`;
 
 const SyllabusAdminPage = () => {
   const [topics, setTopics]       = useState([]);
@@ -104,57 +118,148 @@ const SyllabusAdminPage = () => {
     }
   };
 
+  // ── Page header ───────────────────────────────────────────────────────────
+  const subtitle = topics.length === 0
+    ? 'No topics in catalog'
+    : `${topics.length} topic${topics.length === 1 ? '' : 's'} in catalog`;
+
+  // Memoise so PageHeaderContext doesn't see a fresh JSX object every render
+  // (would cause its effect to re-fire → setHeader → infinite re-render loop).
+  const headerAction = useMemo(() => (
+    <div className="flex items-center gap-2">
+      <label className="btn-brand text-sm cursor-pointer">
+        <FiUpload className="w-4 h-4" /> {importing ? 'Importing…' : 'Upload JSON'}
+        <input
+          type="file"
+          accept="application/json,.json"
+          onChange={onUploadFile}
+          className="hidden"
+          disabled={importing}
+        />
+      </label>
+      <button
+        onClick={load}
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+      >
+        <FiRefreshCw className="w-4 h-4" /> Refresh
+      </button>
+    </div>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [importing]);
+
+  usePageHeader({
+    title:    'Syllabus Admin',
+    subtitle,
+    action:   headerAction,
+  });
+
+  const inputCls = 'w-full px-3 py-2 text-sm bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400';
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <div className="flex flex-wrap items-end justify-between mb-5 gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Syllabus Admin</h1>
-          <p className="text-sm text-gray-500">{topics.length} topics in catalog</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="px-3 py-2 text-sm rounded-md bg-emerald-500 hover:bg-emerald-400 text-white flex items-center gap-1 cursor-pointer">
-            <FiUpload className="w-4 h-4" /> {importing ? 'Importing…' : 'Upload JSON'}
-            <input type="file" accept="application/json,.json" onChange={onUploadFile} className="hidden" disabled={importing} />
-          </label>
-          <button onClick={load} className="px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50 flex items-center gap-1">
-            <FiRefreshCw className="w-4 h-4" /> Refresh
-          </button>
-        </div>
+    <div>
+      {/* ── Mobile-only action buttons (the navbar action slot is desktop-only) ── */}
+      <div className="md:hidden mb-4 flex items-center gap-2">
+        <label className="btn-brand text-sm flex-1 justify-center cursor-pointer">
+          <FiUpload className="w-4 h-4" /> {importing ? 'Importing…' : 'Upload JSON'}
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={onUploadFile}
+            className="hidden"
+            disabled={importing}
+          />
+        </label>
+        <button
+          onClick={load}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+        >
+          <FiRefreshCw className="w-4 h-4" /> Refresh
+        </button>
       </div>
 
       {/* Form */}
-      <form onSubmit={onSubmit} className="bg-white rounded-lg shadow p-5 mb-6">
+      <form onSubmit={onSubmit} className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-700">{editingId ? 'Edit topic' : 'Add topic'}</h2>
+          <h2 className="font-display text-base font-bold text-[var(--text-strong)] flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-300">
+              {editingId ? <FiSave className="w-4 h-4" /> : <FiPlus className="w-4 h-4" />}
+            </span>
+            {editingId ? 'Edit topic' : 'Add topic'}
+          </h2>
           {editingId && (
-            <button type="button" onClick={() => { setForm(emptyTopic); setEditingId(null); }} className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => { setForm(emptyTopic); setEditingId(null); }}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-strong)] flex items-center gap-1"
+            >
               <FiX className="w-3 h-3" /> Cancel edit
             </button>
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Subject *">
-            <input required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Biology" className="input" />
+            <input
+              required
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              placeholder="Biology"
+              className={inputCls}
+            />
           </Field>
           <Field label="Unit number *">
-            <input type="number" min={1} required value={form.unitNumber} onChange={(e) => setForm({ ...form, unitNumber: e.target.value })} className="input" />
+            <input
+              type="number"
+              min={1}
+              required
+              value={form.unitNumber}
+              onChange={(e) => setForm({ ...form, unitNumber: e.target.value })}
+              className={inputCls}
+            />
           </Field>
           <Field label="Unit title *">
-            <input required value={form.unitTitle} onChange={(e) => setForm({ ...form, unitTitle: e.target.value })} placeholder="Bioenergetics" className="input" />
+            <input
+              required
+              value={form.unitTitle}
+              onChange={(e) => setForm({ ...form, unitTitle: e.target.value })}
+              placeholder="Bioenergetics"
+              className={inputCls}
+            />
           </Field>
           <Field label="Outcome code *">
-            <input required value={form.outcomeCode} onChange={(e) => setForm({ ...form, outcomeCode: e.target.value })} placeholder="3.4" className="input" />
+            <input
+              required
+              value={form.outcomeCode}
+              onChange={(e) => setForm({ ...form, outcomeCode: e.target.value })}
+              placeholder="3.4"
+              className={inputCls}
+            />
           </Field>
           <Field label="Sort order">
-            <input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} placeholder="(auto)" className="input" />
+            <input
+              type="number"
+              value={form.sortOrder}
+              onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+              placeholder="(auto)"
+              className={inputCls}
+            />
           </Field>
           <div />
           <Field label="Outcome text *" full>
-            <textarea required rows={2} value={form.outcomeText} onChange={(e) => setForm({ ...form, outcomeText: e.target.value })} className="input resize-none" />
+            <textarea
+              required
+              rows={2}
+              value={form.outcomeText}
+              onChange={(e) => setForm({ ...form, outcomeText: e.target.value })}
+              className={`${inputCls} resize-none`}
+            />
           </Field>
         </div>
-        <div className="mt-3 flex justify-end">
-          <button type="submit" disabled={busyId === 'form'} className="px-4 py-2 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-50 flex items-center gap-1">
+        <div className="mt-4 flex justify-end">
+          <button
+            type="submit"
+            disabled={busyId === 'form'}
+            className="btn-brand text-sm disabled:opacity-50"
+          >
             {editingId ? <FiSave className="w-4 h-4" /> : <FiPlus className="w-4 h-4" />}
             {editingId ? 'Save changes' : 'Add topic'}
           </button>
@@ -163,45 +268,77 @@ const SyllabusAdminPage = () => {
 
       {/* Filter */}
       <div className="flex gap-2 mb-3">
-        <input value={filter.subject} onChange={(e) => setFilter({ ...filter, subject: e.target.value })} placeholder="Filter by subject…" className="input flex-1" />
-        <input value={filter.unitNumber} onChange={(e) => setFilter({ ...filter, unitNumber: e.target.value })} placeholder="Unit #" className="input w-24" />
+        <input
+          value={filter.subject}
+          onChange={(e) => setFilter({ ...filter, subject: e.target.value })}
+          placeholder="Filter by subject…"
+          className={`${inputCls} flex-1 bg-[var(--bg-surface)]`}
+        />
+        <input
+          value={filter.unitNumber}
+          onChange={(e) => setFilter({ ...filter, unitNumber: e.target.value })}
+          placeholder="Unit #"
+          className={`${inputCls} w-28 bg-[var(--bg-surface)]`}
+        />
       </div>
 
       {/* List */}
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
         {loading ? (
-          <p className="text-sm text-gray-500 p-6 text-center">Loading…</p>
+          <p className="text-sm text-[var(--text-faint)] p-6 text-center">Loading…</p>
         ) : topics.length === 0 ? (
-          <p className="text-sm text-gray-500 p-6 text-center">
+          <p className="text-sm text-[var(--text-faint)] p-6 text-center">
             No topics yet. Use "Upload JSON" with the PMDC outcomes file to seed in one click, or use the form above to add manually.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b border-gray-200">
-                  <th className="px-4 py-2">Subject</th>
-                  <th className="px-4 py-2">Unit</th>
-                  <th className="px-4 py-2">Code</th>
-                  <th className="px-4 py-2">Outcome</th>
-                  <th className="px-4 py-2 text-right">Actions</th>
+              <thead className="bg-[var(--bg-muted)]">
+                <tr>
+                  {['Subject', 'Unit', 'Code', 'Outcome'].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-muted)] whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                  <th className="text-right px-4 py-3 text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-muted)] whitespace-nowrap">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {topics.map((t) => (
-                  <tr key={t._id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-2">
-                      <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded border ${subjectClass(t.subject)}`}>{t.subject}</span>
+                  <tr
+                    key={t._id}
+                    className="odd:bg-[var(--bg-surface)] even:bg-[var(--bg-muted)] hover:bg-primary-50/40 dark:hover:bg-primary-950/20 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <span className={`inline-block px-2 py-0.5 text-xs font-bold rounded border ${subjectChipCls(t.subject)}`}>
+                        {t.subject}
+                      </span>
                     </td>
-                    <td className="px-4 py-2">U{t.unitNumber} · {t.unitTitle}</td>
-                    <td className="px-4 py-2 font-semibold">{t.outcomeCode}</td>
-                    <td className="px-4 py-2 max-w-md">{t.outcomeText}</td>
-                    <td className="px-4 py-2 text-right">
-                      <button onClick={() => onEdit(t)} className="px-2 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 mr-1" title="Edit">
-                        <FiEdit2 className="w-3 h-3 inline" />
+                    <td className="px-4 py-3 text-[var(--text)]">U{t.unitNumber} · {t.unitTitle}</td>
+                    <td className="px-4 py-3 font-semibold text-[var(--text-strong)]">{t.outcomeCode}</td>
+                    <td className="px-4 py-3 max-w-md text-[var(--text)]">{t.outcomeText}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => onEdit(t)}
+                        className="inline-flex items-center justify-center p-1.5 text-primary-600 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-950/40 rounded-lg mr-1 transition-colors"
+                        title="Edit"
+                        aria-label="Edit topic"
+                      >
+                        <FiEdit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => onDelete(t._id)} disabled={busyId === t._id} className="px-2 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50" title="Delete">
-                        <FiTrash2 className="w-3 h-3 inline" />
+                      <button
+                        onClick={() => onDelete(t._id)}
+                        disabled={busyId === t._id}
+                        className="inline-flex items-center justify-center p-1.5 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg disabled:opacity-50 transition-colors"
+                        title="Delete"
+                        aria-label="Delete topic"
+                      >
+                        <FiTrash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
@@ -211,19 +348,13 @@ const SyllabusAdminPage = () => {
           </div>
         )}
       </div>
-
-      {/* Inline style helper — Tailwind doesn't have an .input class so add one */}
-      <style>{`
-        .input { width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem; border: 1px solid #d1d5db; border-radius: 0.375rem; }
-        .input:focus { outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); border-color: transparent; }
-      `}</style>
     </div>
   );
 };
 
 const Field = ({ label, full, children }) => (
   <div className={full ? 'md:col-span-3' : ''}>
-    <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">{label}</label>
     {children}
   </div>
 );

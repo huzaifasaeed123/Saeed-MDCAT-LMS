@@ -10,11 +10,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Subscript from '@tiptap/extension-subscript';
 import { FiBold, FiItalic, FiUnderline, FiList, FiCheckSquare, FiImage, FiLink, FiCornerUpLeft, FiCornerUpRight, FiHelpCircle } from 'react-icons/fi';
 import apiClient from '../../core/api/axiosConfig';
-
-// Helper function to get backend URL
-const getBackendUrl = () => {
-  return import.meta.env.BACKEND_URL || 'http://localhost:5000';
-};
+import { getBackendUrl } from '../utils/fixImageUrls';
 
 // Custom Image extension to handle relative URLs from backend
 const CustomImage = Image.extend({

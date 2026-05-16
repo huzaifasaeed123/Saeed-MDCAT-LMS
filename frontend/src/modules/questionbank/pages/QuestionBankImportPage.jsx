@@ -1,9 +1,10 @@
 // modules/questionbank/pages/QuestionBankImportPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiUpload, FiFile, FiCheck, FiX, FiInfo, FiArrowLeft } from 'react-icons/fi';
+import { FiUpload, FiFile, FiCheck, FiX, FiInfo, FiArrowLeft, FiLoader } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const QuestionBankImportPage = () => {
   const { qbId } = useParams();
@@ -152,38 +153,57 @@ const QuestionBankImportPage = () => {
     }
   };
 
-  return (
-    <div className="max-w-3xl mx-auto p-6">
-      <button
-        onClick={() => navigate('/admin/question-banks')}
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-5 group"
-      >
-        <FiArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-        Back to Question Banks
-      </button>
+  // Memoise back link so PageHeaderContext doesn't re-fire on every render.
+  const headerAction = useMemo(() => (
+    <button
+      onClick={() => navigate('/admin/question-banks')}
+      className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] group"
+    >
+      <FiArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+      Back to Question Banks
+    </button>
+  ), [navigate]);
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Import MCQs to Question Bank</h1>
+  usePageHeader({
+    title:    'Import MCQs',
+    subtitle: qb ? `Into ${qb.title}` : 'Bulk import from a .docx file',
+    action:   headerAction,
+  });
+
+  return (
+    <div>
+      {/* Mobile back */}
+      <div className="md:hidden mb-4">
+        <button
+          onClick={() => navigate('/admin/question-banks')}
+          className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+        >
+          <FiArrowLeft className="w-4 h-4" />
+          Back to Question Banks
+        </button>
+      </div>
+
       {qb && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-          <p className="font-semibold text-indigo-800">{qb.title}</p>
-          {qb.description && <p className="text-sm text-indigo-600 mt-0.5">{qb.description}</p>}
+        <div className="bg-primary-50/60 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-900/50 rounded-2xl p-4 mb-5">
+          <p className="font-semibold text-primary-800 dark:text-primary-200">{qb.title}</p>
+          {qb.description && <p className="text-sm text-primary-700 dark:text-primary-300 mt-0.5">{qb.description}</p>}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 space-y-6">
         {importStatus === 'idle' && (
           <>
             {/* QB location selectors */}
             <div>
-              <h3 className="text-base font-semibold text-gray-800 mb-3">Select Location in Bank</h3>
+              <h3 className="font-display text-base font-bold text-[var(--text-strong)] mb-3">Select Location in Bank</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Subject */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Subject *</label>
                   <select
                     value={selectedSubjectId}
                     onChange={handleSubjectChange}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                    className="w-full px-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm transition-colors"
                     required
                   >
                     <option value="">— Select Subject —</option>
@@ -195,12 +215,12 @@ const QuestionBankImportPage = () => {
 
                 {/* Chapter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Chapter *</label>
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Chapter *</label>
                   <select
                     value={selectedChapterId}
                     onChange={handleChapterChange}
                     disabled={!selectedSubjectId}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                    className="w-full px-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm disabled:bg-[var(--bg-muted)] disabled:text-[var(--text-faint)] transition-colors"
                     required
                   >
                     <option value="">— Select Chapter —</option>
@@ -212,12 +232,12 @@ const QuestionBankImportPage = () => {
 
                 {/* Topic */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Topic *</label>
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Topic *</label>
                   <select
                     value={selectedTopicId}
                     onChange={(e) => setSelectedTopicId(e.target.value)}
                     disabled={!selectedChapterId}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                    className="w-full px-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm disabled:bg-[var(--bg-muted)] disabled:text-[var(--text-faint)] transition-colors"
                     required
                   >
                     <option value="">— Select Topic —</option>
@@ -231,28 +251,35 @@ const QuestionBankImportPage = () => {
 
             {/* File upload */}
             <div>
-              <h3 className="text-base font-semibold text-gray-800 mb-3">Upload MCQ Document (.docx)</h3>
+              <h3 className="font-display text-base font-bold text-[var(--text-strong)] mb-3">Upload MCQ Document (.docx)</h3>
               <div
-                className="border-2 border-dashed border-gray-300 rounded-xl py-10 px-6 flex flex-col items-center cursor-pointer hover:border-indigo-400 transition-colors"
+                className={`border-2 border-dashed rounded-2xl py-10 px-6 flex flex-col items-center cursor-pointer transition-colors ${
+                  file
+                    ? 'border-primary-400 bg-primary-50/40 dark:bg-primary-950/20'
+                    : 'border-[var(--border)] bg-[var(--bg-muted)] hover:border-primary-400 hover:bg-primary-50/30 dark:hover:bg-primary-950/20'
+                }`}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current.click()}
               >
                 {file ? (
                   <div className="flex flex-col items-center">
-                    <FiFile className="text-indigo-600 w-12 h-12 mb-3" />
-                    <p className="font-medium text-gray-900">{file.name}</p>
-                    <p className="text-sm text-gray-500 mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
-                    <button type="button" className="mt-3 text-red-500 hover:text-red-700 flex items-center text-sm"
-                      onClick={(e) => { e.stopPropagation(); setFile(null); }}>
+                    <FiFile className="text-primary-500 w-12 h-12 mb-3" />
+                    <p className="font-medium text-[var(--text-strong)]">{file.name}</p>
+                    <p className="text-sm text-[var(--text-muted)] mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    <button
+                      type="button"
+                      className="mt-3 text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 flex items-center text-sm"
+                      onClick={(e) => { e.stopPropagation(); setFile(null); }}
+                    >
                       <FiX className="mr-1" /> Remove
                     </button>
                   </div>
                 ) : (
                   <div className="text-center">
-                    <FiUpload className="text-gray-400 w-12 h-12 mx-auto mb-3" />
-                    <p className="font-medium text-gray-900 mb-1">Drag and drop your .docx file here</p>
-                    <p className="text-sm text-gray-500">or click to browse</p>
+                    <FiUpload className="text-[var(--text-faint)] w-12 h-12 mx-auto mb-3" />
+                    <p className="font-medium text-[var(--text-strong)] mb-1">Drag and drop your .docx file here</p>
+                    <p className="text-sm text-[var(--text-muted)]">or click to browse</p>
                   </div>
                 )}
                 <input ref={fileInputRef} type="file" accept=".docx" className="hidden" onChange={handleFileChange} />
@@ -261,60 +288,83 @@ const QuestionBankImportPage = () => {
 
             {/* Additional info */}
             <div>
-              <h3 className="text-base font-semibold text-gray-800 mb-3">Additional Info (optional)</h3>
+              <h3 className="font-display text-base font-bold text-[var(--text-strong)] mb-3">Additional Info (optional)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Author</label>
-                  <input type="text" value={formData.author}
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Author</label>
+                  <input
+                    type="text"
+                    value={formData.author}
                     onChange={(e) => setFormData((p) => ({ ...p, author: e.target.value }))}
                     placeholder="Author name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+                    className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] placeholder-[var(--text-faint)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm transition-colors"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Session / Year</label>
-                  <input type="text" value={formData.session}
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Session / Year</label>
+                  <input
+                    type="text"
+                    value={formData.session}
                     onChange={(e) => setFormData((p) => ({ ...p, session: e.target.value }))}
                     placeholder="e.g. 2024"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+                    className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] placeholder-[var(--text-faint)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm transition-colors"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty</label>
-                  <select value={formData.difficulty}
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Difficulty</label>
+                  <select
+                    value={formData.difficulty}
                     onChange={(e) => setFormData((p) => ({ ...p, difficulty: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    className="w-full px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm transition-colors"
+                  >
                     <option value="Easy">Easy</option>
                     <option value="Medium">Medium</option>
                     <option value="Hard">Hard</option>
                   </select>
                 </div>
                 <div className="flex items-center mt-6">
-                  <input type="checkbox" id="isPublic" checked={formData.isPublic}
+                  <input
+                    type="checkbox"
+                    id="isPublic"
+                    checked={formData.isPublic}
                     onChange={(e) => setFormData((p) => ({ ...p, isPublic: e.target.checked }))}
-                    className="h-4 w-4 text-indigo-600 rounded" />
-                  <label htmlFor="isPublic" className="ml-2 text-sm text-gray-700">Make MCQs public</label>
+                    className="h-4 w-4 text-primary-600 rounded focus:ring-primary-400"
+                  />
+                  <label htmlFor="isPublic" className="ml-2 text-sm text-[var(--text-strong)]">Make MCQs public</label>
                 </div>
               </div>
             </div>
 
             {/* Format hint */}
-            <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-500 space-y-1">
-              <div className="flex items-start gap-2"><FiInfo className="mt-0.5 flex-shrink-0" />
-                <span>Use Q:) or Q) for questions; A:) or A) for options</span></div>
-              <div className="flex items-start gap-2"><FiInfo className="mt-0.5 flex-shrink-0" />
-                <span>Mark correct answer with :Correct: followed by the option letter</span></div>
-              <div className="flex items-start gap-2"><FiInfo className="mt-0.5 flex-shrink-0" />
-                <span>Add explanation with :Explanation:</span></div>
+            <div className="bg-[var(--bg-muted)] border border-[var(--border)] rounded-xl p-4 text-sm text-[var(--text-muted)] space-y-1">
+              <div className="flex items-start gap-2">
+                <FiInfo className="mt-0.5 flex-shrink-0 text-[var(--text-faint)]" />
+                <span>Use Q:) or Q) for questions; A:) or A) for options</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <FiInfo className="mt-0.5 flex-shrink-0 text-[var(--text-faint)]" />
+                <span>Mark correct answer with :Correct: followed by the option letter</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <FiInfo className="mt-0.5 flex-shrink-0 text-[var(--text-faint)]" />
+                <span>Add explanation with :Explanation:</span>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => navigate('/admin/question-banks')}
-                className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50">
+              <button
+                type="button"
+                onClick={() => navigate('/admin/question-banks')}
+                className="px-5 py-2.5 text-sm font-medium text-[var(--text-muted)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-muted)] transition-colors"
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={!file || loading}
-                className={`px-5 py-2.5 text-sm font-medium rounded-xl text-white transition-colors ${
-                  !file || loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}>
+              <button
+                type="submit"
+                disabled={!file || loading}
+                className="btn-brand text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FiUpload className="w-4 h-4" />
                 {loading ? 'Uploading…' : 'Upload & Process'}
               </button>
             </div>
@@ -324,32 +374,36 @@ const QuestionBankImportPage = () => {
         {/* Upload progress */}
         {importStatus === 'uploading' && (
           <div className="py-4">
-            <p className="font-medium text-gray-800 mb-2">Uploading…</p>
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div className="bg-indigo-600 h-2.5 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+            <p className="font-medium text-[var(--text-strong)] mb-2">Uploading…</p>
+            <div className="w-full bg-[var(--bg-muted)] rounded-full h-2.5">
+              <div className="bg-primary-500 h-2.5 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
             </div>
-            <p className="text-sm text-gray-500 mt-1">{uploadProgress}%</p>
+            <p className="text-sm text-[var(--text-muted)] mt-1">{uploadProgress}%</p>
           </div>
         )}
 
         {importStatus === 'processing' && (
           <div className="flex items-center gap-4 py-4">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
+            <FiLoader className="animate-spin w-8 h-8 text-primary-500" />
             <div>
-              <p className="font-medium text-gray-900">Processing Document</p>
-              <p className="text-sm text-gray-500">Extracting MCQs from your document…</p>
+              <p className="font-medium text-[var(--text-strong)]">Processing Document</p>
+              <p className="text-sm text-[var(--text-muted)]">Extracting MCQs from your document…</p>
             </div>
           </div>
         )}
 
         {importStatus === 'success' && (
-          <div className="flex items-center gap-4 py-4 bg-emerald-50 rounded-xl p-4">
-            <div className="bg-emerald-100 p-2 rounded-full"><FiCheck className="text-emerald-600 w-6 h-6" /></div>
+          <div className="flex items-center gap-4 py-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-4">
+            <div className="bg-emerald-100 dark:bg-emerald-900/40 p-2 rounded-full">
+              <FiCheck className="text-emerald-600 dark:text-emerald-300 w-6 h-6" />
+            </div>
             <div>
-              <p className="font-medium text-gray-900">Import Successful!</p>
-              <p className="text-sm text-gray-600">{importedCount} MCQs imported into the question bank.</p>
-              <button onClick={() => navigate('/admin/question-banks')}
-                className="mt-2 text-sm text-indigo-600 hover:underline">
+              <p className="font-medium text-emerald-800 dark:text-emerald-200">Import Successful!</p>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">{importedCount} MCQs imported into the question bank.</p>
+              <button
+                onClick={() => navigate('/admin/question-banks')}
+                className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline"
+              >
                 Back to Question Banks
               </button>
             </div>
@@ -357,13 +411,17 @@ const QuestionBankImportPage = () => {
         )}
 
         {importStatus === 'error' && (
-          <div className="flex items-center gap-4 py-4 bg-red-50 rounded-xl p-4">
-            <div className="bg-red-100 p-2 rounded-full"><FiX className="text-red-600 w-6 h-6" /></div>
+          <div className="flex items-center gap-4 py-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-xl p-4">
+            <div className="bg-rose-100 dark:bg-rose-900/40 p-2 rounded-full">
+              <FiX className="text-rose-600 dark:text-rose-300 w-6 h-6" />
+            </div>
             <div>
-              <p className="font-medium text-gray-900">Import Failed</p>
-              <p className="text-sm text-gray-600">Please check the file format and try again.</p>
-              <button onClick={() => { setFile(null); setImportStatus('idle'); }}
-                className="mt-2 text-sm text-indigo-600 hover:underline">
+              <p className="font-medium text-rose-800 dark:text-rose-200">Import Failed</p>
+              <p className="text-sm text-rose-700 dark:text-rose-300">Please check the file format and try again.</p>
+              <button
+                onClick={() => { setFile(null); setImportStatus('idle'); }}
+                className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline"
+              >
                 Try Again
               </button>
             </div>
