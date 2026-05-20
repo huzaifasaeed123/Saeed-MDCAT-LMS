@@ -913,6 +913,12 @@ exports.pauseTest = async (req, res) => {
     // Save time spent so timer resumes from the paused point (not wall-clock)
     if (timeSpent != null && timeSpent > 0) attempt.totalTimeSpent = timeSpent;
 
+    // Keep answeredCount accurate while the attempt is paused so Test History
+    // shows "12/20" instead of "0/20". Pure in-memory count over the array
+    // we already walked above — zero extra DB cost. completeTest already
+    // does this; pause was missing it.
+    attempt.answeredCount = attempt.questionAttempts.filter((qa) => qa.selectedOption != null).length;
+
     await attempt.save();
 
     res.json({ success: true, message: 'Test paused' });

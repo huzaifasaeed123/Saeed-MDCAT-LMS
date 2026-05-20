@@ -65,11 +65,17 @@ export const setUserCoursesGrantAll = async (userId, value) => {
   return response.data;
 };
 
-// Apply one feature toggle to every user of `role` (defaults to 'student').
-// One backend DB updateMany + a cache wipe + an SSE nudge to all clients.
+// Apply one feature toggle to users matching the optional filter set. Without
+// filters this falls back to "every user of `role`". With filters it scopes
+// the bulk write to exactly the rows the admin is seeing in the table.
 // feature ∈ { autoTest, courses, community, videos, notes }
-export const bulkApplyAccess = async (feature, value, role = 'student') => {
-  const response = await apiClient.patch('/users/access/bulk', { feature, value: !!value, role });
+// filters shape mirrors the UsersPage filter state (search, role, dateFrom,
+// dateTo, signupSource, province, district, studentClass, studentStatus).
+export const bulkApplyAccess = async (feature, value, role = 'student', filters = {}) => {
+  const response = await apiClient.patch('/users/access/bulk', {
+    feature, value: !!value, role,
+    filters,
+  });
   return response.data;
 };
 

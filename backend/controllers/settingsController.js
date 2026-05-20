@@ -60,9 +60,32 @@ exports.updateSettings = async (req, res) => {
       communityPoints,
       googleDriveApiKey,
       googleServiceAccountKey,
+      defaultUserAccess,
     } = req.body;
 
     const update = {};
+
+    // ── Default access preset for self-signups ───────────────────────────
+    // Whitelist + coerce. Unknown sub-keys are ignored. courseAccess is left
+    // unvalidated against the Course collection here; the existing
+    // grant/revoke flow already proves an admin can name real ids and an
+    // invalid id just means no course matches at access-check time.
+    if (defaultUserAccess && typeof defaultUserAccess === 'object') {
+      const fa = defaultUserAccess.featureAccess || {};
+      if (fa.autoTest  !== undefined) update['defaultUserAccess.featureAccess.autoTest']  = !!fa.autoTest;
+      if (fa.community !== undefined) update['defaultUserAccess.featureAccess.community'] = !!fa.community;
+      if (fa.videos    !== undefined) update['defaultUserAccess.featureAccess.videos']    = !!fa.videos;
+      if (fa.notes     !== undefined) update['defaultUserAccess.featureAccess.notes']     = !!fa.notes;
+      if (defaultUserAccess.coursesGrantAll !== undefined) {
+        update['defaultUserAccess.coursesGrantAll'] = !!defaultUserAccess.coursesGrantAll;
+      }
+      if (Array.isArray(defaultUserAccess.courseAccess)) {
+        const mongoose = require('mongoose');
+        update['defaultUserAccess.courseAccess'] = defaultUserAccess.courseAccess
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .map((id) => new mongoose.Types.ObjectId(id));
+      }
+    }
 
     if (maxMcqsPerAutoTest !== undefined) {
       const n = Number(maxMcqsPerAutoTest);

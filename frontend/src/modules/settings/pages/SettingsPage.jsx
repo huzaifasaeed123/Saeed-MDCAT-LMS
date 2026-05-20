@@ -3,7 +3,16 @@ import { toast } from 'react-toastify';
 import {
   FiSave, FiSliders, FiDatabase,
   FiShield, FiMonitor, FiAlertCircle, FiCheck, FiAward, FiKey, FiLock, FiCopy,
+  FiUserPlus, FiZap, FiMessageCircle, FiVideo, FiFolder, FiBook, FiSearch, FiX,
 } from 'react-icons/fi';
+
+// 4 feature toggles offered to new sign-ups (course access has its own block).
+const DEFAULT_FEATURE_DEFS = [
+  { key: 'autoTest',  label: 'Auto Test Generator', Icon: FiZap },
+  { key: 'community', label: 'Community',           Icon: FiMessageCircle },
+  { key: 'videos',    label: 'Videos',              Icon: FiVideo },
+  { key: 'notes',     label: 'Notes',               Icon: FiFolder },
+];
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
@@ -52,7 +61,17 @@ const SettingsPage = () => {
     // Service account key — write-only on the form (never pre-populated).
     // Leaving it empty on save means "don't change the existing key".
     googleServiceAccountKey: '',
+    // Defaults applied to users who sign up themselves (email/password or
+    // Google). Admin-created users skip this preset.
+    defaultUserAccess: {
+      featureAccess: { autoTest: false, community: false, videos: false, notes: false },
+      coursesGrantAll: false,
+      courseAccess:    [], // array of course _id strings
+    },
   });
+  // Course catalog — fetched once to power the default-access course picker.
+  const [courses,        setCourses]       = useState([]);
+  const [defaultCourseQuery, setDefaultCourseQuery] = useState('');
   // Derived from API — not editable directly
   const [hasServiceAccountKey,  setHasServiceAccountKey]  = useState(false);
   const [serviceAccountEmail,   setServiceAccountEmail]   = useState('');
@@ -67,9 +86,10 @@ const SettingsPage = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [settingsRes, banksRes] = await Promise.all([
+        const [settingsRes, banksRes, coursesRes] = await Promise.all([
           apiClient.get('/settings'),
           apiClient.get('/question-banks'),
+          apiClient.get('/courses').catch(() => ({ data: { data: [] } })),
         ]);
         const s = settingsRes.data.data || {};
         const dur = s.sessionDurationDays ?? 547;
@@ -86,12 +106,25 @@ const SettingsPage = () => {
           },
           googleDriveApiKey:        s.googleDriveApiKey ?? '',
           googleServiceAccountKey:  '',  // never pre-filled from server
+          defaultUserAccess: {
+            featureAccess: {
+              autoTest:  !!s.defaultUserAccess?.featureAccess?.autoTest,
+              community: !!s.defaultUserAccess?.featureAccess?.community,
+              videos:    !!s.defaultUserAccess?.featureAccess?.videos,
+              notes:     !!s.defaultUserAccess?.featureAccess?.notes,
+            },
+            coursesGrantAll: !!s.defaultUserAccess?.coursesGrantAll,
+            courseAccess:    Array.isArray(s.defaultUserAccess?.courseAccess)
+              ? s.defaultUserAccess.courseAccess.map(String)
+              : [],
+          },
         });
         setHasServiceAccountKey(!!s.hasServiceAccountKey);
         setServiceAccountEmail(s.serviceAccountEmail || '');
         // Show custom input if saved value is not one of the presets
         if (!DURATION_PRESETS.some((p) => p.value === dur)) setCustomDuration(true);
         if (banksRes.data.success) setBanks(banksRes.data.data);
+        if (coursesRes.data?.success) setCourses(coursesRes.data.data || []);
       } catch {
         toast.error('Failed to load settings');
       } finally {
@@ -130,6 +163,11 @@ const SettingsPage = () => {
         ...(settings.googleServiceAccountKey.trim()
           ? { googleServiceAccountKey: settings.googleServiceAccountKey.trim() }
           : {}),
+        defaultUserAccess: {
+          featureAccess: { ...settings.defaultUserAccess.featureAccess },
+          coursesGrantAll: !!settings.defaultUserAccess.coursesGrantAll,
+          courseAccess:    [...settings.defaultUserAccess.courseAccess],
+        },
       });
       toast.success('Settings saved successfully');
       // Refresh SA key status after save
@@ -380,6 +418,164 @@ const SettingsPage = () => {
               Users who are already logged in will not be affected until their current session
               expires or they log in again.
             </p>
+          </div>
+        </div>
+
+        {/* ── Default Access for New Sign-ups ────────────────────────────── */}
+        {/*    Admin presets the access every self-registered user gets on
+             signup (email/password AND Google OAuth). Admin-created accounts
+             skip this and start with everything off, since admin sets access
+             explicitly via the Users page. */}
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <FiUserPlus className="w-5 h-5 text-emerald-600 dark:text-emerald-300" />
+            <h2 className="text-base font-semibold text-[var(--text-strong)]">Default Access for New Sign-ups</h2>
+          </div>
+          <p className="text-xs text-[var(--text-faint)] mb-5">
+            Every user who signs up themselves (form OR Google) is created with these toggles pre-set.
+            Admin-created accounts are unaffected — admin sets their access manually.
+          </p>
+
+          {/* Feature toggles */}
+          <div className="space-y-2 mb-5">
+            {DEFAULT_FEATURE_DEFS.map(({ key, label, Icon }) => {
+              const on = !!settings.defaultUserAccess.featureAccess[key];
+              return (
+                <label
+                  key={key}
+                  className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                    on
+                      ? 'border-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/30 dark:border-emerald-900/50'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-muted)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      on ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-[var(--bg-muted)] text-[var(--text-faint)]'
+                    }`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm font-semibold text-[var(--text-strong)]">{label}</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) => setSettings((s) => ({
+                      ...s,
+                      defaultUserAccess: {
+                        ...s.defaultUserAccess,
+                        featureAccess: { ...s.defaultUserAccess.featureAccess, [key]: e.target.checked },
+                      },
+                    }))}
+                    className="w-4 h-4 accent-emerald-500"
+                  />
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Course access block */}
+          <div className="border-t border-[var(--border-faint)] pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <FiBook className="w-4 h-4 text-primary-500" />
+              <h3 className="text-sm font-semibold text-[var(--text-strong)]">Default course access</h3>
+            </div>
+
+            <label className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors mb-3 ${
+              settings.defaultUserAccess.coursesGrantAll
+                ? 'border-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/30 dark:border-emerald-900/50'
+                : 'border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-muted)]'
+            }`}>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--text-strong)]">Grant access to all courses</p>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  When on, every existing and future course is unlocked for new sign-ups.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.defaultUserAccess.coursesGrantAll}
+                onChange={(e) => setSettings((s) => ({
+                  ...s,
+                  defaultUserAccess: { ...s.defaultUserAccess, coursesGrantAll: e.target.checked },
+                }))}
+                className="w-4 h-4 accent-emerald-500 flex-shrink-0"
+              />
+            </label>
+
+            {/* Per-course allowlist — hidden when grant-all is on */}
+            {!settings.defaultUserAccess.coursesGrantAll && (
+              <>
+                <p className="text-xs text-[var(--text-faint)] mb-2">
+                  Or pick specific courses to unlock by default ({settings.defaultUserAccess.courseAccess.length} selected).
+                </p>
+
+                <div className="relative mb-2">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-faint)]" />
+                  <input
+                    type="text"
+                    value={defaultCourseQuery}
+                    onChange={(e) => setDefaultCourseQuery(e.target.value)}
+                    placeholder="Search courses…"
+                    className="w-full pl-9 pr-9 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                  />
+                  {defaultCourseQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setDefaultCourseQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-faint)] hover:text-[var(--text)]"
+                    >
+                      <FiX className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <ul className="max-h-56 overflow-y-auto rounded-lg border border-[var(--border)] divide-y divide-[var(--border-faint)]">
+                  {courses.length === 0 ? (
+                    <li className="px-3 py-3 text-xs text-[var(--text-faint)] text-center">No courses defined yet.</li>
+                  ) : (() => {
+                    const q = defaultCourseQuery.trim().toLowerCase();
+                    const filtered = q
+                      ? courses.filter((c) => (c.title || '').toLowerCase().includes(q))
+                      : courses;
+                    if (filtered.length === 0) {
+                      return <li className="px-3 py-3 text-xs text-[var(--text-faint)] text-center">No courses match your search.</li>;
+                    }
+                    const set = new Set(settings.defaultUserAccess.courseAccess);
+                    return filtered.map((c) => {
+                      const id = String(c._id);
+                      const has = set.has(id);
+                      return (
+                        <li key={id}>
+                          <label className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--bg-muted)] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={has}
+                              onChange={(e) => {
+                                setSettings((s) => {
+                                  const cur = new Set(s.defaultUserAccess.courseAccess);
+                                  if (e.target.checked) cur.add(id);
+                                  else cur.delete(id);
+                                  return {
+                                    ...s,
+                                    defaultUserAccess: {
+                                      ...s.defaultUserAccess,
+                                      courseAccess: [...cur],
+                                    },
+                                  };
+                                });
+                              }}
+                              className="w-3.5 h-3.5 accent-primary-500"
+                            />
+                            <span className="text-sm text-[var(--text)] truncate">{c.title}</span>
+                          </label>
+                        </li>
+                      );
+                    });
+                  })()}
+                </ul>
+              </>
+            )}
           </div>
         </div>
 

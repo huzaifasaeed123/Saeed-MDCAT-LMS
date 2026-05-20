@@ -43,6 +43,26 @@ const getSessionSettings = async () => {
   };
 };
 
+// Resolves the access preset configured by the admin for self-signup users.
+// Returns the shape expected by the User model. All-off is the safe fallback
+// when the settings doc is missing OR the field hasn't been configured.
+const getDefaultUserAccess = async () => {
+  const s     = await SystemSettings.findOne({ key: 'global' });
+  const fa    = s?.defaultUserAccess?.featureAccess || {};
+  return {
+    featureAccess: {
+      autoTest:  !!fa.autoTest,
+      community: !!fa.community,
+      videos:    !!fa.videos,
+      notes:     !!fa.notes,
+    },
+    coursesGrantAll: !!s?.defaultUserAccess?.coursesGrantAll,
+    courseAccess:    Array.isArray(s?.defaultUserAccess?.courseAccess)
+      ? s.defaultUserAccess.courseAccess
+      : [],
+  };
+};
+
 // ─── Cookie helper ────────────────────────────────────────────────────────────
 const setRefreshCookie = (refreshToken, durationDays, res) => {
   const options = {
@@ -102,8 +122,16 @@ exports.register = async (req, res) => {
       if (req.body[f] !== undefined) profile[f] = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
     }
 
+    const defaults  = await getDefaultUserAccess();
     const [user, settings] = await Promise.all([
-      User.create({ fullName, email, contactNumber, password, role: 'student', ...profile }),
+      User.create({
+        fullName, email, contactNumber, password, role: 'student',
+        createdByAdmin: false,
+        featureAccess:   defaults.featureAccess,
+        coursesGrantAll: defaults.coursesGrantAll,
+        courseAccess:    defaults.courseAccess,
+        ...profile,
+      }),
       getSessionSettings(),
     ]);
 
@@ -226,9 +254,14 @@ exports.googleAuthGIS = async (req, res) => {
     let user = await User.findOne({ $or: [{ googleId }, { email }] });
 
     if (!user) {
+      const defaults = await getDefaultUserAccess();
       user = await User.create({
         googleId, fullName: name, email,
         contactNumber: '', profilePicture: picture, role: 'student',
+        createdByAdmin: false,
+        featureAccess:   defaults.featureAccess,
+        coursesGrantAll: defaults.coursesGrantAll,
+        courseAccess:    defaults.courseAccess,
       });
     } else if (!user.googleId) {
       user.googleId       = googleId;

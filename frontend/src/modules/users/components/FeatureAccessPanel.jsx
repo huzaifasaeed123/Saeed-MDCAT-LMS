@@ -35,8 +35,8 @@ const ToggleSwitch = ({ checked, onChange, disabled }) => (
     onClick={onChange}
     disabled={disabled}
     aria-pressed={checked}
-    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-      checked ? 'bg-emerald-500' : 'bg-gray-300'
+    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 focus:ring-offset-[var(--bg-surface)] disabled:opacity-50 disabled:cursor-not-allowed ${
+      checked ? 'bg-emerald-500' : 'bg-[var(--bg-muted)] border border-[var(--border)]'
     }`}
   >
     <span
@@ -160,13 +160,13 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
     : courses;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* ── Feature toggles ───────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-base font-bold text-gray-800 mb-1 flex items-center gap-2">
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5">
+        <h3 className="text-base font-bold text-[var(--text-strong)] mb-1 flex items-center gap-2">
           <FiLock className="text-amber-500" /> Feature Access
         </h3>
-        <p className="text-sm text-gray-500 mb-4">
+        <p className="text-sm text-[var(--text-muted)] mb-4">
           Each toggle controls one student-facing feature. Staff (admin/teacher) always bypass these locks.
         </p>
 
@@ -177,19 +177,23 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
             return (
               <div
                 key={key}
-                className={`flex items-center justify-between gap-3 px-3 py-3 rounded-lg border ${
-                  on ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200 bg-gray-50/50'
+                className={`flex items-center justify-between gap-3 px-3 py-3 rounded-xl border ${
+                  on
+                    ? 'border-emerald-300 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/30'
+                    : 'border-[var(--border)] bg-[var(--bg-muted)]/40'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-9 h-9 flex-shrink-0 rounded-lg flex items-center justify-center ${
-                    on ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-400'
+                    on
+                      ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-[var(--bg-muted)] text-[var(--text-faint)]'
                   }`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">{label}</p>
-                    <p className="text-xs text-gray-500 truncate">{blurb}</p>
+                    <p className="text-sm font-semibold text-[var(--text-strong)] truncate">{label}</p>
+                    <p className="text-xs text-[var(--text-muted)] truncate">{blurb}</p>
                   </div>
                 </div>
                 <ToggleSwitch checked={on} onChange={() => onToggleFeature(key)} disabled={busy} />
@@ -200,14 +204,13 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
       </div>
 
       {/* ── Course Access ─────────────────────────────────────────────────── */}
-      {/* Two-level model: Grant-all toggle (top) OR per-course toggles (below). */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5">
         <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
           <div>
-            <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <FiBook className="text-blue-500" /> Course Access
+            <h3 className="text-base font-bold text-[var(--text-strong)] flex items-center gap-2">
+              <FiBook className="text-primary-500" /> Course Access
             </h3>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="text-sm text-[var(--text-muted)] mt-0.5">
               {grantAll
                 ? 'This student has access to EVERY course. Per-course toggles are ignored.'
                 : 'Use the Grant-all toggle below, OR pick specific courses individually.'}
@@ -218,7 +221,7 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
               type="button"
               onClick={onGrantAll}
               disabled={bulkBusy}
-              className="px-3 py-1.5 text-xs font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60 dark:text-emerald-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Grant all
             </button>
@@ -226,20 +229,21 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
               type="button"
               onClick={onRevokeAll}
               disabled={bulkBusy}
-              className="px-3 py-1.5 text-xs font-medium bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-950/60 dark:text-rose-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Revoke all
             </button>
           </div>
         </div>
 
-        {/* Grant-all toggle — when on, all courses unlock at once. */}
-        <div className={`flex items-center justify-between gap-3 px-3 py-3 mb-3 rounded-lg border ${
-          grantAll ? 'border-emerald-200 bg-emerald-50/40' : 'border-gray-200 bg-gray-50/50'
+        <div className={`flex items-center justify-between gap-3 px-3 py-3 mb-3 rounded-xl border ${
+          grantAll
+            ? 'border-emerald-300 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/30'
+            : 'border-[var(--border)] bg-[var(--bg-muted)]/40'
         }`}>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-800">Grant access to ALL courses</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm font-semibold text-[var(--text-strong)]">Grant access to ALL courses</p>
+            <p className="text-xs text-[var(--text-muted)]">
               When on, every course (existing and future) is unlocked without ticking individual rows.
             </p>
           </div>
@@ -250,44 +254,42 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
           />
         </div>
 
-        {/* Search */}
         <div className="relative mb-3">
-          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-faint)]" />
           <input
             type="text"
             disabled={grantAll}
             placeholder={grantAll ? 'Grant-all is on — per-course toggles are disabled' : 'Search courses…'}
             value={courseQuery}
             onChange={(e) => setCourseQuery(e.target.value)}
-            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
+            className="w-full pl-9 pr-9 py-2 border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)] disabled:bg-[var(--bg-muted)] disabled:cursor-not-allowed"
           />
           {courseQuery && (
-            <button onClick={() => setCourseQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <button onClick={() => setCourseQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-faint)] hover:text-[var(--text)]">
               <FiX className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Course list */}
         {loadingCourses ? (
-          <div className="text-sm text-gray-400 text-center py-6">Loading courses…</div>
+          <div className="text-sm text-[var(--text-faint)] text-center py-6">Loading courses…</div>
         ) : filteredCourses.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-6">
+          <div className="text-sm text-[var(--text-faint)] text-center py-6">
             {courseQuery ? 'No courses match your search.' : 'No courses available.'}
           </div>
         ) : (
-          <ul className={`divide-y divide-gray-100 max-h-72 overflow-y-auto border border-gray-100 rounded-lg transition ${
+          <ul className={`divide-y divide-[var(--border-faint)] max-h-72 overflow-y-auto border border-[var(--border)] rounded-xl transition ${
             grantAll ? 'opacity-50 pointer-events-none' : ''
           }`}>
             {filteredCourses.map((c) => {
               const has = courseAccess.has(String(c._id));
               const busy = savingCourse === String(c._id);
               return (
-                <li key={c._id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-gray-50">
+                <li key={c._id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[var(--bg-muted)]">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{c.title}</p>
+                    <p className="text-sm font-medium text-[var(--text-strong)] truncate">{c.title}</p>
                     {c.shortDescription && (
-                      <p className="text-xs text-gray-500 truncate">{c.shortDescription}</p>
+                      <p className="text-xs text-[var(--text-muted)] truncate">{c.shortDescription}</p>
                     )}
                   </div>
                   <ToggleSwitch
@@ -301,7 +303,7 @@ const FeatureAccessPanel = ({ userId, initialFeatureAccess, initialCoursesGrantA
           </ul>
         )}
 
-        <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+        <p className="mt-3 text-xs text-[var(--text-muted)] flex items-center gap-1">
           <FiCheck className="w-3.5 h-3.5 text-emerald-500" />
           {grantAll
             ? `All ${courses.length} courses unlocked (grant-all is on)`

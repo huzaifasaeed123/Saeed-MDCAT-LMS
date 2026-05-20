@@ -5,7 +5,14 @@ import { toast } from 'react-toastify';
 import {
   FiArrowLeft, FiUpload, FiChevronDown, FiChevronRight,
   FiLayers, FiBookOpen, FiTag, FiEdit2, FiList, FiLoader,
+  FiGlobe, FiShield, FiFileText,
 } from 'react-icons/fi';
+
+const VIS_META = {
+  public: { label: 'Public', Icon: FiGlobe,    cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  staff:  { label: 'Staff',  Icon: FiShield,   cls: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' },
+  draft:  { label: 'Draft',  Icon: FiFileText, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
+};
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
@@ -178,15 +185,16 @@ const QuestionBankDetailPage = () => {
               <h1 className="font-display text-xl sm:text-2xl font-extrabold text-[var(--text-strong)] tracking-[-0.01em]">
                 {qb.title}
               </h1>
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                  qb.isActive
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                    : 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
-                }`}
-              >
-                {qb.isActive ? 'Active' : 'Inactive'}
-              </span>
+              {(() => {
+                const meta = VIS_META[qb.visibility] || VIS_META.public;
+                const { Icon } = meta;
+                return (
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.cls}`}>
+                    <Icon className="w-2.5 h-2.5" />
+                    {meta.label}
+                  </span>
+                );
+              })()}
             </div>
             {qb.description && <p className="text-[var(--text-muted)] text-sm">{qb.description}</p>}
             <div className="flex gap-4 mt-3 text-sm text-[var(--text-muted)]">

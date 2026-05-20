@@ -12,6 +12,7 @@ const User              = require('../models/User');
 const Course            = require('../models/CourseModel');
 const userAccessCache   = require('../utils/userAccessCache');
 const { pushToUser, pushToAll } = require('../utils/sseManager');
+const { buildUserFilter } = require('../utils/userFilter');
 
 // The 4 real feature flags. 'courses' is a separate model (coursesGrantAll +
 // courseAccess[]) — bulk/admin endpoints accept the literal string 'courses'
@@ -302,17 +303,24 @@ exports.bulkApplyAccess = async (req, res) => {
       : 'student';
 
     // 'courses' is the only bulk key that's NOT a real featureAccess flag —
-    // it maps to coursesGrantAll. ON = every student gets every course.
-    // OFF = every student loses grant-all (their per-course allowlists are
-    // preserved so admin can re-enable selectively later — no data loss).
+    // it maps to coursesGrantAll. ON = every (filtered) student gets every
+    // course. OFF = every (filtered) student loses grant-all (their per-course
+    // allowlists are preserved so admin can re-enable selectively later).
     const setOps = featureRaw === 'courses'
       ? { coursesGrantAll: value }
       : { [`featureAccess.${featureRaw}`]: value };
 
-    const result = await User.updateMany(
-      { role },
-      { $set: setOps }
-    );
+    // Honour the same filter set the admin sees in the table. The frontend
+    // sends its active filters in `filters` so the bulk write touches exactly
+    // the visible rows (modulo pagination). `role` always comes from the body
+    // for backwards compat — if `filters` also carries a role it's ignored.
+    const filterInput = (req.body?.filters && typeof req.body.filters === 'object')
+      ? { ...req.body.filters }
+      : {};
+    delete filterInput.role; // role from top-level body wins
+    const filter = buildUserFilter({ ...filterInput, role });
+
+    const result = await User.updateMany(filter, { $set: setOps });
 
     // Wipe the whole user-access cache — cheaper than iterating IDs, and
     // entries rebuild on demand. Bulk admin actions are rare.

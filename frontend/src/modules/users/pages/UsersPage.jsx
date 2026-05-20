@@ -6,14 +6,37 @@ import {
   FiSearch, FiFilter, FiX, FiUsers, FiChevronLeft, FiChevronRight,
   FiAlertCircle, FiCheckCircle, FiToggleLeft, FiToggleRight,
   FiZap, FiBook, FiMessageCircle, FiVideo, FiFolder,
+  FiCalendar, FiUserCheck, FiUserPlus, FiChevronDown,
 } from 'react-icons/fi';
 import { PROVINCES, STUDENT_CLASSES, STUDENT_STATUSES } from '../../../shared/constants/studentProfile';
 import apiClient from '../../../core/api/axiosConfig';
 import {
   updateUserFeatureAccess, bulkApplyAccess,
   grantUserCourse, revokeUserCourse,
+  setUserCoursesGrantAll,
 } from '../services/userService';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
+
+// ── Date-preset helper ──────────────────────────────────────────────────────
+// Translates the active preset pill into a { from, to } pair. 'all' returns
+// nulls so the filter is omitted from the request.
+const DATE_PRESETS = [
+  { key: 'all',   label: 'All time' },
+  { key: 'today', label: 'Today' },
+  { key: '7d',    label: 'Last 7 days' },
+  { key: '30d',   label: 'Last 30 days' },
+];
+const datePresetToRange = (key) => {
+  if (key === 'all') return { from: null, to: null };
+  const now = new Date();
+  const to  = new Date(now);
+  to.setHours(23, 59, 59, 999);
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  if (key === '7d')  from.setDate(from.getDate() - 6);   // includes today + 6 prior = 7 days
+  if (key === '30d') from.setDate(from.getDate() - 29);
+  return { from: from.toISOString(), to: to.toISOString() };
+};
 
 const PAGE_SIZE = 20;
 
@@ -23,22 +46,156 @@ const ROLE_COLORS = {
   student: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
 };
 
-// Bulk Edit Mode columns. 'courses' is special — it maps to coursesGrantAll
-// (not a featureAccess flag, since we removed the redundant master). Single
-// source of truth; re-order here to re-order across the whole table.
+// Bulk Edit Mode columns. Courses are NOT a column anymore — they collapse
+// into a single dropdown cell with per-course checkboxes + a grant-all toggle
+// at the top. That scales with N courses without widening the table.
 const FEATURE_COLUMNS = [
   { key: 'autoTest',  shortLabel: 'Auto Test',  Icon: FiZap },
-  { key: 'courses',   shortLabel: 'All Courses', Icon: FiBook }, // → coursesGrantAll
   { key: 'community', shortLabel: 'Community',  Icon: FiMessageCircle },
   { key: 'videos',    shortLabel: 'Videos',     Icon: FiVideo },
   { key: 'notes',     shortLabel: 'Notes',      Icon: FiFolder },
 ];
 
-// Which user-row field does a column read from? 'courses' reads coursesGrantAll;
-// everything else reads featureAccess[key]. Centralised so toggles + headers
-// + bulk apply all stay consistent.
-const getCellValue = (user, key) =>
-  key === 'courses' ? !!user.coursesGrantAll : !!user.featureAccess?.[key];
+const getCellValue = (user, key) => !!user.featureAccess?.[key];
+
+// Compact per-row Courses picker. Replaces the old N-columns-per-course
+// layout in Edit Mode — admin clicks the cell, a popover opens with a search
+// box, a "Grant all" toggle, and a checkbox per course. State updates are
+// optimistic (controlled by the parent through the callbacks).
+const CoursesDropdown = ({
+  user, courses, busyKey, // busyKey: `${userId}:course:${courseId}` while a request is in flight
+  onToggleCourse, onToggleGrantAll,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const popoverRef = useRef(null);
+  const buttonRef  = useRef(null);
+
+  // Click-outside / Esc to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onDoc = (e) => {
+      if (popoverRef.current?.contains(e.target)) return;
+      if (buttonRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [open]);
+
+  const grantAll       = !!user.coursesGrantAll;
+  const accessSet      = useMemo(
+    () => new Set((user.courseAccess || []).map(String)),
+    [user.courseAccess],
+  );
+  const grantedCount   = grantAll ? courses.length : accessSet.size;
+  const filteredCourses = query.trim()
+    ? courses.filter((c) => (c.title || '').toLowerCase().includes(query.trim().toLowerCase()))
+    : courses;
+
+  // Summary text — switches between three states so admin sees at a glance
+  // whether grant-all is on, how many courses are picked, or nothing.
+  const summary = grantAll
+    ? 'All courses'
+    : grantedCount === 0
+      ? 'None'
+      : `${grantedCount} of ${courses.length}`;
+
+  return (
+    <div className="relative inline-block text-left">
+      <button
+        type="button"
+        ref={buttonRef}
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors min-w-[120px] justify-between ${
+          grantAll
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50'
+            : grantedCount > 0
+              ? 'border-primary-300 bg-primary-50/60 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 dark:border-primary-900/50'
+              : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+        }`}
+      >
+        <span className="flex items-center gap-1.5">
+          <FiBook className="w-3.5 h-3.5" />
+          <span className="font-medium">{summary}</span>
+        </span>
+        <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          ref={popoverRef}
+          className="absolute z-30 mt-1 right-0 w-72 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden"
+        >
+          {/* Grant-all toggle */}
+          <div className={`flex items-center justify-between gap-3 px-3 py-2.5 border-b border-[var(--border-faint)] ${
+            grantAll ? 'bg-emerald-50/60 dark:bg-emerald-950/30' : ''
+          }`}>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[var(--text-strong)]">Grant all courses</p>
+              <p className="text-[10px] text-[var(--text-muted)]">Unlocks every course, existing &amp; future.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onToggleGrantAll(user._id, !grantAll)}
+              className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                grantAll ? 'bg-emerald-500' : 'bg-[var(--bg-muted)] border border-[var(--border)]'
+              }`}
+              aria-pressed={grantAll}
+            >
+              <span className={`absolute top-0.5 inline-block w-4 h-4 rounded-full bg-white shadow transform transition-transform ${
+                grantAll ? 'translate-x-4' : 'translate-x-0.5'
+              }`} />
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative p-2 border-b border-[var(--border-faint)]">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-faint)]" />
+            <input
+              type="text"
+              disabled={grantAll}
+              placeholder={grantAll ? 'Grant-all is on' : 'Search courses…'}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full pl-8 pr-2 py-1.5 text-xs border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-400 placeholder:text-[var(--text-faint)] disabled:opacity-50"
+            />
+          </div>
+
+          {/* Course list */}
+          <ul className={`max-h-60 overflow-y-auto py-1 ${grantAll ? 'opacity-50 pointer-events-none' : ''}`}>
+            {filteredCourses.length === 0 ? (
+              <li className="text-[11px] text-[var(--text-faint)] text-center py-4">No courses match.</li>
+            ) : filteredCourses.map((c) => {
+              const checked = grantAll || accessSet.has(String(c._id));
+              const busy    = busyKey === `${user._id}:course:${c._id}`;
+              return (
+                <li key={c._id}>
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--bg-muted)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy || grantAll}
+                      onChange={() => onToggleCourse(user._id, c._id)}
+                      className="w-3.5 h-3.5 accent-primary-500"
+                    />
+                    <span className="truncate flex-1">{c.title}</span>
+                    {busy && <span className="text-[10px] text-[var(--text-faint)]">…</span>}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Pill-style toggle used inside the bulk-edit table. Smaller than the one in
 // FeatureAccessPanel so 5 fit comfortably in a single row.
@@ -88,6 +245,10 @@ const UsersPage = () => {
   const [district,      setDistrict]      = useState('');
   const [studentClass,  setStudentClass]  = useState('');
   const [studentStatus, setStudentStatus] = useState('');
+  // Registration-date preset + signup source ('' = any). Bulk-apply uses the
+  // same values so it touches exactly the visible rows.
+  const [datePreset,   setDatePreset]   = useState('all');
+  const [signupSource, setSignupSource] = useState('');
   const searchTimer   = useRef(null);
   const districtTimer = useRef(null);
 
@@ -122,28 +283,43 @@ const UsersPage = () => {
   // closure at mount and silently strip every filter from outgoing requests.
   // It's only called from handlers and effects within this component, so
   // the unstable identity is harmless.
+  // Build the param object the backend expects from current filter state.
+  // Exported as a helper so the bulk-apply path can send the EXACT same
+  // filters (sans pagination) without the two paths drifting.
+  const buildFilterParams = (overrides = {}) => {
+    const s    = overrides.s    ?? search;
+    const r    = overrides.r    ?? role;
+    const em   = overrides.em   ?? editMode;
+    const prov = overrides.prov ?? province;
+    const dist = overrides.dist ?? district;
+    const cls  = overrides.cls  ?? studentClass;
+    const stat = overrides.stat ?? studentStatus;
+    const dp   = overrides.dp   ?? datePreset;
+    const ss   = overrides.ss   ?? signupSource;
+
+    const out = {};
+    if (s) out.search = s;
+    const effectiveRole = em ? 'student' : r;
+    if (effectiveRole)       out.role          = effectiveRole;
+    if (prov)                out.province      = prov;
+    if (dist && dist.trim()) out.district      = dist.trim();
+    if (cls)                 out.studentClass  = cls;
+    if (stat)                out.studentStatus = stat;
+    const range = datePresetToRange(dp);
+    if (range.from) out.dateFrom = range.from;
+    if (range.to)   out.dateTo   = range.to;
+    if (ss === 'self' || ss === 'admin') out.signupSource = ss;
+    return out;
+  };
+
   const fetchUsers = async (opts = {}) => {
-    const {
-      p  = page,
-      s  = search,
-      r  = role,
-      em = editMode,
-      prov = province,
-      dist = district,
-      cls  = studentClass,
-      stat = studentStatus,
-    } = opts;
+    const { p = page, ...rest } = opts;
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, limit: PAGE_SIZE });
-      if (s) params.set('search', s);
-      // In Edit Mode, force students; otherwise honour the role filter.
-      const effectiveRole = em ? 'student' : r;
-      if (effectiveRole)       params.set('role', effectiveRole);
-      if (prov)                params.set('province', prov);
-      if (dist && dist.trim()) params.set('district', dist.trim());
-      if (cls)                 params.set('studentClass', cls);
-      if (stat)                params.set('studentStatus', stat);
+      for (const [k, v] of Object.entries(buildFilterParams(rest))) {
+        params.set(k, v);
+      }
       const res = await apiClient.get(`/users?${params}`);
       if (res.data.success) {
         setUsers(res.data.data);
@@ -163,7 +339,7 @@ const UsersPage = () => {
     setPage(1);
     fetchUsers({ p: 1 });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, editMode, province, studentClass, studentStatus]);
+  }, [role, editMode, province, studentClass, studentStatus, datePreset, signupSource]);
 
   // Fetch courses lazily — only when Edit Mode first opens. Cached for the
   // rest of the session (admin rarely creates new courses mid-session).
@@ -206,14 +382,18 @@ const UsersPage = () => {
 
   const handleRoleChange = (r) => { setRole(r); setPage(1); };
 
-  const hasActiveFilter = !!(search || role || province || district || studentClass || studentStatus);
+  const hasActiveFilter = !!(
+    search || role || province || district || studentClass || studentStatus
+    || (datePreset && datePreset !== 'all') || signupSource
+  );
 
   const clearFilters = () => {
     setSearch(''); setRole('');
     setProvince(''); setDistrict('');
     setStudentClass(''); setStudentStatus('');
+    setDatePreset('all'); setSignupSource('');
     setPage(1);
-    fetchUsers({ p: 1, s: '', r: '', prov: '', dist: '', cls: '', stat: '' });
+    fetchUsers({ p: 1, s: '', r: '', prov: '', dist: '', cls: '', stat: '', dp: 'all', ss: '' });
   };
 
   // ── Edit Mode helpers ──────────────────────────────────────────────────
@@ -256,19 +436,19 @@ const UsersPage = () => {
     } finally { setSavingCell(null); }
   };
 
-  // Flip every column for one user. Builds the right payload for both the
-  // 4 featureAccess flags AND coursesGrantAll in a single PATCH.
+  // Flip every feature column AND the grant-all-courses flag for one user
+  // in a single PATCH. The Courses cell shows the new grant-all state via
+  // its popover summary; admin can still un-tick individual courses after.
   const onToggleAllForUser = async (userId) => {
     const target = users.find((u) => u._id === userId);
     if (!target || target.role !== 'student') return;
     const fa = target.featureAccess || {};
-    const allOn = FEATURE_COLUMNS.every((f) => getCellValue(target, f.key));
-    const nextVal = !allOn;
-    // Build a featureAccess patch (only real keys, not 'courses').
-    const faPatch = Object.fromEntries(
-      FEATURE_COLUMNS.filter((f) => f.key !== 'courses').map((f) => [f.key, nextVal])
-    );
-    const prevGrantAll = !!target.coursesGrantAll;
+    const allFeaturesOn = FEATURE_COLUMNS.every((f) => getCellValue(target, f.key));
+    const grantAllOn    = !!target.coursesGrantAll;
+    const allOn         = allFeaturesOn && grantAllOn;
+    const nextVal       = !allOn;
+    const faPatch = Object.fromEntries(FEATURE_COLUMNS.map((f) => [f.key, nextVal]));
+    const prevGrantAll = grantAllOn;
 
     setUsers((list) => list.map((u) => (
       u._id === userId ? { ...u, featureAccess: { ...fa, ...faPatch }, coursesGrantAll: nextVal } : u
@@ -277,11 +457,29 @@ const UsersPage = () => {
       await updateUserFeatureAccess(userId, faPatch, { coursesGrantAll: nextVal });
       toast.success(nextVal ? 'All features enabled' : 'All features locked');
     } catch {
-      // Revert
       setUsers((list) => list.map((u) => (
         u._id === userId ? { ...u, featureAccess: { ...fa }, coursesGrantAll: prevGrantAll } : u
       )));
       toast.error('Failed to update access');
+    }
+  };
+
+  // Flip the grant-all flag for one user. Backed by the same PATCH /access
+  // endpoint as the rest of the page so the SSE invalidation kicks in.
+  const onToggleGrantAllForUser = async (userId, nextValue) => {
+    const target = users.find((u) => u._id === userId);
+    if (!target || target.role !== 'student') return;
+    const prev = !!target.coursesGrantAll;
+    setUsers((list) => list.map((u) => (
+      u._id === userId ? { ...u, coursesGrantAll: nextValue } : u
+    )));
+    try {
+      await setUserCoursesGrantAll(userId, nextValue);
+    } catch (err) {
+      setUsers((list) => list.map((u) => (
+        u._id === userId ? { ...u, coursesGrantAll: prev } : u
+      )));
+      toast.error(err?.response?.data?.message || 'Failed to update access');
     }
   };
 
@@ -341,7 +539,12 @@ const UsersPage = () => {
     }));
 
     try {
-      const res = await bulkApplyAccess(feature, value, 'student');
+      // Pass the current filter set so the bulk write touches exactly what
+      // the admin can see in the table (modulo pagination). `role` is forced
+      // to 'student' for the bulk action regardless of the role filter.
+      const filtersForBulk = buildFilterParams();
+      delete filtersForBulk.role; // role from the dedicated arg wins
+      const res = await bulkApplyAccess(feature, value, 'student', filtersForBulk);
       toast.success(`${FEATURE_COLUMNS.find((f) => f.key === feature)?.shortLabel || feature} ${value ? 'enabled' : 'locked'} for ${res?.data?.modified ?? 0} student(s)`);
     } catch (err) {
       // Revert to snapshot
@@ -552,6 +755,61 @@ const UsersPage = () => {
             )}
           </span>
         </div>
+
+        {/* Row 3 — registration date preset + signup source. Bulk Edit Mode
+            applies actions only to the filtered set (visible rows). */}
+        <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-[var(--border-faint)]">
+          <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-faint)] flex items-center gap-1">
+            <FiCalendar className="w-3 h-3" /> Registered
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {DATE_PRESETS.map((p) => {
+              const active = datePreset === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setDatePreset(p.key)}
+                  className={`text-xs px-3 py-1.5 rounded-full font-semibold transition-colors ${
+                    active
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-faint)] flex items-center gap-1 ml-2">
+            <FiUserCheck className="w-3 h-3" /> Source
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[
+              { key: '',      label: 'All',           Icon: null },
+              { key: 'self',  label: 'Self-signup',   Icon: FiUserPlus },
+              { key: 'admin', label: 'Admin-created', Icon: FiUserCheck },
+            ].map((opt) => {
+              const active = signupSource === opt.key;
+              return (
+                <button
+                  key={opt.key || 'all'}
+                  type="button"
+                  onClick={() => setSignupSource(opt.key)}
+                  className={`inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-semibold transition-colors ${
+                    active
+                      ? 'bg-secondary-500 text-white'
+                      : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+                  }`}
+                >
+                  {opt.Icon && <opt.Icon className="w-3 h-3" />}
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -608,22 +866,21 @@ const UsersPage = () => {
                         </th>
                       );
                     })}
-                    {/* Per-course columns. One column per course in the catalog
-                        so admin can grant/revoke each course inline. Disabled
-                        in rows where coursesGrantAll is on (grant-all overrides). */}
-                    {courses.map((c) => (
-                      <th key={c._id} className="px-2 py-2 text-center text-xs font-semibold text-[var(--text-faint)] align-top" title={c.title}>
-                        <div className="flex flex-col items-center gap-1">
-                          <FiBook className="w-3 h-3 text-primary-500" />
-                          <span className="truncate max-w-[80px] text-[10px] normal-case" style={{ writingMode: 'horizontal-tb' }}>
-                            {c.title}
-                          </span>
-                        </div>
-                      </th>
-                    ))}
-                    {loadingCourses && courses.length === 0 && (
-                      <th className="px-3 py-3 text-center text-[10px] text-[var(--text-faint)]">loading…</th>
-                    )}
+                    {/* Single "Courses" column — opens a popover with the
+                        full course catalog as checkboxes (+ Grant-all toggle
+                        at the top). Scales with N courses without widening
+                        the table. */}
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-[var(--text-faint)] uppercase tracking-wider align-top">
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="flex items-center gap-1">
+                          <FiBook className="w-3.5 h-3.5" />
+                          <span className="hidden md:inline">Courses</span>
+                        </span>
+                        {loadingCourses && courses.length === 0 && (
+                          <span className="text-[10px] text-[var(--text-faint)] normal-case font-normal">loading…</span>
+                        )}
+                      </div>
+                    </th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-[var(--text-faint)] uppercase tracking-wider">All</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--text-faint)] uppercase tracking-wider">Actions</th>
                   </tr>
@@ -671,26 +928,18 @@ const UsersPage = () => {
                         </td>
                       );
                     })}
-                    {/* Per-course cells. Grant-all overrides individual access:
-                        when coursesGrantAll is true we visually show "on" and
-                        disable the toggle so admin sees the implicit grant. */}
-                    {courses.map((c) => {
-                      const isStudent = user.role === 'student';
-                      const grantAll  = !!user.coursesGrantAll;
-                      const has       = (user.courseAccess || []).some((id) => String(id) === String(c._id));
-                      const busy      = savingCell === `${user._id}:course:${c._id}`;
-                      return (
-                        <td key={c._id} className="px-2 py-3 text-center">
-                          {isStudent ? (
-                            <MiniToggle
-                              on={grantAll || has}
-                              disabled={busy || grantAll}
-                              onClick={() => onToggleCourseCell(user._id, c._id)}
-                            />
-                          ) : <span className="text-[var(--text-faint)]">—</span>}
-                        </td>
-                      );
-                    })}
+                    {/* Single "Courses" cell — opens the multi-select popover. */}
+                    <td className="px-3 py-3 text-center">
+                      {user.role === 'student' ? (
+                        <CoursesDropdown
+                          user={user}
+                          courses={courses}
+                          busyKey={savingCell}
+                          onToggleCourse={onToggleCourseCell}
+                          onToggleGrantAll={onToggleGrantAllForUser}
+                        />
+                      ) : <span className="text-[var(--text-faint)]">—</span>}
+                    </td>
                     <td className="px-3 py-3 text-center">
                       {user.role === 'student' ? (
                         <button
@@ -785,16 +1034,14 @@ const UsersPage = () => {
                   <FiToggleRight className="w-4 h-4 mt-0.5" />
                   <span>
                     Edit Mode shows <strong>students only</strong>. Each toggle saves instantly (1 API call).
-                    The column header <strong>"All on" / "All off"</strong> flips that feature for every student in a single bulk update.
+                    The column header <strong>"All on" / "All off"</strong> flips that feature for every student
+                    matching the <strong>currently active filters</strong> (date range, signup source, etc.).
                   </span>
                 </p>
                 <p className="pl-6">
-                  <strong>All Courses</strong> = grant-all (every course unlocked). When on, the per-course toggles
-                  to the right are shown as on and locked (grant-all overrides them).
-                </p>
-                <p className="pl-6">
-                  Individual <strong>course toggles</strong> let you grant/revoke specific courses per student.
-                  Wide tables scroll horizontally.
+                  The <strong>Courses</strong> cell opens a popover with a search box, a <em>Grant all</em> toggle,
+                  and a checkbox per course. Selections save instantly. Grant-all unlocks every course (current &amp; future);
+                  per-course ticks are ignored while it's on.
                 </p>
               </div>
             )}

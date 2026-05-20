@@ -34,3 +34,13 @@ Thumbs.db
 SKN LMS Design/
 SKN LOGO/
 Raw Extra/
+SKN NOTES FOR PORTAL/
+SKN NOTES FOR PORTAL
+var.txt
+
+## ── DB dumps / archives (never commit) ─────────────────────────────────
+*.archive
+backend/skn-dump.archive
+backend/skn-dump/
+backend/*.gz
+backend/*.bson

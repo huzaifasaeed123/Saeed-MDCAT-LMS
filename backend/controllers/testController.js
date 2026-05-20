@@ -119,16 +119,26 @@ exports.createTest = async (req, res) => {
 // Get all tests
 exports.getTests = async (req, res) => {
   try {
+    // Admin "Tests & MCQs" page is the only consumer of this endpoint. It
+    // should never surface student-built auto-tests — those belong to the
+    // student's own Test History. Resolve the set of staff user IDs and use
+    // it as a hard floor on `createdBy` for both metaOnly and paginated paths.
+    const staffUsers = await User.find(
+      { role: { $in: ['admin', 'teacher'] } },
+      '_id',
+    ).lean();
+    const staffIds = staffUsers.map((u) => u._id);
+
     // Lightweight metadata-only mode for populating filter dropdowns (no pagination, minimal fields)
     if (req.query.metaOnly === '1') {
-      const metaTests = await Test.find({})
+      const metaTests = await Test.find({ createdBy: { $in: staffIds } })
         .select('_id subjects chapters topics subject unit questionBankId')
         .populate('questionBankId', 'title')
         .lean();
       return res.json({ success: true, data: metaTests });
     }
 
-    const query = {};
+    const query = { createdBy: { $in: staffIds } };
 
     if (req.query.search) query.title = { $regex: req.query.search, $options: 'i' };
     if (req.query.status) query.status = req.query.status;

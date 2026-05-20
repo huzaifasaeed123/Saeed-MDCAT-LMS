@@ -11,7 +11,26 @@ import {
   FiDatabase, FiPlus, FiEdit2, FiTrash2, FiUpload,
   FiLayers, FiCheckSquare, FiSearch, FiEye, FiEyeOff,
   FiGrid, FiList, FiX, FiLoader, FiArrowRight,
+  FiGlobe, FiShield, FiFileText,
 } from 'react-icons/fi';
+
+// Tiny inline chip used on cards + rows to surface the QB's visibility.
+// Falls back to 'public' for legacy docs without the field set.
+const VIS_META = {
+  public: { label: 'Public', Icon: FiGlobe,    cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  staff:  { label: 'Staff',  Icon: FiShield,   cls: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' },
+  draft:  { label: 'Draft',  Icon: FiFileText, cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
+};
+const VisibilityChip = ({ visibility }) => {
+  const meta = VIS_META[visibility] || VIS_META.public;
+  const { Icon } = meta;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${meta.cls}`}>
+      <Icon className="w-2.5 h-2.5" />
+      {meta.label}
+    </span>
+  );
+};
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
@@ -36,15 +55,7 @@ const QbCard = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting
         <h3 className="font-display text-base sm:text-lg font-extrabold text-[var(--text-strong)] tracking-[-0.01em] leading-snug line-clamp-2">
           {bank.title}
         </h3>
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex-shrink-0 ${
-            bank.isActive
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-              : 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
-          }`}
-        >
-          {bank.isActive ? 'Active' : 'Inactive'}
-        </span>
+        <VisibilityChip visibility={bank.visibility} />
       </div>
 
       {bank.description && (
@@ -111,16 +122,8 @@ const QbRow = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting 
       <FiDatabase className="w-6 h-6 text-white/90" />
     </div>
     <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2 mb-0.5">
-        <span
-          className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider rounded-full px-1.5 py-0.5 ${
-            bank.isActive
-              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-              : 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
-          }`}
-        >
-          {bank.isActive ? 'Active' : 'Inactive'}
-        </span>
+      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+        <VisibilityChip visibility={bank.visibility} />
       </div>
       <p className="text-sm sm:text-base font-bold text-[var(--text-strong)] line-clamp-1">
         {bank.title}
@@ -179,7 +182,7 @@ const QuestionBankListPage = () => {
   const [deletingId, setDeletingId] = useState(null);
 
   // Frontend filter / sort / view state
-  const [activeVis, setActiveVis] = useState('all'); // 'all' | 'active' | 'inactive'
+  const [visFilter, setVisFilter] = useState('all'); // 'all' | 'public' | 'staff' | 'draft'
   const [sortKey,   setSortKey]   = useState('recent');
   const [view,      setView]      = useState('grid'); // 'grid' | 'list'
 
@@ -213,11 +216,13 @@ const QuestionBankListPage = () => {
     }
   };
 
+  // Treat missing visibility (legacy docs) as 'public' for counting + filtering.
+  const visOf = (b) => b.visibility || 'public';
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = banks;
-    if (activeVis === 'active')   list = list.filter((b) => b.isActive);
-    else if (activeVis === 'inactive') list = list.filter((b) => !b.isActive);
+    if (visFilter !== 'all') list = list.filter((b) => visOf(b) === visFilter);
     if (q) list = list.filter(
       (b) =>
         b.title.toLowerCase().includes(q) ||
@@ -225,13 +230,14 @@ const QuestionBankListPage = () => {
     );
     const cmp = SORT_OPTIONS.find((o) => o.key === sortKey)?.cmp;
     return cmp ? [...list].sort(cmp) : list;
-  }, [banks, activeVis, search, sortKey]);
+  }, [banks, visFilter, search, sortKey]);
 
-  const activeCount   = banks.filter((b) => b.isActive).length;
-  const inactiveCount = banks.length - activeCount;
+  const publicCount = banks.filter((b) => visOf(b) === 'public').length;
+  const staffCount  = banks.filter((b) => visOf(b) === 'staff').length;
+  const draftCount  = banks.filter((b) => visOf(b) === 'draft').length;
   const subtitle = banks.length === 0
     ? 'No question banks yet'
-    : `${banks.length} bank${banks.length === 1 ? '' : 's'} · ${activeCount} active · ${inactiveCount} inactive`;
+    : `${banks.length} bank${banks.length === 1 ? '' : 's'} · ${publicCount} public · ${staffCount} staff · ${draftCount} draft`;
 
   // Memoise so PageHeaderContext doesn't see a fresh JSX object every render
   // (would cause its effect to re-fire → setHeader → infinite re-render loop).
@@ -275,15 +281,16 @@ const QuestionBankListPage = () => {
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="flex items-center gap-1.5 flex-wrap">
           {[
-            { key: 'all',      label: 'All',      count: banks.length },
-            { key: 'active',   label: 'Active',   count: activeCount },
-            { key: 'inactive', label: 'Inactive', count: inactiveCount },
+            { key: 'all',    label: 'All',    count: banks.length },
+            { key: 'public', label: 'Public', count: publicCount },
+            { key: 'staff',  label: 'Staff',  count: staffCount  },
+            { key: 'draft',  label: 'Draft',  count: draftCount  },
           ].map((opt) => {
-            const active = activeVis === opt.key;
+            const active = visFilter === opt.key;
             return (
               <button
                 key={opt.key}
-                onClick={() => setActiveVis(opt.key)}
+                onClick={() => setVisFilter(opt.key)}
                 className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-semibold transition-colors ${
                   active
                     ? 'bg-secondary-600 text-white'
@@ -368,13 +375,13 @@ const QuestionBankListPage = () => {
         <div className="text-center py-20 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)]">
           <FiDatabase className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3" />
           <h3 className="text-sm font-semibold text-[var(--text-muted)] mb-1">
-            {(search || activeVis !== 'all')
+            {(search || visFilter !== 'all')
               ? 'No banks match your filters'
               : 'No question banks yet'}
           </h3>
-          {(search || activeVis !== 'all') ? (
+          {(search || visFilter !== 'all') ? (
             <button
-              onClick={() => { setSearch(''); setActiveVis('all'); }}
+              onClick={() => { setSearch(''); setVisFilter('all'); }}
               className="text-xs text-primary-600 dark:text-primary-300 hover:underline mt-1"
             >
               Clear filters

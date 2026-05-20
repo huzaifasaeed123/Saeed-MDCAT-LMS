@@ -115,6 +115,12 @@ const UserSchema = new mongoose.Schema({
   coursesGrantAll: { type: Boolean, default: false },
   courseAccess:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
 
+  // True iff this account was created by an admin (via "Add User" form or bulk
+  // upload). False for users who registered themselves (email/password or
+  // Google OAuth). Used by the Users page filter and to decide whether the
+  // "default access" preset applies on signup.
+  createdByAdmin: { type: Boolean, default: false, index: true },
+
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -10,6 +10,21 @@ const qbCountsCache              = require('../utils/qbCountsCache');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Translates a user's role into the set of QB visibilities they may see.
+//   admin   → all three (public, staff, draft)
+//   teacher → public + staff
+//   anyone else (student / undefined) → public only
+// Returned as a Mongo $in array so it composes with other filters.
+const allowedVisibilitiesFor = (role) => {
+  if (role === 'admin')   return ['public', 'staff', 'draft'];
+  if (role === 'teacher') return ['public', 'staff'];
+  return ['public'];
+};
+
+// True iff the given user can access a QB with this visibility.
+const canAccessVisibility = (role, visibility) =>
+  allowedVisibilitiesFor(role).includes(visibility || 'public');
+
 const isRealId = (id) =>
   id && mongoose.Types.ObjectId.isValid(id) && !String(id).startsWith('tmp_');
 
@@ -48,9 +63,22 @@ const cleanSubjects = (subjects = []) =>
 // GET /api/question-banks  — list (no subjects for performance)
 exports.getQuestionBanks = async (req, res) => {
   try {
+    // Role gate — students see only public QBs, teachers see public + staff,
+    // admins see all three. Legacy QB docs predate this field and have no
+    // `visibility` set at all; .lean() doesn't apply schema defaults, so we
+    // explicitly include "field missing" alongside the role's allowed set
+    // (every role's allowed set includes 'public', so this is always safe).
+    const allowed = allowedVisibilitiesFor(req.user.role);
+    const visFilter = {
+      $or: [
+        { visibility: { $in: allowed } },
+        { visibility: { $exists: false } },
+      ],
+    };
+
     // .lean() so we can attach totalMcqs as a plain property below without
     // fighting Mongoose's hydrated-document immutability.
-    const qbs = await QuestionBank.find()
+    const qbs = await QuestionBank.find(visFilter)
       .populate('createdBy', 'fullName')
       .select('-subjects')
       .sort({ createdAt: -1 })
@@ -91,6 +119,9 @@ exports.getQuestionBank = async (req, res) => {
   try {
     const qb = await QuestionBank.findById(req.params.id).populate('createdBy', 'fullName');
     if (!qb) return res.status(404).json({ success: false, message: 'Question Bank not found' });
+    if (!canAccessVisibility(req.user.role, qb.visibility)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this Question Bank' });
+    }
     res.json({ success: true, data: qb });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -148,6 +179,13 @@ exports.getMcqCount = async (req, res) => {
     const { id } = req.params;
     const { subjectId, chapterId, topicId } = req.query;
 
+    // Visibility gate — cheap lookup, single field projection.
+    const qbMeta = await QuestionBank.findById(id).select('visibility').lean();
+    if (!qbMeta) return res.status(404).json({ success: false, message: 'Question Bank not found' });
+    if (!canAccessVisibility(req.user.role, qbMeta.visibility)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this Question Bank' });
+    }
+
     const filter = { questionBankId: new mongoose.Types.ObjectId(id) };
     if (topicId)        filter.qbTopicId   = new mongoose.Types.ObjectId(topicId);
     else if (chapterId) filter.qbChapterId = new mongoose.Types.ObjectId(chapterId);
@@ -181,6 +219,13 @@ exports.getUserMcqCounts = async (req, res) => {
     const { id } = req.params;
     const userId  = new mongoose.Types.ObjectId(req.user._id);  // cast: JWT id is a string, aggregate $match needs ObjectId
     const qbOid   = new mongoose.Types.ObjectId(id);
+
+    // Visibility gate
+    const qbMeta = await QuestionBank.findById(id).select('visibility').lean();
+    if (!qbMeta) return res.status(404).json({ success: false, message: 'Question Bank not found' });
+    if (!canAccessVisibility(req.user.role, qbMeta.visibility)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this Question Bank' });
+    }
 
     const toIds = (val) => {
       if (!val) return [];
@@ -322,6 +367,20 @@ exports.generateTest = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'questionBankId and count are required',
+      });
+    }
+
+    // Visibility gate — block generation from a QB the caller can't see.
+    // Cheap field-projected lookup; the existing flow already touches MCQ
+    // collection many times after this so one extra fetch is negligible.
+    const qbMeta = await QuestionBank.findById(questionBankId).select('visibility').lean();
+    if (!qbMeta) {
+      return res.status(404).json({ success: false, message: 'Question Bank not found' });
+    }
+    if (!canAccessVisibility(req.user.role, qbMeta.visibility)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have access to this Question Bank',
       });
     }
 

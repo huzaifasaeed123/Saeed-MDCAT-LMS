@@ -2,6 +2,7 @@ const User    = require('../models/User');
 const XLSX    = require('xlsx');
 const { validationResult } = require('express-validator');
 const dashboardCache = require('../utils/dashboardCache');
+const { buildUserFilter } = require('../utils/userFilter');
 
 // Optional student profile fields shared across createUser / updateUser /
 // updateProfile / register. All are optional + trimmed; empty strings clear
@@ -45,35 +46,8 @@ exports.getUsers = async (req, res) => {
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, parseInt(req.query.limit) || 20);
     const skip   = (page - 1) * limit;
-    const role   = req.query.role;
-    const search = req.query.search?.trim();
 
-    const filter = {};
-    if (role && ['student', 'teacher', 'admin'].includes(role)) {
-      filter.role = role;
-    }
-    if (search) {
-      filter.$or = [
-        { fullName:     { $regex: search, $options: 'i' } },
-        { email:        { $regex: search, $options: 'i' } },
-        { contactNumber:{ $regex: search, $options: 'i' } },
-      ];
-    }
-    // Profile-field filters — empty strings ignored so the UI can send the
-    // current select value without conditionals.
-    const eqIfSet = (key, val) => {
-      if (typeof val === 'string' && val.trim() !== '') filter[key] = val.trim();
-    };
-    const regexIfSet = (key, val) => {
-      if (typeof val === 'string' && val.trim() !== '') {
-        filter[key] = { $regex: val.trim(), $options: 'i' };
-      }
-    };
-    eqIfSet('province',       req.query.province);
-    eqIfSet('studentClass',   req.query.studentClass);
-    eqIfSet('studentStatus',  req.query.studentStatus);
-    regexIfSet('district',    req.query.district);
-    regexIfSet('fscBoard',    req.query.fscBoard);
+    const filter = buildUserFilter(req.query);
 
     const [users, total] = await Promise.all([
       User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
@@ -120,7 +94,11 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
-    const user = await User.create({ fullName, email, contactNumber, password, role, ...profile });
+    const user = await User.create({
+      fullName, email, contactNumber, password, role,
+      createdByAdmin: true,
+      ...profile,
+    });
     // Admin dashboard cache is refreshed manually by admins — see dashboardController.
     res.status(201).json({ success: true, data: user });
   } catch (error) {
@@ -246,7 +224,7 @@ exports.bulkUploadUsers = async (req, res) => {
         continue;
       }
 
-      await User.create({ fullName: name, email, password, contactNumber, role });
+      await User.create({ fullName: name, email, password, contactNumber, role, createdByAdmin: true });
       results.created++;
     }
 

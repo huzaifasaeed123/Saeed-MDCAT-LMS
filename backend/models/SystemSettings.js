@@ -29,6 +29,22 @@ const systemSettingsSchema = new mongoose.Schema({
   // files for the "Protected" notes mode. Never returned to clients; only
   // hasServiceAccountKey + serviceAccountEmail are exposed via the settings API.
   googleServiceAccountKey: { type: String, default: '' },
+
+  // ── Defaults applied on self-signup ──────────────────────────────────────
+  // Used by /auth/register and Google OAuth signup. Admin-created accounts
+  // bypass this (admin enables features explicitly via the access UI). All
+  // feature flags default to false so existing installs keep their current
+  // "deny by default" behaviour until the admin opts in.
+  defaultUserAccess: {
+    featureAccess: {
+      autoTest:  { type: Boolean, default: false },
+      community: { type: Boolean, default: false },
+      videos:    { type: Boolean, default: false },
+      notes:     { type: Boolean, default: false },
+    },
+    coursesGrantAll: { type: Boolean, default: false },
+    courseAccess:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('SystemSettings', systemSettingsSchema);
