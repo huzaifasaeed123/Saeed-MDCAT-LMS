@@ -33,7 +33,7 @@ import { toast } from 'react-toastify';
 import {
   FiChevronLeft, FiChevronRight, FiX, FiCheck, FiSend, FiPause, FiClock,
   FiArrowLeft, FiZap, FiFlag, FiBookmark, FiBarChart2, FiEye, FiGrid,
-  FiBookOpen, FiFileText, FiSun, FiMoon,
+  FiBookOpen, FiFileText, FiSun, FiMoon, FiLogOut,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
@@ -168,6 +168,35 @@ const ReportModal = ({ onSubmit, onClose, submitting }) => {
 };
 
 // ── Submit-confirm Modal ────────────────────────────────────────────────────
+// Themed replacement for the native confirm() that used to fire on exit.
+// Visually mirrors SubmitConfirmModal so the test player has one consistent
+// modal style. The "Exit" button calls the same pause API as the Pause
+// button so the attempt is saved exactly the same way before navigating.
+const ExitConfirmModal = ({ onConfirm, onCancel, exiting }) => (
+  <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div className="bg-[var(--bg-surface)] rounded-2xl shadow-xl w-full max-w-sm p-5 text-center border border-[var(--border)]">
+      <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 flex items-center justify-center">
+        <FiLogOut className="w-6 h-6" />
+      </div>
+      <h3 className="text-lg font-display font-bold text-[var(--text-strong)] mb-1">Exit the test?</h3>
+      <p className="text-sm text-[var(--text-muted)] mb-5">
+        Your progress will be saved so you can resume from Test History.
+      </p>
+      <div className="flex gap-3">
+        <button onClick={onCancel} disabled={exiting} className="btn-ghost flex-1 text-sm py-2 disabled:opacity-50">Cancel</button>
+        <button
+          onClick={onConfirm}
+          disabled={exiting}
+          className="btn-brand flex-1 text-sm py-2"
+        >
+          {exiting && <div className="animate-spin h-4 w-4 rounded-full border-b-2 border-white" />}
+          {exiting ? 'Saving…' : 'Save & exit'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const SubmitConfirmModal = ({ unanswered, onConfirm, onCancel, submitting }) => (
   <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div className="bg-[var(--bg-surface)] rounded-2xl shadow-xl w-full max-w-sm p-5 text-center border border-[var(--border)]">
@@ -399,8 +428,10 @@ const TestPlayerPage = () => {
   const [showReport, setShowReport]                   = useState(false);
   const [reportSubmitting, setReportSubmitting]      = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm]    = useState(false);
+  const [showExitConfirm,   setShowExitConfirm]      = useState(false);
   const [submitting, setSubmitting]                   = useState(false);
   const [pausing, setPausing]                         = useState(false);
+  const [exiting, setExiting]                         = useState(false);
 
   // Wall-clock tracking — used in both tutor and timer modes; ignored in review.
   const playStartRef     = useRef(null);
@@ -702,12 +733,42 @@ const TestPlayerPage = () => {
     if (isReview) {
       navigate(`/student/tests/${testId}/result/${attemptId}`);
     } else {
-      // Confirm before bailing on a live attempt
-      if (confirm('Exit the test? Progress is saved automatically when you pause or submit.')) {
-        navigate(`/student/tests/${testId}`);
-      }
+      // Show themed confirm modal — actual save+navigate is in handleConfirmExit.
+      setShowExitConfirm(true);
     }
   };
+
+  // Save the attempt (same payload as pause) and then navigate away. Using the
+  // exact same /pause endpoint means an exit and a pause produce identical
+  // history entries, so the student can resume from Test History either way.
+  const handleConfirmExit = useCallback(async () => {
+    if (exiting) return;
+    setExiting(true);
+    const answers = attempt?.questionAttempts.map((_, i) => ({
+      questionIndex:   i,
+      selectedOption:  localAnswers[i] ?? null,
+      markedForReview: localMarks[i]   ?? false,
+    })) ?? [];
+    const wallClockSec = playStartRef.current
+      ? Math.floor((Date.now() - playStartRef.current) / 1000)
+      : 0;
+    const timeSpent = attempt?.mode === 'timer' && totalDurationSec !== null
+      ? totalDurationSec - (timeLeft ?? 0)
+      : Math.max(0, baseTimeSpentRef.current + wallClockSec);
+
+    try {
+      await apiClient.put(`/user-tests/${attemptId}/pause`, {
+        answers,
+        currentQuestionIndex: currentIndex,
+        timeSpent,
+      });
+      navigate(`/student/tests/${testId}`);
+    } catch {
+      toast.error('Failed to save progress');
+      setExiting(false);
+      setShowExitConfirm(false);
+    }
+  }, [exiting, attempt, localAnswers, localMarks, attemptId, testId, navigate, currentIndex, totalDurationSec, timeLeft]);
 
   // ── Hooks BEFORE any early return (Rules of Hooks) ─────────────────────
   // Optional chaining makes these safe even before `attempt` loads — the
@@ -1143,6 +1204,13 @@ const TestPlayerPage = () => {
           onConfirm={handleSubmitTest}
           onCancel={() => setShowSubmitConfirm(false)}
           submitting={submitting}
+        />
+      )}
+      {showExitConfirm && (
+        <ExitConfirmModal
+          onConfirm={handleConfirmExit}
+          onCancel={() => setShowExitConfirm(false)}
+          exiting={exiting}
         />
       )}
     </div>
