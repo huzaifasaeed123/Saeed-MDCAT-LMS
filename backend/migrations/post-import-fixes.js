@@ -1,6 +1,6 @@
 // backend/migrations/post-import-fixes.js
 //
-// Three one-off fixes that need to run AFTER the legacy import (or anytime
+// Five one-off fixes that need to run AFTER the legacy import (or anytime
 // you want to recompute these values).
 //
 //   Function 1 — resyncTestClassification()
@@ -28,11 +28,33 @@
 //     known cohort in the filter UI. Idempotent: only touches docs whose
 //     field is missing, so re-runs after new signups are no-ops.
 //
+//   Function 4 — rebuildMcqOptionStats()
+//     Recomputes every MCQ's `statistics.optionsSelections` (A/B/C/D/E
+//     per-letter pick counts + total) by walking every completed
+//     UserTestAttempt. The live updateMcqOptionStats() hook fires on the
+//     completeTest API call — legacy attempts were bulk-inserted past that
+//     hook so their option counters never got populated. This rebuilds the
+//     canonical counter from primary data. Implementation lives in
+//     ./backfill-mcq-stats.js so the standalone script and this fix share
+//     one source of truth.
+//
+//   Function 5 — rebuildAttemptScores()
+//     Recomputes each completed attempt's `score`, `answeredCount`, and
+//     `scorePercentage` from `questionAttempts[].isCorrect / selectedOption`.
+//     The legacy import previously trusted the legacy `correct_count` column
+//     verbatim — that column was sometimes inflated relative to actually
+//     answered questions, producing leaderboard accuracies above 100%. The
+//     questionAttempts array is the source of truth (same flow the live
+//     completeTest controller uses). After this runs, the next leaderboard
+//     job tick (within 10 min) re-aggregates from clean numbers.
+//
 // Usage (run from the backend folder):
-//   node migrations/post-import-fixes.js                  # all three fixes
+//   node migrations/post-import-fixes.js                  # all five fixes
 //   node migrations/post-import-fixes.js --classification # only fix 1
 //   node migrations/post-import-fixes.js --pause          # only fix 2
 //   node migrations/post-import-fixes.js --created-by     # only fix 3
+//   node migrations/post-import-fixes.js --mcq-stats      # only fix 4
+//   node migrations/post-import-fixes.js --scores         # only fix 5
 //
 // Idempotent — safe to re-run as many times as you like. Each fix re-derives
 // the canonical value from primary data and writes it only if it changed.
@@ -45,6 +67,7 @@ const MCQ             = require('../models/McqModel');
 const QuestionBank    = require('../models/QuestionBankModel');
 const UserTestAttempt = require('../models/UserTestAttempt');
 const User            = require('../models/User');
+const { rebuildMcqOptionStats, rebuildAttemptScores } = require('./backfill-mcq-stats');
 
 const BATCH = 500;
 const log   = (...a) => console.log('[fix]', ...a);
@@ -273,12 +296,28 @@ async function backfillCreatedByAdmin() {
     await resyncTestClassification();
   } else if (only === '--created-by') {
     await backfillCreatedByAdmin();
+  } else if (only === '--mcq-stats') {
+    log('Fix 4 — rebuilding MCQ statistics.optionsSelections from attempt history');
+    await rebuildMcqOptionStats();
+  } else if (only === '--scores') {
+    log('Fix 5 — rebuilding attempt scores from questionAttempts');
+    await rebuildAttemptScores();
   } else {
-    // Default: run all three, classification first (so attempt snapshots match
-    // the re-derived Test arrays before the answeredCount pass).
+    // Default: run all five. Order matters here:
+    //   • classification → updates Test arrays + propagates to attempt snapshots
+    //   • paused-answered → fixes in-progress attempts
+    //   • created-by-admin → backfills user flag
+    //   • attempt scores → recomputes score/answered/pct from questionAttempts
+    //     (must run BEFORE leaderboard re-aggregates; the next 10-min job tick
+    //     consumes these clean numbers)
+    //   • mcq-stats → recomputes per-option pick counts
     await resyncTestClassification();
     await backfillPausedAnsweredCount();
     await backfillCreatedByAdmin();
+    log('Fix 5 — rebuilding attempt scores from questionAttempts');
+    await rebuildAttemptScores();
+    log('Fix 4 — rebuilding MCQ statistics.optionsSelections from attempt history');
+    await rebuildMcqOptionStats();
   }
 
   log(`Done in ${Math.round((Date.now() - t0) / 1000)}s`);

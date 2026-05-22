@@ -33,12 +33,23 @@ const referencePdfSchema = new Schema(
   { _id: true }
 );
 
+// Explicit numeric fields instead of Mongoose's `Map` type. The Map worked
+// for storage ($inc/$set wrote correctly), but when this sub-schema was read
+// back via populate, the Map field inside the nested sub-document didn't
+// pass through `flattenMaps`, so the frontend received `optionsSelections`
+// as `{}` and every option's percentage collapsed (only the just-picked one
+// rendered at 100% via the optimistic +1). Plain Number fields serialise
+// over JSON without any of that — and the existing `$inc` / `$set` operations
+// keep working unchanged because they use dotted paths.
 const statisticsSchema = new Schema(
   {
     optionsSelections: {
-      type: Map,
-      of: Number,
-      default: {},
+      A:     { type: Number, default: 0 },
+      B:     { type: Number, default: 0 },
+      C:     { type: Number, default: 0 },
+      D:     { type: Number, default: 0 },
+      E:     { type: Number, default: 0 },
+      total: { type: Number, default: 0 },
     },
     recommendedDifficulty: {
       type: String,

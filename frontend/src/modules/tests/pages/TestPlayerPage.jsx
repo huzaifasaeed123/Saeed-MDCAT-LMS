@@ -1001,8 +1001,16 @@ const TestPlayerPage = () => {
             <div className="mt-3.5 space-y-2">
               {(() => {
                 const stats     = currentMcq?.statistics?.optionsSelections || {};
-                // Map can serialise as object; sum all numeric values to get total.
-                const baseTotal = Object.values(stats).reduce((s, v) => s + (Number(v) || 0), 0);
+                // optionsSelections also carries a 'total' counter alongside
+                // the A/B/C/D/E per-letter counts (bumped server-side on every
+                // completed attempt regardless of selection). Including it in
+                // the denominator silently halves every option's percentage —
+                // visible as bars that don't sum to 100. Restrict the sum to
+                // letter keys so the percentages are "of those who picked an
+                // answer", which is what the UI is trying to communicate.
+                const baseTotal = Object.entries(stats)
+                  .filter(([k]) => /^[A-E]$/.test(k))
+                  .reduce((s, [, v]) => s + (Number(v) || 0), 0);
                 // Tutor: optimistic +1 for the just-picked option so the bar
                 // reflects this attempt without waiting for the DB write.
                 // Review: nothing to add — stats already include this attempt.

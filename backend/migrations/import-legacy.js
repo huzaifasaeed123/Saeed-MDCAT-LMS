@@ -631,8 +631,16 @@ async function importUserGeneratedTests(sqlite, maps) {
 
     // Map legacy status → our status. "ongoing" goes to "abandoned" per plan.
     const status = ({ completed: 'completed', abandoned: 'abandoned', ongoing: 'abandoned' }[s.status] || 'abandoned');
-    const score   = Number(s.correct_count) || 0;
-    const maxS    = mongoMcqIds.length;
+    // ── Score comes from questionAttempts, NOT the legacy correct_count column.
+    // Reason: the legacy correct_count was sometimes higher than the count of
+    // truly answered questions (data corruption in the old portal — a per-row
+    // `correct` flag of true with no recorded option-index). Trusting it gave
+    // some users an accuracy >100% on the leaderboard. The questionAttempts
+    // array is our source of truth: same field the live completeTest controller
+    // uses to compute score for a brand-new attempt today.
+    const score         = questionAttempts.filter((q) => q.isCorrect).length;
+    const answeredCount = questionAttempts.filter((q) => q.selectedOption !== null).length;
+    const maxS          = mongoMcqIds.length;
 
     attempts.push({
       _id:               oid(),
@@ -650,7 +658,7 @@ async function importUserGeneratedTests(sqlite, maps) {
       score,
       maxScore:          maxS,
       scorePercentage:   maxS > 0 ? Math.round((score / maxS) * 1000) / 10 : 0,
-      answeredCount:     questionAttempts.filter((q) => q.selectedOption !== null).length,
+      answeredCount,
       totalTimeSpent:    Number(s.total_time_sec) || 0,
       startTime:         s.started_at ? new Date(s.started_at) : new Date(),
       endTime:           s.ended_at   ? new Date(s.ended_at)   : undefined,
@@ -843,6 +851,18 @@ async function importPostsAndReplies(sqlite, maps) {
   const pr           = await importPostsAndReplies(sqlite, maps);
   stats.posts        = pr.posts;
   stats.replies      = pr.replies;
+
+  // ── Post-import: rebuild MCQ.statistics.optionsSelections ────────────────
+  // The live updateMcqOptionStats() hook only fires when an attempt finishes
+  // through the completeTest API. The Phase 7 bulk insert above bypasses that
+  // hook entirely, so without this step every legacy attempt would silently
+  // produce zero-stats MCQs (the percentage bars in the test player would
+  // sum to less than 100%). Skipped on dry-run since no attempts were written.
+  if (!dryRun) {
+    log('PHASE 8 — Rebuilding MCQ option-selection stats from imported attempts');
+    const { rebuildMcqOptionStats } = require('./backfill-mcq-stats');
+    await rebuildMcqOptionStats();
+  }
 
   const finishedAt = new Date();
   if (!dryRun) {

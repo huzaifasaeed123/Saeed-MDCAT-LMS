@@ -212,7 +212,17 @@ async function recomputeTimeBased(type, cap, windowMs) {
       // answeredCount excludes skipped questions (set by completeTest).
       // $ifNull handles old records written before this field was added.
       totalAttempted: { $sum: { $ifNull: ['$answeredCount', '$maxScore'] } },
-      correctCount:   { $sum: '$score' },
+      // Clamp each attempt's score to its answeredCount before summing.
+      // Legacy imports trusted the legacy DB's correct_count verbatim, which
+      // can exceed the actual answered count (data corruption from the old
+      // portal — you can't be correct on a question you didn't answer).
+      // Without this clamp, correctCount > totalAttempted produces nonsense
+      // accuracies like 9300% on the weekly board.
+      correctCount: {
+        $sum: {
+          $min: ['$score', { $ifNull: ['$answeredCount', '$maxScore'] }],
+        },
+      },
     }},
   ]);
 
@@ -234,7 +244,12 @@ async function recomputeTimeBased(type, cap, windowMs) {
 
   await LeaderboardSnapshot.findOneAndUpdate(
     { type, subjectTitle: null },
-    { entries: buildEntries(top50, userMap), computedAt: new Date(), periodStart },
+    {
+      entries:     buildEntries(top50, userMap),
+      totalRanked: allScored.length,  // strip + percentile read from here
+      computedAt:  new Date(),
+      periodStart,
+    },
     { upsert: true },
   );
   await saveAllUserRanks(allScored, type, null, true);
@@ -258,7 +273,13 @@ async function recomputeMostImproved() {
       _id:            '$user',
       // answeredCount excludes skipped; $ifNull handles pre-migration records
       totalAttempted: { $sum: { $ifNull: ['$answeredCount', '$maxScore'] } },
-      correctCount:   { $sum: '$score' },
+      // Same clamp as recomputeTimeBased — keeps legacy data corruption from
+      // producing correct > answered on a per-attempt basis.
+      correctCount: {
+        $sum: {
+          $min: ['$score', { $ifNull: ['$answeredCount', '$maxScore'] }],
+        },
+      },
     }},
   ];
 
@@ -301,7 +322,12 @@ async function recomputeMostImproved() {
 
   await LeaderboardSnapshot.findOneAndUpdate(
     { type: 'mostimproved', subjectTitle: null },
-    { entries: buildEntries(top50, userMap), computedAt: new Date(), periodStart: currentStart },
+    {
+      entries:     buildEntries(top50, userMap),
+      totalRanked: allScored.length,
+      computedAt:  new Date(),
+      periodStart: currentStart,
+    },
     { upsert: true },
   );
   await saveAllUserRanks(allScored, 'mostimproved', null, true);
@@ -397,7 +423,12 @@ async function recomputeSubjectBoards() {
 
     return LeaderboardSnapshot.findOneAndUpdate(
       { type: 'subject', subjectTitle: title },
-      { entries: buildEntries(top50, userMap), computedAt: new Date(), periodStart: null },
+      {
+        entries:     buildEntries(top50, userMap),
+        totalRanked: allScored.length,
+        computedAt:  new Date(),
+        periodStart: null,
+      },
       { upsert: true },
     );
   });

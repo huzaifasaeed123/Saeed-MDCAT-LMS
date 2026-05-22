@@ -18,12 +18,14 @@ import { getBackendUrl } from '../../../shared/utils/fixImageUrls';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// Tabs carry both a desktop `label` and a `short` mobile label so they fit
+// comfortably without horizontal scroll on narrow screens.
 const TABS = [
-  { key: 'alltime',      label: 'All-Time',      icon: <FiAward       className="w-4 h-4" /> },
-  { key: 'weekly',       label: 'This Week',     icon: <FiZap         className="w-4 h-4" /> },
-  { key: 'monthly',      label: 'This Month',    icon: <FiCalendar    className="w-4 h-4" /> },
-  { key: 'mostimproved', label: 'Most Improved', icon: <FiTrendingUp  className="w-4 h-4" /> },
-  { key: 'subject',      label: 'Subject-Wise',  icon: <FiBook        className="w-4 h-4" /> },
+  { key: 'alltime',      label: 'All-Time',      short: 'All',      icon: <FiAward       className="w-4 h-4" /> },
+  { key: 'weekly',       label: 'This Week',     short: 'Week',     icon: <FiZap         className="w-4 h-4" /> },
+  { key: 'monthly',      label: 'This Month',    short: 'Month',    icon: <FiCalendar    className="w-4 h-4" /> },
+  { key: 'mostimproved', label: 'Most Improved', short: 'Improved', icon: <FiTrendingUp  className="w-4 h-4" /> },
+  { key: 'subject',      label: 'Subject-Wise',  short: 'Subject',  icon: <FiBook        className="w-4 h-4" /> },
 ];
 
 const VOL_CAPS = { alltime: 1000, weekly: 70, monthly: 300, mostimproved: 70, subject: 1000 };
@@ -52,15 +54,23 @@ const resolveUrl = (url) => {
   return url.startsWith('http') ? url : `${getBackendUrl()}${url}`;
 };
 
+// Clamps accuracy to [0, 100]. Defence against any stale snapshot data still
+// floating around with the pre-fix legacy-import corruption (score >
+// answeredCount → accuracy > 100%). Once the next 10-min job run overwrites
+// those snapshots this is a no-op.
+const safeAcc = (acc) => Math.max(0, Math.min(100, Number(acc) || 0));
+
 const accColorClass = (acc) => {
-  if (acc >= 80) return 'bg-emerald-500';
-  if (acc >= 60) return 'bg-primary-500';
+  const a = safeAcc(acc);
+  if (a >= 80) return 'bg-emerald-500';
+  if (a >= 60) return 'bg-primary-500';
   return 'bg-rose-500';
 };
 
 const accTextClass = (acc) => {
-  if (acc >= 80) return 'text-emerald-600 dark:text-emerald-300';
-  if (acc >= 60) return 'text-primary-600 dark:text-primary-300';
+  const a = safeAcc(acc);
+  if (a >= 80) return 'text-emerald-600 dark:text-emerald-300';
+  if (a >= 60) return 'text-primary-600 dark:text-primary-300';
   return 'text-rose-600 dark:text-rose-300';
 };
 
@@ -71,12 +81,15 @@ const ORDINAL = (n) => {
 };
 
 // ── Avatar ───────────────────────────────────────────────────────────────────
+// lg / xl are used by the podium cards and shrink one step on mobile so the
+// non-featured #2 / #3 cells fit comfortably in a 2-col grid without text
+// overflow. Featured #1 stays larger relative to its siblings at every width.
 const Avatar = ({ name, picture, size = 'md', ringClass = '' }) => {
   const szMap = {
     sm: 'w-9 h-9 text-xs',
     md: 'w-11 h-11 text-sm',
-    lg: 'w-16 h-16 text-lg',
-    xl: 'w-20 h-20 text-xl',
+    lg: 'w-12 h-12 text-base sm:w-16 sm:h-16 sm:text-lg',
+    xl: 'w-16 h-16 text-lg sm:w-20 sm:h-20 sm:text-xl',
   };
   const sz     = szMap[size] || szMap.md;
   const letter = name?.charAt(0)?.toUpperCase() || '?';
@@ -139,19 +152,16 @@ const PodiumCard = ({ entry, isMe, featured = false }) => {
     <div
       className={`relative ${p.bg} rounded-2xl border-2 ${p.border} transition-all ${
         featured
-          ? 'p-5 sm:p-6 shadow-xl shadow-amber-500/10 dark:shadow-amber-900/20'
-          : 'p-4 sm:p-5'
+          ? 'p-3 sm:p-6 shadow-xl shadow-amber-500/10 dark:shadow-amber-900/20'
+          : 'p-3 sm:p-5'
       } ${isMe ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-[var(--bg)]' : ''}`}
     >
-      {/* Rank badge in the top-left corner */}
-      <span className={`absolute top-3 left-3 inline-flex items-center justify-center rounded-full font-extrabold ${
-        featured ? 'w-8 h-8 text-sm' : 'w-7 h-7 text-xs'
-      } ${p.accent}`}>
-        {entry.rank}
-      </span>
-
-      <div className={`flex items-center ${featured ? 'gap-4 sm:gap-5' : 'gap-3 sm:gap-4'}`}>
-        <div className="relative">
+      <div className={`flex items-center ${featured ? 'gap-3 sm:gap-5' : 'gap-2.5 sm:gap-4'}`}>
+        {/* Avatar — desktop only. Hidden on mobile across the whole leaderboard
+            (per design) so cards have room for name + score + place pill
+            without truncation. Crown emoji moves inline with the name on
+            mobile so #1's status is still visible at small viewports. */}
+        <div className="relative hidden sm:block">
           {p.crown && (
             <span aria-hidden className={`absolute -top-3 left-1/2 -translate-x-1/2 ${featured ? 'text-3xl' : 'text-2xl'}`}>👑</span>
           )}
@@ -164,48 +174,62 @@ const PodiumCard = ({ entry, isMe, featured = false }) => {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* Rank chip + name + (crown if #1). Inline layout replaces the
+              previous absolute-positioned corner badge, which was overlapping
+              the name on narrow mobile cells when the avatar was hidden. */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className={`inline-flex items-center justify-center rounded-full font-extrabold flex-shrink-0 ${
+              featured ? 'w-7 h-7 text-xs' : 'w-6 h-6 text-[10px]'
+            } ${p.accent}`}>
+              {entry.rank}
+            </span>
+            {p.crown && (
+              <span aria-hidden className="text-lg leading-none sm:hidden">👑</span>
+            )}
             <p className={`font-display font-extrabold text-[var(--text-strong)] truncate ${
-              featured ? 'text-lg sm:text-xl' : 'text-base sm:text-lg'
+              featured ? 'text-base sm:text-xl' : 'text-sm sm:text-lg'
             }`}>
               {entry.fullName}
             </p>
             {isMe && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/50 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/50 px-1.5 sm:px-2 py-0.5 rounded-full">
                 You
               </span>
             )}
           </div>
 
-          {/* Score — featured slightly larger; restrained because the
-              columns are equal-width now and an oversized number was eating
-              the layout. */}
+          {/* Score — featured is only slightly bigger than #2/#3 on mobile
+              so #1's card doesn't tower over the two cards below it. */}
           <div className="flex items-baseline gap-1 mt-1">
             <span className={`font-extrabold text-primary-600 dark:text-primary-300 tabular-nums leading-none ${
-              featured ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'
+              featured ? 'text-2xl sm:text-4xl' : 'text-2xl sm:text-3xl'
             }`}>
               {entry.score}
             </span>
             <span className="text-xs text-[var(--text-faint)] font-medium">pts</span>
           </div>
 
-          {/* Place pill */}
-          <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 mt-1.5 ${p.accent}`}>
+          {/* Place pill — single line on every viewport */}
+          <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 mt-1 sm:mt-1.5 whitespace-nowrap ${p.accent}`}>
             {ORDINAL(entry.rank)} place
           </span>
         </div>
       </div>
 
-      {/* Stats — 2-up (no streak field in the API) */}
-      <div className={`grid grid-cols-2 gap-3 ${featured ? 'mt-5 pt-4' : 'mt-4 pt-3'} border-t border-[var(--border-faint)]`}>
+      {/* Stats — 2-up. Shorter "Solved" label on mobile so it stays on one
+          line in the narrow 2-col cells. */}
+      <div className={`grid grid-cols-2 gap-3 ${featured ? 'mt-3 pt-3 sm:mt-5 sm:pt-4' : 'mt-3 pt-3'} border-t border-[var(--border-faint)]`}>
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">Accuracy</p>
           <p className={`font-extrabold tabular-nums ${accTextClass(entry.accuracy)} ${featured ? 'text-xl' : 'text-base'}`}>
-            {entry.accuracy}%
+            {safeAcc(entry.accuracy)}%
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">MCQs Solved</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+            <span className="sm:hidden">Solved</span>
+            <span className="hidden sm:inline">MCQs Solved</span>
+          </p>
           <p className={`font-extrabold tabular-nums text-[var(--text-strong)] ${featured ? 'text-xl' : 'text-base'}`}>
             {entry.totalAttempted.toLocaleString()}
           </p>
@@ -228,8 +252,12 @@ const PodiumCard = ({ entry, isMe, featured = false }) => {
 // No bottom borders — uses zebra striping at full opacity (not /60) so
 // every other row reads as visually separated on both light and dark
 // surfaces without needing a divider line. Current-user tint always wins.
+// Vertical padding kept tight (py-2.5) so 10+ rows are visible without scroll.
 const RankRow = ({ entry, isMe, showDelta }) => {
-  const accPct = Math.min(100, Math.max(0, entry.accuracy || 0));
+  const accPct = safeAcc(entry.accuracy);
+  // Incorrect should never go negative even if a stale snapshot has
+  // correctCount > totalAttempted; floor at 0 for display safety.
+  const incorrect = Math.max(0, (entry.totalAttempted || 0) - (entry.correctCount || 0));
   return (
     <tr className={`transition-colors ${
       isMe
@@ -237,14 +265,14 @@ const RankRow = ({ entry, isMe, showDelta }) => {
         : 'odd:bg-[var(--bg-surface)] even:bg-[var(--bg-muted)] hover:bg-primary-50 dark:hover:bg-primary-950/30'
     }`}>
       {/* Rank */}
-      <td className="px-4 py-4 text-center">
+      <td className="px-4 py-2 text-center">
         <span className={`text-sm font-extrabold tabular-nums ${isMe ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--text-muted)]'}`}>
           {entry.rank}
         </span>
       </td>
 
       {/* Student — avatar + name (+ "You" badge) */}
-      <td className="px-4 py-4">
+      <td className="px-4 py-2">
         <div className="flex items-center gap-3 min-w-0">
           <Avatar name={entry.fullName} picture={entry.profilePicture} size="sm" />
           <div className="min-w-0">
@@ -263,7 +291,7 @@ const RankRow = ({ entry, isMe, showDelta }) => {
       </td>
 
       {/* Score */}
-      <td className="px-4 py-4 whitespace-nowrap">
+      <td className="px-4 py-2 whitespace-nowrap">
         <span className="text-sm font-extrabold tabular-nums text-primary-600 dark:text-primary-300">
           {entry.score}
         </span>
@@ -271,10 +299,10 @@ const RankRow = ({ entry, isMe, showDelta }) => {
       </td>
 
       {/* Accuracy — with progress bar */}
-      <td className="px-4 py-4">
+      <td className="px-4 py-2">
         <div className="flex items-center gap-2">
           <span className={`text-sm font-bold tabular-nums ${accTextClass(entry.accuracy)} w-10`}>
-            {entry.accuracy}%
+            {safeAcc(entry.accuracy)}%
           </span>
           <div className="hidden sm:block h-1.5 w-24 rounded-full bg-[var(--bg-muted)] overflow-hidden">
             <div
@@ -286,23 +314,23 @@ const RankRow = ({ entry, isMe, showDelta }) => {
       </td>
 
       {/* MCQs solved */}
-      <td className="px-4 py-4 text-sm text-[var(--text)] font-semibold tabular-nums">
+      <td className="px-4 py-2 text-sm text-[var(--text)] font-semibold tabular-nums">
         {entry.totalAttempted.toLocaleString()}
       </td>
 
       {/* Correct — emerald to match the success palette */}
-      <td className="px-4 py-4 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-300">
-        {entry.correctCount.toLocaleString()}
+      <td className="px-4 py-2 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-300">
+        {Math.min(entry.correctCount, entry.totalAttempted).toLocaleString()}
       </td>
 
-      {/* Incorrect — derived from totalAttempted - correctCount */}
-      <td className="px-4 py-4 text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-300">
-        {(entry.totalAttempted - entry.correctCount).toLocaleString()}
+      {/* Incorrect — derived from totalAttempted - correctCount (floored at 0) */}
+      <td className="px-4 py-2 text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-300">
+        {incorrect.toLocaleString()}
       </td>
 
       {/* Δ Rank (only Most Improved) */}
       {showDelta && (
-        <td className="px-4 py-4 text-center text-xs font-bold whitespace-nowrap">
+        <td className="px-4 py-2 text-center text-xs font-bold whitespace-nowrap">
           {entry.delta == null ? (
             <span className="text-[var(--text-faint)]">—</span>
           ) : entry.delta > 0 ? (
@@ -321,6 +349,184 @@ const RankRow = ({ entry, isMe, showDelta }) => {
         </td>
       )}
     </tr>
+  );
+};
+
+// ── Your-rank strip ──────────────────────────────────────────────────────────
+// Renders the requester's own row at the top of the page so they always see
+// their standing without scrolling. Data comes from `data.userRank` which
+// the API already returns alongside the top-50 entries (one indexed read on
+// the backend, no extra round-trip from the client). Hidden when the user
+// has no rank yet (e.g. brand-new student who hasn't completed any test in
+// the active period).
+const MyRankStrip = ({ userRank, totalRanked, showDelta }) => {
+  if (!userRank) return null;
+  const acc       = safeAcc(userRank.accuracy);
+  const correct   = Math.min(userRank.correctCount ?? 0, userRank.totalAttempted ?? 0);
+  const incorrect = Math.max(0, (userRank.totalAttempted ?? 0) - correct);
+  // Only show "of N" when N is actually the population size, not the snapshot
+  // length. If totalRanked < userRank.rank it's clearly stale / wrong (e.g. an
+  // old time-based snapshot that pre-dates the backend setting totalRanked).
+  const showOfCount = totalRanked && totalRanked >= userRank.rank;
+
+  return (
+    <div className="bg-gradient-to-br from-primary-50 to-secondary-50 dark:from-primary-950/40 dark:to-secondary-950/30 border border-primary-200 dark:border-primary-900/50 rounded-2xl overflow-hidden">
+      {/* One grid for both viewports. Mobile = 2 cols → header on row 1 (spans
+          both), 4 stats in a 2×2 block below. Desktop = 5 cols → header on
+          the left, 4 stat cells filling the rest of the row. Explicit borders
+          (instead of divide-*) so we can flip them per breakpoint cleanly. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5">
+        {/* Header — rank + label + (Δ chip on Most Improved) */}
+        <div className="col-span-2 sm:col-span-1 px-4 py-3 sm:px-5 sm:py-3 flex items-center justify-between gap-3 border-b sm:border-b-0 sm:border-r border-primary-200/70 dark:border-primary-900/40">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/60 px-2 py-1 rounded-full flex-shrink-0">
+              You
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)] leading-none mb-1">
+                Your rank
+              </p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl sm:text-3xl font-extrabold tabular-nums text-primary-700 dark:text-primary-200 leading-none">
+                  #{userRank.rank}
+                </span>
+                {showOfCount && (
+                  <span className="text-[11px] text-[var(--text-muted)] truncate">of {totalRanked.toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {showDelta && userRank.delta != null && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)] leading-none mb-1">Δ Week</p>
+              <p className={`text-sm font-extrabold tabular-nums leading-none ${userRank.delta >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
+                {userRank.delta >= 0 ? '▲' : '▼'} {Math.abs(userRank.delta)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Stat tiles. The vertical right-borders only render where needed
+            per viewport so the grid reads as one continuous strip. */}
+        <div className="px-4 py-3 border-r border-primary-200/60 dark:border-primary-900/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">Score</p>
+          <p className="text-base sm:text-lg font-extrabold tabular-nums text-[var(--text-strong)] mt-0.5">
+            {userRank.score}
+            <span className="text-[10px] font-medium text-[var(--text-faint)] ml-1">pts</span>
+          </p>
+        </div>
+
+        <div className="px-4 py-3 sm:border-r border-primary-200/60 dark:border-primary-900/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">Accuracy</p>
+          <p className={`text-base sm:text-lg font-extrabold tabular-nums mt-0.5 ${accTextClass(acc)}`}>{acc}%</p>
+        </div>
+
+        <div className="px-4 py-3 border-t sm:border-t-0 border-r border-primary-200/60 dark:border-primary-900/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">
+            <span className="sm:hidden">Solved</span>
+            <span className="hidden sm:inline">MCQs Solved</span>
+          </p>
+          <p className="text-base sm:text-lg font-extrabold tabular-nums text-[var(--text-strong)] mt-0.5">
+            {(userRank.totalAttempted ?? 0).toLocaleString()}
+          </p>
+        </div>
+
+        <div className="px-4 py-3 border-t sm:border-t-0">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-faint)]">Correct / Wrong</p>
+          <p className="text-base sm:text-lg font-extrabold tabular-nums mt-0.5">
+            <span className="text-emerald-600 dark:text-emerald-300">{correct.toLocaleString()}</span>
+            <span className="text-[var(--text-faint)] mx-1">/</span>
+            <span className="text-rose-600 dark:text-rose-300">{incorrect.toLocaleString()}</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── RankCard (mobile) ────────────────────────────────────────────────────────
+// Card-shaped row used on mobile where the table doesn't fit cleanly. Same
+// data as RankRow, restructured for vertical space: rank pill + identity on
+// the left, stat blocks stacked on the right. The current-user tint always
+// wins so the student can find themselves at a glance.
+const RankCard = ({ entry, isMe, showDelta }) => {
+  const acc       = safeAcc(entry.accuracy);
+  const accPct    = acc;
+  const correct   = Math.min(entry.correctCount, entry.totalAttempted);
+  const incorrect = Math.max(0, (entry.totalAttempted || 0) - (entry.correctCount || 0));
+  return (
+    <div
+      className={`rounded-xl border p-3 transition-colors ${
+        isMe
+          ? 'bg-primary-50 dark:bg-primary-950/30 border-primary-300 dark:border-primary-900/50'
+          : 'bg-[var(--bg-surface)] border-[var(--border)]'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {/* Rank pill — the only identifier; avatar removed for mobile cleanliness */}
+        <span
+          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-extrabold tabular-nums text-sm ${
+            isMe
+              ? 'bg-primary-500 text-white'
+              : 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
+          }`}
+        >
+          {entry.rank}
+        </span>
+
+        {/* Identity — no avatar; gives the name room to breathe */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className={`text-sm font-bold truncate ${isMe ? 'text-primary-700 dark:text-primary-300' : 'text-[var(--text-strong)]'}`}>
+              {entry.fullName}
+            </p>
+            {isMe && (
+              <span className="text-[9px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/50 px-1.5 py-0.5 rounded-full">
+                You
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--text-faint)] mt-0.5">
+            <span className="font-bold text-primary-600 dark:text-primary-300">{entry.score}</span> pts
+            <span className="mx-1.5">·</span>
+            <span className="text-[var(--text-muted)]">{entry.totalAttempted.toLocaleString()} solved</span>
+          </p>
+        </div>
+
+        {/* Δ chip (only Most Improved) — keeps height in check on mobile. */}
+        {showDelta && entry.delta != null && (
+          <div className="flex-shrink-0 text-right">
+            <span className={`inline-flex items-center gap-0.5 text-[11px] font-extrabold ${
+              entry.delta > 0 ? 'text-emerald-600 dark:text-emerald-300'
+              : entry.delta < 0 ? 'text-rose-600 dark:text-rose-300'
+              : 'text-[var(--text-faint)]'
+            }`}>
+              {entry.delta > 0 ? <FiArrowUp className="w-3 h-3" /> : entry.delta < 0 ? <FiArrowDown className="w-3 h-3" /> : <FiMinus className="w-3 h-3" />}
+              {Math.abs(entry.delta)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Accuracy bar + Correct/Wrong inline stats */}
+      <div className="mt-2.5 grid grid-cols-3 gap-2 items-center">
+        <div className="col-span-2 flex items-center gap-2">
+          <span className={`text-xs font-bold tabular-nums w-9 ${accTextClass(acc)}`}>{acc}%</span>
+          <div className="h-1.5 flex-1 rounded-full bg-[var(--bg-muted)] overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${accColorClass(acc)}`}
+              style={{ width: `${accPct}%` }}
+            />
+          </div>
+        </div>
+        <div className="text-right text-[11px] tabular-nums whitespace-nowrap">
+          <span className="text-emerald-600 dark:text-emerald-300 font-bold">{correct.toLocaleString()}</span>
+          <span className="text-[var(--text-faint)] mx-0.5">/</span>
+          <span className="text-rose-600 dark:text-rose-300 font-bold">{incorrect.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -459,27 +665,45 @@ const LeaderboardPage = () => {
 
   return (
     <div className="space-y-5">
-      {/* ── Tabs row (5 only — All-Time / This Week / This Month / Most Improved / Subject-Wise) ── */}
-      <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 no-scrollbar">
-        {TABS.map((tab) => {
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex-shrink-0 ${
-                active
-                  ? 'bg-primary-500 text-white shadow-sm'
-                  : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
-              }`}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          );
-        })}
+      {/* ── Tabs row — segmented-control style ───────────────────────────────
+          MOBILE  : single rounded "track" with 5 equal-flex segments. The
+                    active segment gets the brand fill; the rest are
+                    transparent so the row reads as one cohesive control.
+                    Compact `short` labels keep all 5 visible without scroll.
+          DESKTOP : same shape, fuller labels and a touch more padding. */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-1 sm:p-1.5">
+        <div role="tablist" className="grid grid-cols-5 gap-0.5 sm:gap-1">
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab.key)}
+                className={`group flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-3 py-2 sm:py-2 rounded-xl text-[11px] sm:text-sm font-semibold transition-all min-w-0 ${
+                  active
+                    ? 'bg-primary-500 text-white shadow-sm'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+                }`}
+              >
+                <span className={`flex-shrink-0 ${active ? 'text-white' : 'text-[var(--text-faint)] group-hover:text-[var(--text-muted)]'}`}>
+                  {tab.icon}
+                </span>
+                <span className="truncate">
+                  <span className="sm:hidden">{tab.short}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* ── Subject filter row — only when Subject-Wise tab is active ── */}
+      {/* ── Subject sub-tabs — second-level tabs under "Subject-Wise" ───────
+          MOBILE  : 2-col grid of pill tabs. Wraps gracefully when there are
+                    odd numbers of subjects.
+          DESKTOP : horizontal inline pill row with a label on the left. */}
       {activeTab === 'subject' && (
         <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-3 sm:p-4">
           {subjects.length === 0 ? (
@@ -487,27 +711,39 @@ const LeaderboardPage = () => {
               No subject boards yet. Once students complete tests from a question bank, subject boards will appear here.
             </p>
           ) : (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-faint)] mr-1">
-                <FiBook className="w-3.5 h-3.5" /> Subject
-              </span>
-              {subjects.map((s) => {
-                const active = selectedSubj === s.title;
-                return (
-                  <button
-                    key={s.title}
-                    onClick={() => setSelectedSubj(s.title)}
-                    className={`capitalize text-sm px-3 py-1.5 rounded-xl font-semibold transition-colors flex-shrink-0 ${
-                      active
-                        ? 'bg-secondary-600 text-white'
-                        : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
-                    }`}
-                  >
-                    {s.title}
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {/* Label — always visible, stacks above on mobile */}
+              <div className="flex items-center justify-between gap-2 mb-2 sm:mb-3">
+                <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[var(--text-faint)]">
+                  <FiBook className="w-3.5 h-3.5" /> Subject
+                </span>
+                <span className="text-[10px] font-mono text-[var(--text-faint)]">
+                  {subjects.length} board{subjects.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {/* Pills — 2-col grid on mobile, inline flex on desktop */}
+              <div role="tablist" className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                {subjects.map((s) => {
+                  const active = selectedSubj === s.title;
+                  return (
+                    <button
+                      key={s.title}
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setSelectedSubj(s.title)}
+                      className={`capitalize text-xs sm:text-sm px-3 py-2 sm:py-1.5 rounded-xl font-semibold transition-colors truncate ${
+                        active
+                          ? 'bg-secondary-600 text-white shadow-sm'
+                          : 'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:border-secondary-300 dark:hover:border-secondary-800'
+                      }`}
+                    >
+                      {s.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -528,25 +764,86 @@ const LeaderboardPage = () => {
         </div>
       ) : (
         <>
-          {/* TOP 3 cards — equal width columns. Display order is [2nd · 1st ·
-              3rd] so #1 sits centred on desktop. #1 stands out through
-              styling (gold gradient, crown, bigger score, shadow) — not raw
-              width. Cards stack to full width on mobile. */}
+          {/* Your-rank strip — reads from the already-fetched data.userRank
+              so no extra HTTP / DB cost. Shown above the podium so the user
+              always sees their own standing first. */}
+          <MyRankStrip
+            userRank={data?.userRank}
+            totalRanked={totalRanked}
+            showDelta={showDelta}
+          />
+
+          {/* TOP 3 cards.
+              MOBILE  : #1 as a full-width hero card, then #2 + #3 in a 2-col grid below.
+                        Reads naturally top-to-bottom on a phone instead of stacking the
+                        biggest card in the middle.
+              DESKTOP : 3 equal-width columns rendered as [#2, #1, #3] so #1 sits centred. */}
           {top3.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-stretch">
-              {[top3[1], top3[0], top3[2]].filter(Boolean).map((entry) => (
-                <PodiumCard
-                  key={entry.userId}
-                  entry={entry}
-                  isMe={entry.userId?.toString() === currentUserId}
-                  featured={entry.rank === 1}
-                />
-              ))}
-            </div>
+            <>
+              {/* Mobile podium */}
+              <div className="sm:hidden space-y-3">
+                {top3[0] && (
+                  <PodiumCard
+                    entry={top3[0]}
+                    isMe={top3[0].userId?.toString() === currentUserId}
+                    featured
+                  />
+                )}
+                {(top3[1] || top3[2]) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {top3[1] && (
+                      <PodiumCard
+                        entry={top3[1]}
+                        isMe={top3[1].userId?.toString() === currentUserId}
+                      />
+                    )}
+                    {top3[2] && (
+                      <PodiumCard
+                        entry={top3[2]}
+                        isMe={top3[2].userId?.toString() === currentUserId}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop podium */}
+              <div className="hidden sm:grid sm:grid-cols-3 gap-4 items-stretch">
+                {[top3[1], top3[0], top3[2]].filter(Boolean).map((entry) => (
+                  <PodiumCard
+                    key={entry.userId}
+                    entry={entry}
+                    isMe={entry.userId?.toString() === currentUserId}
+                    featured={entry.rank === 1}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
-          {/* Full table */}
-          <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
+          {/* ── Full ranking list ─────────────────────────────────────────
+              MOBILE  : stacked card list (RankCard). No horizontal scroll.
+              DESKTOP : the original 7-column table (RankRow). */}
+
+          {/* Mobile card list */}
+          <div className="sm:hidden space-y-2">
+            {[...top3, ...rest].map((entry) => (
+              <RankCard
+                key={`m-${entry.userId}`}
+                entry={entry}
+                isMe={entry.userId?.toString() === currentUserId}
+                showDelta={showDelta}
+              />
+            ))}
+            <div className="text-[11px] text-[var(--text-faint)] text-center pt-2 px-2">
+              Showing <strong className="text-[var(--text)]">1–{entries.length}</strong> of{' '}
+              <strong className="text-[var(--text)]">{totalRanked.toLocaleString()}</strong>{' '}
+              student{totalRanked === 1 ? '' : 's'} · Refreshes every 10 min
+            </div>
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -564,7 +861,7 @@ const LeaderboardPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Top-3 also appear in the table for completeness, matching the screenshot. */}
+                  {/* Top-3 also appear in the table for completeness. */}
                   {top3.map((entry) => (
                     <RankRow
                       key={entry.userId}
@@ -585,7 +882,6 @@ const LeaderboardPage = () => {
               </table>
             </div>
 
-            {/* Table footer — count + refresh hint */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-[var(--border)] text-[11px] text-[var(--text-faint)] bg-[var(--bg-muted)]/50">
               <span>
                 Showing <strong className="text-[var(--text)]">1–{entries.length}</strong> of{' '}

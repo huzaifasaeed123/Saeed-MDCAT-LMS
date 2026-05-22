@@ -484,6 +484,14 @@ exports.generateTest = async (req, res) => {
           subject: 1, unit: 1, topic: 1,
           questionBankId: 1, testId: 1,
           qbSubjectId: 1, qbChapterId: 1, qbTopicId: 1,
+          // Needed by the test player to render per-option popularity bars
+          // immediately on the first attempt. Without this, the freshly
+          // returned MCQs have no statistics, baseTotal is 0, and the optimistic
+          // +1 for the just-picked option makes that option show 100% while
+          // every other shows 0% — a "ghost" first-attempt bug that only
+          // resolved itself when the student re-opened the test (the
+          // re-fetch via /user-tests/:attemptId populated the full MCQ doc).
+          statistics: 1,
         }
       : {
           _id: 1,
