@@ -228,8 +228,8 @@ const SubmitConfirmModal = ({ unanswered, onConfirm, onCancel, submitting }) => 
 
 // ── Question Palette (right sidebar) ────────────────────────────────────────
 // Renders the 8-col grid + legend + live stats + jump button.
-// Cell color rules:
-//   - current question      → orange ring (border)
+// Cell color rules (current wins over everything):
+//   - current question      → solid orange fill (primary brand)
 //   - marked for review     → amber fill
 //   - tutor/review: correct → green fill,  incorrect → rose fill
 //   - timer mode: answered  → blue fill,  unattempted → muted bg
@@ -237,8 +237,12 @@ const PaletteCell = ({ qa, index, isCurrent, answered, mode, isReview }) => {
   const reveal = isReview || mode === 'tutor';
   const isMarked = qa.markedForReview;
 
-  let bg = 'bg-[var(--bg-muted)] text-[var(--text-muted)] border-transparent';
-  if (isMarked) {
+  let bg;
+  if (isCurrent) {
+    // Solid brand-orange fill so the active question is the most prominent
+    // cell in the grid — no ambiguity about which one you're on.
+    bg = 'bg-primary-500 text-white border-transparent shadow-sm';
+  } else if (isMarked) {
     bg = 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200 border-transparent';
   } else if (reveal && answered) {
     bg = qa.isCorrect
@@ -247,11 +251,12 @@ const PaletteCell = ({ qa, index, isCurrent, answered, mode, isReview }) => {
   } else if (answered) {
     // timer mode during the test — we don't reveal correctness; just show "answered"
     bg = 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200 border-transparent';
+  } else {
+    bg = 'bg-[var(--bg-muted)] text-[var(--text-muted)] border-transparent';
   }
-  // Current always wins for outline.
-  const ring = isCurrent ? 'ring-2 ring-primary-500 ring-offset-1 ring-offset-[var(--bg-surface)]' : '';
+
   return (
-    <span className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg border flex items-center justify-center text-xs font-bold tabular-nums transition-all ${bg} ${ring}`}>
+    <span className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg border flex items-center justify-center text-xs font-bold tabular-nums transition-all ${bg}`}>
       {index + 1}
     </span>
   );
@@ -337,7 +342,7 @@ const QuestionPalette = ({
 
       {/* Legend */}
       <div className="grid grid-cols-2 gap-2 text-[11px]">
-        <LegendRow swatch="bg-transparent ring-2 ring-primary-500" label="Current" count={1} />
+        <LegendRow swatch="bg-primary-500" label="Current" count={1} />
         {reveal && <LegendRow swatch="bg-emerald-200 dark:bg-emerald-900/60" label="Correct" count={correctCount || 0} />}
         {reveal && <LegendRow swatch="bg-rose-200 dark:bg-rose-900/60" label="Incorrect" count={incorrectCount || 0} />}
         {!reveal && <LegendRow swatch="bg-blue-200 dark:bg-blue-900/60" label="Answered" count={answeredCount} />}
