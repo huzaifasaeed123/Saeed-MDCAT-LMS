@@ -27,6 +27,7 @@ import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 import useAuth from '../../../core/auth/useAuth';
 import { fixImageUrl } from '../../../shared/utils/fixImageUrls';
+import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const formatTime = (seconds) => {
@@ -264,8 +265,22 @@ const Avatar = ({ row, size = 36 }) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-const TestResultPage = () => {
-  const { testId, attemptId } = useParams();
+// Props are optional — direct route entries use useParams, while the
+// Course Player passes `testId` + `attemptId` as props so this page can be
+// rendered inline in the player's main area. `embedded` skips the navbar-
+// header registration (no PageHeaderContext provider in the player layout).
+const TestResultPage = ({
+  testId: propTestId,
+  attemptId: propAttemptId,
+  embedded = false,
+  // When provided, overrides the Retake button's default navigation. The
+  // Course Player passes this so retaking a test stays inside the course
+  // flow instead of redirecting out to /student/tests/:id.
+  onRetake = null,
+} = {}) => {
+  const routeParams = useParams();
+  const testId    = propTestId    || routeParams.testId;
+  const attemptId = propAttemptId || routeParams.attemptId;
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
 
@@ -345,26 +360,48 @@ const TestResultPage = () => {
     requestAnimationFrame(() => window.print());
   };
 
-  const headerAction = useMemo(() => (
-    <div className="hidden md:flex items-center gap-2 no-print">
-      <button onClick={handlePrint} className="btn-ghost text-sm px-3 py-2">
-        <FiDownload className="w-4 h-4" /> Export PDF
-      </button>
-      <button
-        onClick={() => navigate(`/student/tests/${testId}/review/${attemptId}`)}
-        className="btn-ghost text-sm px-3 py-2"
-      >
-        <FiEye className="w-4 h-4" /> Review answers
-      </button>
-      <button
-        onClick={() => navigate(`/student/tests/${testId}`)}
-        className="btn-brand text-sm px-3 py-2"
-      >
-        <FiZap className="w-4 h-4" /> Retake test
-      </button>
-    </div>
+  // Review-button gate — computed inside the useMemo so we don't need
+  // to declare it above the loading early-return. attempt.test holds
+  // the populated Test doc (including the new reviewUnlockAt field).
+  // Test creators (createdBy === me) always bypass the gate so they
+  // can QA their own tests without waiting on their own schedule.
+  const headerAction = useMemo(() => {
+    const meId = currentUser?._id || currentUser?.id;
+    const isCreator = attempt?.test?.createdBy
+      && (attempt.test.createdBy === meId || attempt.test.createdBy?.toString?.() === meId);
+    const ru = attempt?.test?.reviewUnlockAt;
+    const reviewLockedHeader = !isCreator && ru && Date.now() < new Date(ru).getTime();
+    const onReview = () => {
+      if (reviewLockedHeader) {
+        toast.info(`Review opens ${fmtCountdown(ru) || 'soon'} · ${fmtPktDateTime(ru)}`);
+        return;
+      }
+      navigate(`/student/tests/${testId}/review/${attemptId}`);
+    };
+    return (
+      <div className="hidden md:flex items-center gap-2 no-print">
+        <button onClick={handlePrint} className="btn-ghost text-sm px-3 py-2">
+          <FiDownload className="w-4 h-4" /> Export PDF
+        </button>
+        <button
+          onClick={onReview}
+          className={`btn-ghost text-sm px-3 py-2 ${reviewLockedHeader ? 'opacity-50' : ''}`}
+          title={reviewLockedHeader
+            ? `Review opens ${fmtPktDateTime(ru)}`
+            : 'Review your answers'}
+        >
+          <FiEye className="w-4 h-4" /> Review answers
+        </button>
+        <button
+          onClick={() => navigate(`/student/tests/${testId}`)}
+          className="btn-brand text-sm px-3 py-2"
+        >
+          <FiZap className="w-4 h-4" /> Retake test
+        </button>
+      </div>
+    );
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  ), [navigate, testId, attemptId]);
+  }, [navigate, testId, attemptId, attempt?.test?.reviewUnlockAt, attempt?.test?.createdBy, currentUser?._id, currentUser?.id]);
 
   usePageHeader({
     title:    'Test Result',
@@ -390,6 +427,25 @@ const TestResultPage = () => {
     || (typeof attempt.test?.createdBy === 'string'
         && attempt.test.createdBy === (currentUser?._id || currentUser?.id));
   const showLeaderboard = !createdByMe;
+
+  // ── Review-button gating (PKT) ──────────────────────────────────────────
+  // The Test admin can schedule when the "Review answers" button becomes
+  // active for every student (e.g. only after the test window has closed
+  // for the whole class, so answer keys don't leak). When unset (null),
+  // review is available immediately on submit — the existing behaviour.
+  // Test creators / staff always bypass the gate so they can QA their own
+  // tests at any time.
+  const reviewUnlockAt = attempt.test?.reviewUnlockAt || null;
+  const reviewLocked   = !createdByMe
+    && reviewUnlockAt
+    && Date.now() < new Date(reviewUnlockAt).getTime();
+  const handleReviewClick = () => {
+    if (reviewLocked) {
+      toast.info(`Review opens ${fmtCountdown(reviewUnlockAt) || 'soon'} · ${fmtPktDateTime(reviewUnlockAt)}`);
+      return;
+    }
+    navigate(`/student/tests/${testId}/review/${attemptId}`);
+  };
 
   // Hero-only derivations from analytics. The Leaderboard tab pulls its own
   // copy of these fields inside <LeaderboardView /> so the main component
@@ -431,7 +487,18 @@ const TestResultPage = () => {
   return (
     // -mt-2 pulls the content slightly up under the global topbar so the gap
     // doesn't feel too airy. Section spacing also tightened from 5 → 4.
-    <div className="max-w-7xl mx-auto -mt-2">
+    // When embedded inside the Course Player we drop the negative top margin
+    // and full-width cap so the layout sits cleanly inside the player frame.
+    <div className={embedded ? '' : 'max-w-7xl mx-auto -mt-2'}>
+      {/* Inline action row — shown only when embedded, since the page-header
+          slot (where these actions normally live) isn't rendered in the
+          Course Player layout. Mirrors the navbar action JSX 1:1 so the
+          buttons are identical to the standalone page. */}
+      {/* Inline actions removed for embedded mode — the Course Player now
+          owns the Export/Review/Retake buttons in its own top bar so the
+          page-header-vs-body action duplication is gone. The buttons that
+          used to live here moved up next to the breadcrumb in the player. */}
+
       {/* ── Inline print stylesheet ──────────────────────────────────────
           window.print() exports whatever's on the page; we strip the global
           chrome (sidebar, top bar, action buttons, tabs) so the printed
@@ -462,7 +529,11 @@ const TestResultPage = () => {
         <button onClick={handlePrint} className="btn-ghost text-sm px-3 py-2 flex-1">
           <FiDownload className="w-4 h-4" /> PDF
         </button>
-        <button onClick={() => navigate(`/student/tests/${testId}/review/${attemptId}`)} className="btn-ghost text-sm px-3 py-2 flex-1">
+        <button
+          onClick={handleReviewClick}
+          className={`btn-ghost text-sm px-3 py-2 flex-1 ${reviewLocked ? 'opacity-50' : ''}`}
+          title={reviewLocked ? `Review opens ${fmtPktDateTime(reviewUnlockAt)}` : 'Review your answers'}
+        >
           <FiEye className="w-4 h-4" /> Review
         </button>
         <button onClick={() => navigate(`/student/tests/${testId}`)} className="btn-brand text-sm px-3 py-2 flex-1">

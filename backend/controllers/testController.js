@@ -83,7 +83,17 @@ const syncTestClassification = async (testId, providedMcqs) => {
       chapters: [...chapters].filter(Boolean),
       topics:   [...topics].filter(Boolean),
     };
-    await Test.findByIdAndUpdate(testId, result);
+    // Use { new: true } so we get the FRESH Test doc back; we then hand
+    // it straight to the snapshot-cascade helper below so it can sync
+    // testSubjects / testChapters / testTopics on every UserTestAttempt
+    // referencing this Test without a second find.
+    const updated = await Test.findByIdAndUpdate(testId, result, { new: true }).lean();
+    if (updated) {
+      // Fire-and-forget — same pattern used elsewhere; cascade failures
+      // shouldn't break the Test write that just succeeded.
+      syncAttemptSnapshotsForTest(testId, updated).catch((e) =>
+        console.error('Snapshot sync after classification update failed:', e?.message || e));
+    }
     return result;
   } catch (err) {
     console.error('syncTestClassification error:', err);
@@ -92,6 +102,54 @@ const syncTestClassification = async (testId, providedMcqs) => {
 };
 
 exports.syncTestClassification = syncTestClassification;
+
+/**
+ * Cascade snapshot fields from a Test doc down to every UserTestAttempt
+ * that references it. Why: History/Result/Review and a few other lists
+ * read DENORMALISED fields directly off the attempt (testTitle,
+ * testSubjects, testChapters, testTopics, totalQuestions,
+ * testReviewUnlockAt, testCreatorId) so those queries stay join-free
+ * and fast. The trade-off is that those snapshots go stale unless we
+ * push the new Test values whenever the Test mutates.
+ *
+ * Pass the saved Test doc (the common case after `await test.save()` or
+ * findByIdAndUpdate({ new: true })) to avoid the second find. If only
+ * `testId` is available, the helper will fetch it once.
+ *
+ * One updateMany write per Test mutation; bounded by the existing
+ * `{ test: 1 }` index on UserTestAttempt — no read amplification.
+ * Fire-and-forget at the call site: if it fails, the backfill script
+ * already in the repo can rebuild from canonical Test docs.
+ *
+ * NOTE: We DON'T cascade questionBankId / questionBankTitle. That
+ * linkage is captured at attempt-start time and shouldn't retroactively
+ * swap banks under the student.
+ */
+const syncAttemptSnapshotsForTest = async (testId, testDoc) => {
+  try {
+    const t = testDoc || await Test.findById(testId).lean();
+    if (!t) return null;
+    return await UserTestAttempt.updateMany(
+      { test: testId },
+      {
+        $set: {
+          testTitle:          t.title || '',
+          testSubjects:       Array.isArray(t.subjects) ? t.subjects.slice() : [],
+          testChapters:       Array.isArray(t.chapters) ? t.chapters.slice() : [],
+          testTopics:         Array.isArray(t.topics)   ? t.topics.slice()   : [],
+          totalQuestions:     Array.isArray(t.mcqs)     ? t.mcqs.length      : 0,
+          testReviewUnlockAt: t.reviewUnlockAt || null,
+          testCreatorId:      t.createdBy || null,
+        },
+      },
+    );
+  } catch (err) {
+    console.error('syncAttemptSnapshotsForTest error:', err?.message || err);
+    return null;
+  }
+};
+
+exports.syncAttemptSnapshotsForTest = syncAttemptSnapshotsForTest;
 
 // Create new test
 exports.createTest = async (req, res) => {
@@ -245,7 +303,13 @@ exports.updateTest = async (req, res) => {
         runValidators: true
       }
     );
-    
+
+    // Cascade snapshot fields → every UserTestAttempt for this Test.
+    // Fire-and-forget; the helper logs its own errors and the backfill
+    // script can rebuild snapshots if anything ever slips through.
+    syncAttemptSnapshotsForTest(updatedTest._id, updatedTest).catch((e) =>
+      console.error('Snapshot sync after Test update failed:', e?.message || e));
+
     res.status(200).json({
       success: true,
       data: updatedTest
@@ -316,7 +380,12 @@ exports.addMcqsToTest = async (req, res) => {
     test.totalQuestions = test.mcqs.length;
     await test.save();
 
-    // Async — fire and forget
+    // Async — fire and forget.
+    // `syncTestClassification` already cascades snapshots after writing
+    // the new subjects/chapters/topics, which on the same call also
+    // refreshes `totalQuestions` from the fresh Test doc. So one
+    // pipeline keeps subject sets AND question count consistent on
+    // every UserTestAttempt for this test.
     syncTestClassification(test._id).catch(console.error);
 
     res.json({ success: true, added: toAdd.length, totalQuestions: test.totalQuestions });

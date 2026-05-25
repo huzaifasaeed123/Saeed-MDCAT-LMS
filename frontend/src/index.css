@@ -98,6 +98,13 @@ body {
   .border-token  { border-color: var(--border); }
   .text-muted    { color: var(--text-muted); }
   .text-faint    { color: var(--text-faint); }
+
+  /* Hide the native scrollbar on overflow-* containers while still allowing
+     scroll. Pages use this for horizontally-scrolling tab rails and chip
+     scrollers where the visual scrollbar would clutter the design. The
+     class name matches the Tailwind plugin convention so it's drop-in. */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 /* ─── Component classes ────────────────────────────────────────────────── */

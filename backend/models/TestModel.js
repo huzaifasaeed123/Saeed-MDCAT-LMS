@@ -55,6 +55,28 @@ const testSchema = new Schema(
 
     // Optional course linkage
     courseId: { type: Schema.Types.ObjectId, ref: 'Course' },
+
+    // ── Availability scheduling ──────────────────────────────────────────
+    // Mirrors the same pattern used on course resources so the frontend
+    // can resolve status with the SAME helper for both.
+    //   'public'      → always open (default)
+    //   'unlock_date' → opens at unlockAt, no close
+    //   'window'      → opens at unlockAt, closes at lockAt
+    // All dates are stored UTC; admins set them in PKT via the form.
+    availability: {
+      type: String,
+      enum: ['public', 'unlock_date', 'window'],
+      default: 'public',
+    },
+    unlockAt: { type: Date, default: null },
+    lockAt:   { type: Date, default: null },
+
+    // ── Review unlock ────────────────────────────────────────────────────
+    // Absolute date (PKT, stored UTC) after which the "Review answers"
+    // button becomes active for any completed attempt. null = always
+    // available immediately after a student submits. Display + gating
+    // happens 100% on the frontend from this field; no extra API needed.
+    reviewUnlockAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

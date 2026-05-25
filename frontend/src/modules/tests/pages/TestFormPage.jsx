@@ -9,9 +9,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiArrowLeft, FiSave } from 'react-icons/fi';
+import { FiArrowLeft, FiSave, FiClock, FiEye } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
+import { toPktInputValue, pktInputToUtcIso } from '../../../shared/utils/pktDate';
 
 const TestFormPage = () => {
   const navigate = useNavigate();
@@ -33,6 +34,21 @@ const TestFormPage = () => {
     // Allowed test modes. Both = student picks at start (default). Pick a
     // single mode to lock the test to that mode.
     allowedModes: ['tutor', 'timer'],
+
+    // ── Availability scheduling (PKT) ───────────────────────────────────
+    // 'public'      → always open
+    // 'unlock_date' → opens at unlockAt
+    // 'window'      → opens at unlockAt, closes at lockAt
+    // unlockAt/lockAt are stored as UTC ISO strings; the form inputs
+    // accept PKT wall-clock values and convert in both directions.
+    availability: 'public',
+    unlockAt: '',
+    lockAt:   '',
+
+    // Absolute PKT date/time after which "Review answers" becomes active
+    // for any completed attempt of this test. Empty string = always
+    // immediately available (the default).
+    reviewUnlockAt: '',
   });
 
   useEffect(() => {
@@ -55,6 +71,10 @@ const TestFormPage = () => {
           allowedModes: Array.isArray(d.allowedModes) && d.allowedModes.length > 0
             ? d.allowedModes
             : ['tutor', 'timer'],
+          availability:   d.availability || 'public',
+          unlockAt:       d.unlockAt || '',
+          lockAt:         d.lockAt   || '',
+          reviewUnlockAt: d.reviewUnlockAt || '',
         });
       }
     } catch {
@@ -311,6 +331,123 @@ const TestFormPage = () => {
               placeholder="Instructions shown to students before the test…"
               className={`${inputCls} resize-none`}
             />
+          </div>
+        </div>
+
+        {/* ── Availability & Review scheduling card ─────────────────────
+            All times here are Pakistan Standard Time (PKT, +05:00). The
+            UI accepts wall-clock PKT values and stores them as proper UTC
+            ISO strings on the backend, so the schedule is consistent
+            regardless of where the server or the user is. */}
+        <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6 space-y-5">
+          <div>
+            <h2 className="font-display text-base font-bold text-[var(--text-strong)]">Availability & Review</h2>
+            <p className="text-xs text-[var(--text-faint)] mt-1">All times are interpreted as Pakistan Standard Time (PKT).</p>
+          </div>
+
+          {/* Availability mode */}
+          <div>
+            <label className={`${labelCls} inline-flex items-center gap-2`}>
+              <FiClock className="w-4 h-4 text-primary-500" /> Availability
+            </label>
+            <select
+              name="availability"
+              value={formData.availability}
+              onChange={(e) => setFormData((p) => ({
+                ...p,
+                availability: e.target.value,
+                // Reset window dates when leaving window mode so stale
+                // values don't sneak back in if admin toggles modes around.
+                ...(e.target.value === 'public'      ? { unlockAt: '', lockAt: '' } : {}),
+                ...(e.target.value === 'unlock_date' ? { lockAt: '' }              : {}),
+              }))}
+              className={inputCls}
+            >
+              <option value="public">Always public — open to everyone, any time</option>
+              <option value="unlock_date">Open at a specific date &amp; time</option>
+              <option value="window">Time window — opens, then closes</option>
+            </select>
+            <p className="text-xs text-[var(--text-faint)] mt-1.5">
+              {formData.availability === 'public' && 'Students can start this test whenever they want.'}
+              {formData.availability === 'unlock_date' && 'Students can\'t start the test before the Opens-at date below.'}
+              {formData.availability === 'window' && 'Students can start the test only between the two dates below. In-progress attempts are not interrupted when the window closes.'}
+            </p>
+          </div>
+
+          {/* Window date inputs — visible for unlock_date & window modes */}
+          {(formData.availability === 'unlock_date' || formData.availability === 'window') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Opens at <span className="text-[var(--text-faint)] font-normal text-xs">(PKT)</span></label>
+                <input
+                  type="datetime-local"
+                  value={toPktInputValue(formData.unlockAt)}
+                  onChange={(e) => setFormData((p) => ({
+                    ...p,
+                    unlockAt: pktInputToUtcIso(e.target.value),
+                  }))}
+                  className={inputCls}
+                />
+              </div>
+              {formData.availability === 'window' && (
+                <div>
+                  <label className={labelCls}>Closes at <span className="text-[var(--text-faint)] font-normal text-xs">(PKT)</span></label>
+                  <input
+                    type="datetime-local"
+                    value={toPktInputValue(formData.lockAt)}
+                    onChange={(e) => setFormData((p) => ({
+                      ...p,
+                      lockAt: pktInputToUtcIso(e.target.value),
+                    }))}
+                    className={inputCls}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Review unlock */}
+          <div className="pt-2 border-t border-[var(--border-faint)]">
+            <label className={`${labelCls} inline-flex items-center gap-2`}>
+              <FiEye className="w-4 h-4 text-primary-500" /> Review unlock time
+            </label>
+            <div className="flex items-center gap-3">
+              {/* Toggle: always-immediate vs scheduled */}
+              <button
+                type="button"
+                onClick={() => setFormData((p) => ({
+                  ...p,
+                  reviewUnlockAt: p.reviewUnlockAt ? '' : pktInputToUtcIso(toPktInputValue(new Date().toISOString())),
+                }))}
+                className={`relative inline-block w-11 h-6 rounded-full transition-colors ${
+                  formData.reviewUnlockAt ? 'bg-emerald-500' : 'bg-[var(--border)]'
+                }`}
+                title="Toggle scheduled review unlock"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm ${
+                  formData.reviewUnlockAt ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </button>
+              <span className="text-sm text-[var(--text)]">
+                {formData.reviewUnlockAt
+                  ? 'Review unlocks at a scheduled PKT time'
+                  : 'Review available immediately after submission'}
+              </span>
+            </div>
+            {formData.reviewUnlockAt && (
+              <input
+                type="datetime-local"
+                value={toPktInputValue(formData.reviewUnlockAt)}
+                onChange={(e) => setFormData((p) => ({
+                  ...p,
+                  reviewUnlockAt: pktInputToUtcIso(e.target.value),
+                }))}
+                className={`${inputCls} mt-3 max-w-sm`}
+              />
+            )}
+            <p className="text-xs text-[var(--text-faint)] mt-1.5">
+              When set, the "Review answers" button stays disabled for every student until this time has passed. Useful for tests where you don't want answer keys leaking until the window has closed for everyone.
+            </p>
           </div>
         </div>
 

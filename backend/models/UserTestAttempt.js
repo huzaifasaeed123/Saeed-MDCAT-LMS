@@ -73,6 +73,24 @@ const userTestAttemptSchema = new Schema({
   questionBankTitle: { type: String, default: '' },
   totalQuestions:    { type: Number, default: 0 },
 
+  // Review-unlock snapshot. Captured at startTest time so the History page
+  // and any other attempt-list view can gate the "Review answers" button
+  // without joining back to Test for every row.
+  //
+  // testReviewUnlockAt — null = review immediately available; a UTC Date
+  //   means "review locked until then". Resolved frontend-side against
+  //   `Date.now()` plus the user's identity (creators bypass).
+  // testCreatorId — the Test.createdBy at attempt-start. Lets the frontend
+  //   recognise the test creator (who always bypasses the lock) without
+  //   re-fetching the Test doc.
+  //
+  // Legacy attempts written before these fields were added will read as
+  // null / undefined — which the frontend treats as "review always
+  // available", matching the pre-feature behaviour. The optional
+  // backfill script can populate them for historical accuracy.
+  testReviewUnlockAt: { type: Date, default: null },
+  testCreatorId:      { type: Schema.Types.ObjectId, ref: 'User', default: null },
+
   mode: {
     type: String,
     enum: ['tutor', 'timer'],

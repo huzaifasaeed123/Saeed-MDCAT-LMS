@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -7,6 +7,8 @@ import {
   FiZap, FiLock,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
+import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
+import { resolveScheduleStatus, fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 // Speed multipliers — 1x = 60s/Q, 1.5x = 40s/Q, 2x = 30s/Q
 const TIME_MULTIPLIERS = [
@@ -15,8 +17,14 @@ const TIME_MULTIPLIERS = [
   { label: 'Very Fast', value: 2.0, sub: '2× · 30s / question',  secsPerQ: 30 },
 ];
 
-const TestStartPage = () => {
-  const { testId } = useParams();
+// Props are optional — when rendered directly as a route, `testId` comes
+// from useParams. When the Course Player embeds this component to show a
+// test resource inline, the parent passes `testId` (and optionally
+// `returnTo`) as props so the page slots into the player's chrome without
+// any duplicate top-level toggles. Component logic is otherwise identical.
+const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) => {
+  const routeParams = useParams();
+  const testId = propTestId || routeParams.testId;
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -74,6 +82,51 @@ const TestStartPage = () => {
       .finally(() => setLoading(false));
   }, [testId, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Page header (standalone route only) ───────────────────────────────────
+  // Rules of Hooks: this MUST sit before any early return (the loading-state
+  // spinner below) so the hook order stays identical between the loading and
+  // loaded renders. Push title + Back into the dashboard's top navbar so the
+  // body can start straight with the stat tiles. When `embedded` is true the
+  // parent (Course Player) already owns the top bar — usePageHeader safely
+  // no-ops when no PageHeaderProvider is in the tree.
+  const headerAction = useMemo(() => (
+    <button
+      type="button"
+      onClick={() => navigate(-1)}
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
+    >
+      <FiArrowLeft className="w-4 h-4" /> Back
+    </button>
+  ), [navigate]);
+  usePageHeader({
+    title:    test?.title || 'Test',
+    subtitle: test?.description || '',
+    action:   headerAction,
+  });
+
+  // ── Availability status (PKT) ──────────────────────────────────────────
+  // MUST live above the loading early-return below — same Rules-of-Hooks
+  // reason as `headerAction`. The triple is safely undefined while
+  // `test` is still loading; `resolveScheduleStatus` handles that
+  // (treats missing `availability` as 'available'), so we just compute
+  // it eagerly and ignore the result until the loaded render uses it.
+  //
+  // The setNowTick ticker re-evaluates the status every 60s so a locked
+  // test flips to "available" without a manual page refresh once the
+  // unlock time passes.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const scheduleStatus = useMemo(() => resolveScheduleStatus({
+    availability: test?.availability,
+    unlockAt:     test?.unlockAt,
+    lockAt:       test?.lockAt,
+  }), [test?.availability, test?.unlockAt, test?.lockAt]);
+  const isLocked = scheduleStatus === 'locked';
+  const isClosed = scheduleStatus === 'closed';
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -116,11 +169,30 @@ const TestStartPage = () => {
   const limitReached      = !isUnlimited && attemptsRemaining === 0 && !existingAttempt;
 
   // Start is disabled when: starting / no questions / out of attempts / mode
-  // not picked yet (multi-mode + fresh attempt).
+  // not picked yet (multi-mode + fresh attempt) / test not in its window.
+  // A resume of an in-progress attempt is still allowed even if the window
+  // has since closed — matches the backend rule + the product decision.
+  // (isLocked / isClosed come from the hooks above the loading early-return.)
   const startDisabled = starting
     || totalQuestions === 0
     || limitReached
-    || (!modeLocked && !existingAttempt && !selectedMode);
+    || (!modeLocked && !existingAttempt && !selectedMode)
+    || ((isLocked || isClosed) && !existingAttempt);
+
+  // When embedded inside the Course Player, `returnTo` carries the URL we
+  // should land on after the student submits / pauses / exits the player.
+  // Resolve(attemptId) is run AFTER we know the new attempt id so the course
+  // route can deep-link to the result (?attempt=<id>).
+  const buildPlayUrl = (attemptId) => {
+    const base = `/student/tests/${testId}/play?attemptId=${attemptId}`;
+    if (!returnTo) return base;
+    // The caller may pass a template containing {attemptId} so it can encode
+    // the new id into its own returnTo. If not present, append as ?attempt=.
+    const resolvedReturn = returnTo.includes('{attemptId}')
+      ? returnTo.replace('{attemptId}', attemptId)
+      : `${returnTo}${returnTo.includes('?') ? '&' : '?'}attempt=${attemptId}`;
+    return `${base}&returnTo=${encodeURIComponent(resolvedReturn)}`;
+  };
 
   const handleStart = async () => {
     if (!selectedMode) {
@@ -135,10 +207,7 @@ const TestStartPage = () => {
         totalDurationSec: calculatedDurationSec || null,
       });
       const attempt = res.data.data;
-      navigate(
-        `/student/tests/${testId}/play?attemptId=${attempt._id}`,
-        { state: { attemptData: attempt } }
-      );
+      navigate(buildPlayUrl(attempt._id), { state: { attemptData: attempt } });
     } catch (err) {
       if (err.response?.data?.attemptLimitReached) {
         setCompletedAttempts(err.response.data.usedAttempts ?? completedAttempts);
@@ -155,10 +224,7 @@ const TestStartPage = () => {
     try {
       const res = await apiClient.post('/user-tests/start', { testId, mode: existingAttempt.mode });
       const attempt = res.data.data;
-      navigate(
-        `/student/tests/${testId}/play?attemptId=${attempt._id}`,
-        { state: { attemptData: attempt } }
-      );
+      navigate(buildPlayUrl(attempt._id), { state: { attemptData: attempt } });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to resume test');
     } finally {
@@ -172,50 +238,41 @@ const TestStartPage = () => {
     Hard:   'text-rose-700    bg-rose-50    dark:text-rose-300    dark:bg-rose-950/40',
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5">
-      {/* Back link */}
-      <button
-        onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-      >
-        <FiArrowLeft className="w-4 h-4" /> Back
-      </button>
+  // Difficulty + mode-locked chips. Surfaced inline above the stat tiles in
+  // BOTH modes — standalone (navbar carries title only) and embedded (course
+  // player top bar carries title only). Keeps the contextual signal visible
+  // without re-rendering the test title in two places.
+  const heroChips = (
+    <div className="flex flex-wrap items-center gap-2">
+      {test?.difficultyLevel && (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${diffTone[test.difficultyLevel] || diffTone.Medium}`}>
+          <FiZap className="w-3 h-3" /> {test.difficultyLevel}
+        </span>
+      )}
+      {modeLocked && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
+          <FiLock className="w-3 h-3" /> {lockedMode === 'tutor' ? 'Tutor only' : 'Timed only'}
+        </span>
+      )}
+    </div>
+  );
 
-      {/* HERO */}
+  return (
+    <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto px-3 sm:px-6 space-y-4'}>
+      {/* HERO — title was moved to the navbar (or course-player top bar), so
+          this section now starts straight with the gradient strip and stat
+          tiles. Tighter padding pulls the content closer to the top. */}
       <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
         {/* Brand gradient accent strip */}
         <div className="h-1.5 bg-brand-gradient" />
 
-        <div className="p-5 sm:p-7 lg:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                {test?.difficultyLevel && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${diffTone[test.difficultyLevel] || diffTone.Medium}`}>
-                    <FiZap className="w-3 h-3" /> {test.difficultyLevel}
-                  </span>
-                )}
-                {modeLocked && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300">
-                    <FiLock className="w-3 h-3" /> {lockedMode === 'tutor' ? 'Tutor only' : 'Timed only'}
-                  </span>
-                )}
-              </div>
-              <h1 className="font-display text-2xl sm:text-3xl lg:text-[34px] font-bold text-[var(--text-strong)] leading-tight">
-                {test?.title || 'Untitled Test'}
-              </h1>
-              {test?.description && (
-                <p className="text-[var(--text-muted)] mt-2 text-sm sm:text-base max-w-3xl">
-                  {test.description}
-                </p>
-              )}
-            </div>
-
-          </div>
+        <div className="p-4 sm:p-5">
+          {(test?.difficultyLevel || modeLocked) && (
+            <div className="mb-4">{heroChips}</div>
+          )}
 
           {/* STAT TILES */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatTile Icon={FiList} label="Questions" value={totalQuestions || '—'} tone="orange" />
             <StatTile
               Icon={FiClock}
@@ -259,6 +316,49 @@ const TestStartPage = () => {
           >
             Resume attempt
           </button>
+        </div>
+      )}
+
+      {/* AVAILABILITY BANNER — only when the test isn't currently open.
+            • locked → not unlocked yet, show the unlock time + countdown.
+            • closed → window has passed, show the close time. New attempts
+              are blocked but past results / review (if also unlocked) stay
+              accessible. */}
+      {(isLocked || isClosed) && (
+        <div className={`rounded-2xl p-4 sm:p-5 flex items-start gap-3 ${
+          isLocked
+            ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60'
+            : 'bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60'
+        }`}>
+          <div className={`w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ${
+            isLocked
+              ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300'
+              : 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300'
+          }`}>
+            <FiLock className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            {isLocked ? (
+              <>
+                <p className="font-semibold text-amber-900 dark:text-amber-200">
+                  This test isn't open yet
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-0.5">
+                  Opens {fmtCountdown(test?.unlockAt) || 'shortly'} · {fmtPktDateTime(test?.unlockAt)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-rose-900 dark:text-rose-200">
+                  This test is closed
+                </p>
+                <p className="text-sm text-rose-700 dark:text-rose-300 mt-0.5">
+                  The window closed on {fmtPktDateTime(test?.lockAt)}. No new attempts can be started.
+                  {existingAttempt && ' Your in-progress attempt can still be resumed.'}
+                </p>
+              </>
+            )}
+          </div>
         </div>
       )}
 

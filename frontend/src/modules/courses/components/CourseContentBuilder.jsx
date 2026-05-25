@@ -186,33 +186,106 @@ const ResourceItem = ({ resource, onChange, onDelete, availableTests, dragListen
           </div>
         )}
 
-        {resource.type === 'lecture' && (
-          <div className="space-y-1.5">
-            <input type="url"
-              placeholder="Google Drive video share link  (drive.google.com/file/d/…)"
-              value={resource.driveFileId
-                ? `https://drive.google.com/file/d/${resource.driveFileId}/view`
-                : (resource._driveLectureInput || '')}
-              onChange={(e) => {
-                const raw = e.target.value;
-                onChange({ ...resource, driveFileId: extractDriveFileId(raw), _driveLectureInput: raw });
-              }}
-              className="w-full border border-red-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-red-400 focus:outline-none"
-            />
-            {resource.driveFileId ? (
+        {resource.type === 'lecture' && (() => {
+          // Single source-of-truth for the lecture's video source. We infer
+          // the active source from which field is populated; if neither
+          // (a brand-new lecture), default to YouTube as the more common
+          // case. The dropdown swaps between two compact input groups so
+          // the form never shows both at once — cleaner mental model than
+          // "fill whichever you have".
+          const source = resource.driveFileId ? 'drive' : (resource.youtubeUrl ? 'youtube' : (resource._lectureSource || 'youtube'));
+          const setSource = (next) => {
+            // Switching source clears the OTHER source's fields so only one
+            // is persisted at a time. We stash the picked source on the
+            // resource itself (under a transient `_lectureSource` key) so
+            // the dropdown sticks even when both fields are empty.
+            if (next === 'drive') {
+              onChange({ ...resource, youtubeUrl: '', _lectureSource: 'drive' });
+            } else {
+              onChange({
+                ...resource,
+                driveFileId: '',
+                _driveLectureInput: '',
+                _lectureSource: 'youtube',
+              });
+            }
+          };
+          return (
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-green-600 font-medium">✓ File ID saved</span>
-                <a href={`https://drive.google.com/file/d/${resource.driveFileId}/preview`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline">
-                  <FiExternalLink className="w-3 h-3" /> Preview
-                </a>
+                <label className="text-[10px] uppercase tracking-wider font-bold text-gray-500">Source</label>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  className="border border-red-300 rounded px-2 py-1 text-xs bg-white font-medium"
+                >
+                  <option value="youtube">YouTube link</option>
+                  <option value="drive">Google Drive video</option>
+                </select>
               </div>
-            ) : (
-              <p className="text-xs text-gray-400">Paste a Google Drive share link to any video file</p>
-            )}
-          </div>
-        )}
+
+              {source === 'drive' ? (
+                <div className="space-y-1">
+                  <input type="url"
+                    placeholder="Google Drive video share link  (drive.google.com/file/d/…)"
+                    value={resource.driveFileId
+                      ? `https://drive.google.com/file/d/${resource.driveFileId}/view`
+                      : (resource._driveLectureInput || '')}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      onChange({ ...resource, driveFileId: extractDriveFileId(raw), _driveLectureInput: raw, _lectureSource: 'drive' });
+                    }}
+                    className="w-full border border-red-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-red-400 focus:outline-none"
+                  />
+                  {resource.driveFileId ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-green-600 font-medium">✓ File ID saved</span>
+                      <a href={`https://drive.google.com/file/d/${resource.driveFileId}/preview`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline">
+                        <FiExternalLink className="w-3 h-3" /> Preview
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-400">Paste a Google Drive share link to any video file</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <input type="url"
+                    placeholder="YouTube link  (youtube.com/watch?v=… or youtu.be/…)"
+                    value={resource.youtubeUrl || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      onChange({ ...resource, youtubeUrl: raw, _lectureSource: 'youtube' });
+                    }}
+                    className="w-full border border-red-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-red-400 focus:outline-none"
+                  />
+                  {(() => {
+                    const m = (resource.youtubeUrl || '').match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
+                    const vid = m ? m[1] : null;
+                    if (resource.youtubeUrl && !vid) {
+                      return <p className="text-[11px] text-amber-600 font-medium">Could not detect a YouTube video ID — please paste the full link.</p>;
+                    }
+                    if (vid) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-green-600 font-medium">✓ Video ID: {vid}</span>
+                          <a href={`https://www.youtube.com/watch?v=${vid}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline">
+                            <FiExternalLink className="w-3 h-3" /> Preview
+                          </a>
+                        </div>
+                      );
+                    }
+                    return <p className="text-[11px] text-gray-400">Paste a YouTube watch / share / embed link</p>;
+                  })()}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {resource.type === 'external' && (
           <input type="url" placeholder="External test URL  (https://…)"

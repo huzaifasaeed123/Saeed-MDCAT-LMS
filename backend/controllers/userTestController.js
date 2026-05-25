@@ -332,6 +332,35 @@ exports.startTest = async (req, res) => {
       });
     }
 
+    // ── Availability enforcement ──────────────────────────────────────────
+    // Defense-in-depth — the TestStartPage already prevents the student
+    // from clicking Start while the window is locked/closed, but we also
+    // reject server-side so a hand-crafted POST can't bypass it.
+    //
+    // Resumes returned earlier above are intentionally NOT gated — a test
+    // that closes mid-attempt still lets the student finish what they
+    // started (matches the "Block new attempts only" product decision).
+    // Staff (admin/teacher) bypass so they can keep verifying their tests.
+    if (req.user.role === 'student' && test.availability && test.availability !== 'public') {
+      const now = Date.now();
+      if (test.unlockAt && now < new Date(test.unlockAt).getTime()) {
+        return res.status(403).json({
+          success: false,
+          message: 'This test is not open yet.',
+          notOpenYet: true,
+          unlockAt: test.unlockAt,
+        });
+      }
+      if (test.availability === 'window' && test.lockAt && now > new Date(test.lockAt).getTime()) {
+        return res.status(403).json({
+          success: false,
+          message: 'This test is closed and no longer accepting new attempts.',
+          windowClosed: true,
+          lockAt: test.lockAt,
+        });
+      }
+    }
+
     // ── Attempt-limit enforcement ─────────────────────────────────────────
     // Skipped for staff so they can keep QA-testing their own tests. Also
     // skipped when maxAttempts is null/undefined (the default "unlimited"),
@@ -393,6 +422,10 @@ exports.startTest = async (req, res) => {
       questionBankId:    qb?._id || qb || null,
       questionBankTitle: qb?.title || '',
       totalQuestions:    mcqs.length,
+      // Review-unlock snapshot — lets the History list gate its Review
+      // button without re-fetching the Test doc per row.
+      testReviewUnlockAt: test.reviewUnlockAt || null,
+      testCreatorId:      test.createdBy || null,
     });
 
     // Build the populated response shape locally from data we already have
@@ -707,6 +740,35 @@ exports.getTestAttempt = async (req, res) => {
     }
     if (attempt.user.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized to access this test attempt' });
+    }
+
+    // ── Review-unlock gate (intent-based) ────────────────────────────────
+    // Same single query / populates as the result-view call — the gate
+    // costs NOTHING extra at the DB layer; it just inspects fields we
+    // already loaded on `attempt.test`. Callers signal "I'm fetching
+    // this to render the per-question review screen" by passing
+    // `?for=review` (or anything truthy on `intent`). The default call
+    // (no query param, used by the result/summary view) doesn't gate —
+    // students should still be able to see their score even when the
+    // answer-key review is held back.
+    //
+    // Test creators and staff (admin/teacher) bypass so they can verify
+    // their own tests at any time.
+    const wantReview = req.query.for === 'review' || req.query.intent === 'review';
+    if (wantReview) {
+      const ru = attempt.test?.reviewUnlockAt;
+      const creator = attempt.test?.createdBy;
+      const role = req.user.role;
+      const isCreator = creator && creator.toString() === req.user.id;
+      const isStaff   = role === 'admin' || role === 'teacher';
+      if (!isCreator && !isStaff && ru && Date.now() < new Date(ru).getTime()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Review is locked until the scheduled time.',
+          reviewLocked: true,
+          reviewUnlockAt: ru,
+        });
+      }
     }
 
     res.status(200).json({ success: true, data: attempt });
@@ -1070,7 +1132,10 @@ exports.getUserTestHistory = async (req, res) => {
     const PROJECTION = 'test mode status score maxScore scorePercentage answeredCount ' +
                        'startTime endTime totalTimeSpent createdAt ' +
                        'testTitle testSubjects testChapters testTopics ' +
-                       'questionBankId questionBankTitle totalQuestions';
+                       'questionBankId questionBankTitle totalQuestions ' +
+                       // Review-unlock snapshot — used by the History row to
+                       // decide whether the Review button should be active.
+                       'testReviewUnlockAt testCreatorId';
 
     if (!isFirstPage) {
       const docs = await UserTestAttempt.find(q)

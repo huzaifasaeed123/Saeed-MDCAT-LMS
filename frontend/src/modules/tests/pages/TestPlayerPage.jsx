@@ -411,6 +411,14 @@ const TestPlayerPage = () => {
   // Path-based mode detection — /review/:attemptId triggers read-only mode.
   const isReview       = location.pathname.includes('/review/');
 
+  // When the player is launched from a course (Course → Resource → Start Test),
+  // the caller passes `returnTo=<encoded url>`. After submit / exit / completed
+  // detection we redirect there instead of the standalone result page — that
+  // lets the course player render the result inline and keep the student in
+  // the learning flow.
+  const returnTo = searchParams.get('returnTo');
+  const resolveExit = (defaultUrl) => (returnTo ? decodeURIComponent(returnTo) : defaultUrl);
+
   const [attempt, setAttempt]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -468,7 +476,7 @@ const TestPlayerPage = () => {
           return;
         }
         if (!isReview && a.status === 'completed') {
-          navigate(`/student/tests/${testId}/result/${attemptId}`);
+          navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`));
           return;
         }
 
@@ -675,12 +683,12 @@ const TestPlayerPage = () => {
 
     try {
       await apiClient.put(`/user-tests/${attemptId}/complete`, { answers, totalTimeSpent });
-      navigate(`/student/tests/${testId}/result/${attemptId}`);
+      navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`));
     } catch {
       toast.error('Failed to submit test');
       setSubmitting(false);
     }
-  }, [submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, totalDurationSec, timeLeft]);
+  }, [submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, totalDurationSec, timeLeft, returnTo]);
 
   // ── Pause test ──────────────────────────────────────────────────────────
   const handlePauseTest = useCallback(async () => {
@@ -705,12 +713,14 @@ const TestPlayerPage = () => {
         timeSpent,
       });
       toast.success('Test paused — progress saved');
-      navigate(`/student/tests/${testId}`);
+      // Honour returnTo on pause too — a course-launched test pauses back into
+      // the course player, not the standalone Test Start page.
+      navigate(resolveExit(`/student/tests/${testId}`));
     } catch {
       toast.error('Failed to pause test');
       setPausing(false);
     }
-  }, [pausing, submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, currentIndex, totalDurationSec, timeLeft]);
+  }, [pausing, submitting, attempt, localAnswers, localMarks, attemptId, testId, navigate, currentIndex, totalDurationSec, timeLeft, returnTo]);
 
   // ── Keyboard shortcuts: arrows + A/B/C/D ────────────────────────────────
   useEffect(() => {
@@ -736,7 +746,7 @@ const TestPlayerPage = () => {
   // ── Exit handlers ───────────────────────────────────────────────────────
   const handleExit = () => {
     if (isReview) {
-      navigate(`/student/tests/${testId}/result/${attemptId}`);
+      navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`));
     } else {
       // Show themed confirm modal — actual save+navigate is in handleConfirmExit.
       setShowExitConfirm(true);
@@ -767,7 +777,7 @@ const TestPlayerPage = () => {
         currentQuestionIndex: currentIndex,
         timeSpent,
       });
-      navigate(`/student/tests/${testId}`);
+      navigate(resolveExit(`/student/tests/${testId}`));
     } catch {
       toast.error('Failed to save progress');
       setExiting(false);
@@ -913,7 +923,7 @@ const TestPlayerPage = () => {
             )}
             {isReview && (
               <button
-                onClick={() => navigate(`/student/tests/${testId}/result/${attemptId}`)}
+                onClick={() => navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`))}
                 className="btn-brand text-sm px-3 py-1.5"
               >
                 <FiBarChart2 className="w-4 h-4" />
@@ -1151,7 +1161,7 @@ const TestPlayerPage = () => {
               </button>
             ) : (
               <button
-                onClick={() => navigate(`/student/tests/${testId}/result/${attemptId}`)}
+                onClick={() => navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`))}
                 className="btn-brand text-sm px-3 sm:px-4 py-2"
               >
                 <FiBarChart2 className="w-4 h-4" />

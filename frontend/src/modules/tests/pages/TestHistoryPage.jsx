@@ -21,6 +21,8 @@ import {
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
+import useAuth from '../../../core/auth/useAuth';
+import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 const PAGE_SIZE = 20;
 
@@ -127,6 +129,8 @@ const Kpi = ({ Icon, label, value, sub, tone = 'orange' }) => {
 
 const TestHistoryPage = () => {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const meId = currentUser?._id || currentUser?.id;
 
   const [attempts, setAttempts]         = useState([]);
   // Pagination is now hasMore-based (no totalPages). Page 1 also returns
@@ -600,12 +604,36 @@ const TestHistoryPage = () => {
                       >
                         <FiBarChart2 className="w-3.5 h-3.5" /> Results
                       </button>
-                      <button
-                        onClick={() => navigate(`/student/tests/${testId}/review/${attempt._id}`)}
-                        className={btnGhost}
-                      >
-                        <FiEye className="w-3.5 h-3.5" /> Review
-                      </button>
+                      {(() => {
+                        // Review-unlock gate — uses the snapshot fields on
+                        // the attempt itself (testReviewUnlockAt + testCreatorId)
+                        // so there's NO extra DB hit per row. Creators bypass.
+                        // Legacy attempts (snapshot null) behave as if review
+                        // is always available, matching pre-feature UX.
+                        const ru = attempt.testReviewUnlockAt;
+                        const creator = attempt.testCreatorId;
+                        const isCreator = creator
+                          && (creator === meId || creator?.toString?.() === meId);
+                        const reviewLocked = !isCreator && ru && Date.now() < new Date(ru).getTime();
+                        const handleReview = () => {
+                          if (reviewLocked) {
+                            toast.info(`Review opens ${fmtCountdown(ru) || 'soon'} · ${fmtPktDateTime(ru)}`);
+                            return;
+                          }
+                          navigate(`/student/tests/${testId}/review/${attempt._id}`);
+                        };
+                        return (
+                          <button
+                            onClick={handleReview}
+                            className={`${btnGhost} ${reviewLocked ? 'opacity-50' : ''}`}
+                            title={reviewLocked
+                              ? `Review opens ${fmtPktDateTime(ru)}`
+                              : 'Review your answers'}
+                          >
+                            <FiEye className="w-3.5 h-3.5" /> Review
+                          </button>
+                        );
+                      })()}
                     </>
                   )}
                   {attempt.status === 'in-progress' && (

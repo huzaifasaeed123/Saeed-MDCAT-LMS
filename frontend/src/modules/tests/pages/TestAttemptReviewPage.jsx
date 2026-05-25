@@ -1,27 +1,68 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { FiChevronLeft, FiChevronRight, FiCheck, FiX, FiBarChart2, FiBookmark, FiAlertCircle } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiCheck, FiX, FiBarChart2, FiBookmark, FiAlertCircle, FiLock } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
+import useAuth from '../../../core/auth/useAuth';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
+import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 
-const TestAttemptReviewPage = () => {
-  const { testId, attemptId } = useParams();
+// Props are optional — when rendered as a standalone route, testId +
+// attemptId come from useParams. When embedded inside the Course Player,
+// the parent passes them as props (along with an `onBack` callback) so
+// "Back to result" stays in the player instead of bouncing the user out
+// to the standalone result route. The data fetch and gate are identical
+// in both modes.
+const TestAttemptReviewPage = ({
+  testId:    propTestId,
+  attemptId: propAttemptId,
+  embedded   = false,
+  onBack,
+} = {}) => {
+  const routeParams = useParams();
+  const testId    = propTestId    || routeParams.testId;
+  const attemptId = propAttemptId || routeParams.attemptId;
   const navigate = useNavigate();
+  // useAuth still imported for parity with the rest of the test pages,
+  // even though backend-side gating now drives the lockout — the client
+  // no longer needs to evaluate `meId` because the API does it for us.
+  useAuth();
   const [attempt, setAttempt] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Review-locked state — set when the new gated endpoint returns 403
+  // with `reviewLocked: true`. Holds the unlock time so we can render
+  // a meaningful message without re-fetching anything.
+  const [reviewLockedAt, setReviewLockedAt] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    apiClient.get(`/user-tests/${attemptId}`)
+    // Same endpoint the result page uses — we just add `?for=review` so
+    // the controller knows to apply the review-unlock gate. ZERO extra
+    // DB work: the gate inspects fields already populated on `test`
+    // (reviewUnlockAt + createdBy). 403 with reviewLocked=true means
+    // the schedule hasn't opened yet for non-creator/non-staff users.
+    apiClient.get(`/user-tests/${attemptId}?for=review`)
       .then((res) => setAttempt(res.data.data))
-      .catch(() => {
-        toast.error('Failed to load attempt');
-        navigate(`/student/tests/${testId}/result/${attemptId}`);
+      .catch((err) => {
+        if (err.response?.status === 403 && err.response?.data?.reviewLocked) {
+          setReviewLockedAt(err.response.data.reviewUnlockAt || null);
+        } else {
+          toast.error(err.response?.data?.message || 'Failed to load attempt');
+          if (!embedded) navigate(`/student/tests/${testId}/result/${attemptId}`);
+        }
       })
       .finally(() => setLoading(false));
-  }, [attemptId, testId, navigate]);
+  }, [attemptId, testId, navigate, embedded]);
+
+  // Resolve the "Back to result" target. In embedded mode the course
+  // player passes an onBack callback (which flips its own URL state back
+  // to result view); in standalone mode we navigate to the standalone
+  // result route.
+  const goBackToResult = () => {
+    if (onBack) { onBack(); return; }
+    navigate(`/student/tests/${testId}/result/${attemptId}`);
+  };
 
   if (loading) {
     return (
@@ -30,6 +71,32 @@ const TestAttemptReviewPage = () => {
       </div>
     );
   }
+
+  // Review-locked screen — same shape standalone vs embedded.
+  if (reviewLockedAt) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4">
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-2xl p-6 sm:p-8 text-center">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 flex items-center justify-center mb-3">
+            <FiLock className="w-6 h-6" />
+          </div>
+          <h2 className="font-display text-xl font-extrabold text-amber-900 dark:text-amber-200">
+            Review isn't open yet
+          </h2>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+            Your answers will be reviewable {fmtCountdown(reviewLockedAt) || 'shortly'} · {fmtPktDateTime(reviewLockedAt)}.
+          </p>
+          <button
+            onClick={goBackToResult}
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-200 hover:underline"
+          >
+            <FiChevronLeft className="w-4 h-4" /> Back to result
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!attempt) return null;
 
   const qas = attempt.questionAttempts || [];
@@ -45,7 +112,7 @@ const TestAttemptReviewPage = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <button
-          onClick={() => navigate(`/student/tests/${testId}/result/${attemptId}`)}
+          onClick={goBackToResult}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-orange-500 font-medium"
         >
           <FiChevronLeft className="w-4 h-4" /> Back to Results
@@ -242,7 +309,7 @@ const TestAttemptReviewPage = () => {
         </button>
 
         <button
-          onClick={() => navigate(`/student/tests/${testId}/result/${attemptId}`)}
+          onClick={goBackToResult}
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50"
         >
           <FiBarChart2 className="w-4 h-4" /> Analytics

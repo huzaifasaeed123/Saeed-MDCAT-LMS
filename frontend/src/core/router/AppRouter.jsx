@@ -54,6 +54,7 @@ import CourseFormPage from '../../modules/courses/pages/CourseFormPage';
 // Courses module — student
 import CourseCatalogPage from '../../modules/courses/pages/student/CourseCatalogPage';
 import CourseDetailPage from '../../modules/courses/pages/student/CourseDetailPage';
+import CourseLearnPage  from '../../modules/courses/pages/student/CourseLearnPage';
 
 // Messages module
 import MessagesPage from '../../modules/messages/pages/MessagesPage';
@@ -510,6 +511,17 @@ const AppRouter = () => {
                   <CourseDetailPage />
                 </FeatureGate>
               </DashboardLayout>
+            }
+          />
+          {/* Course Player — full-screen route (no DashboardLayout chrome),
+              matching the test player. The page owns its own top bar /
+              sidebar / footer. Same per-course access gate as overview. */}
+          <Route
+            path="/student/courses/:id/learn"
+            element={
+              <FeatureGate feature="courses">
+                <CourseLearnPage />
+              </FeatureGate>
             }
           />
 
