@@ -14,7 +14,11 @@ import * as Yup from 'yup';
 import useAuth from '../../../core/auth/useAuth';
 import useForceLightMode from '../../../core/theme/useForceLightMode';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowRight, FiAward } from 'react-icons/fi';
-import GoogleSignInButton from '../components/GoogleSignInButton';
+// ── GOOGLE SIGN-IN DISABLED ──────────────────────────────────────────
+// Hidden together with the signup flow because Google login currently
+// implies account creation, which we don't offer right now. Restore by
+// uncommenting this import and the `<GoogleSignInButton />` usage below.
+// import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const LoginSchema = Yup.object().shape({
   email:    Yup.string().email('Invalid email address').required('Email is required'),
@@ -126,12 +130,17 @@ const LoginPage = () => {
       {/* lg:h-screen + lg:overflow-y-auto so it scrolls internally with the
           left stage pinned. Below lg the whole document scrolls naturally. */}
       <div className="flex-1 flex flex-col px-6 py-8 sm:px-10 sm:py-10 lg:h-screen lg:overflow-y-auto">
+        {/* ── "New here? Create an account" link disabled ─────────────────
+            Public signup is currently turned off. Restore this block to
+            bring the signup link back at the top-right of the login pane. */}
+        {/*
         <div className="flex justify-end items-center gap-1.5 text-sm text-[var(--text-muted)]">
           New here?
           <Link to="/register" className="text-primary-600 dark:text-primary-400 font-bold no-underline hover:text-primary-700 dark:hover:text-primary-300">
             Create an account →
           </Link>
         </div>
+        */}
 
         <div className="flex-1 flex items-center justify-center">
           <div className="w-full max-w-md">
@@ -221,11 +230,18 @@ const LoginPage = () => {
                     {isSubmitting ? 'Signing in…' : <>Sign in <FiArrowRight className="w-4 h-4" /></>}
                   </button>
 
+                  {/* ── "OR CONTINUE WITH" divider + Google Sign-In disabled ────
+                      Hidden alongside signup since Google login implies
+                      account creation, which we don't currently support.
+                      Restore both blocks (and the import at the top of
+                      this file) to bring Google login back. */}
+                  {/*
                   <div className="flex items-center gap-3 text-[11px] font-mono tracking-[0.18em] text-[var(--text-faint)] my-2">
                     <div className="flex-1 h-px bg-[var(--border)]" /> OR CONTINUE WITH <div className="flex-1 h-px bg-[var(--border)]" />
                   </div>
 
                   <GoogleSignInButton />
+                  */}
 
                   <p className="text-[11px] text-[var(--text-faint)] text-center leading-relaxed pt-3">
                     By signing in you agree to our <a className="text-[var(--text-muted)] underline">Terms</a> and <a className="text-[var(--text-muted)] underline">Privacy Policy</a>.

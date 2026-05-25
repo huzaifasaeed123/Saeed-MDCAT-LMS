@@ -70,9 +70,15 @@ const Navbar = () => {
               <div className="navbar-item">
                 <Link to="/login" className="button is-light">Log in</Link>
               </div>
+              {/* ── "Sign up" nav button disabled ────────────────────────
+                  Public signup is currently turned off. Restore this
+                  block to bring the Sign up button back into the
+                  shared navbar. */}
+              {/*
               <div className="navbar-item">
                 <Link to="/register" className="button is-primary">Sign up</Link>
               </div>
+              */}
             </>
           )}
         </div>

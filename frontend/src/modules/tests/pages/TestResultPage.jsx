@@ -501,7 +501,12 @@ const TestResultPage = ({
       {/* Mobile action buttons — Review + Retake at 50/50. PDF export
           removed (see header note). `fullWidth` on Review tells the
           shared button to stretch + outline so it visually balances the
-          btn-brand Retake next to it. */}
+          btn-brand Retake next to it.
+          Label reads "Review Answer" inside the Course Player and the
+          shorter "Review" on the standalone Result page — the longer
+          label takes its cue from the Course Player's prominent
+          desktop button so the wording stays consistent across the two
+          surfaces a student sees inside a course. */}
       <div className="md:hidden flex items-center gap-2 mb-3 no-print">
         <div className="flex-1">
           <ReviewLockButton
@@ -509,7 +514,7 @@ const TestResultPage = ({
             reviewUnlockAt={reviewUnlockAt}
             onClick={() => navigate(`/student/tests/${testId}/review/${attemptId}`)}
             variant="result-mobile"
-            label="Review"
+            label={embedded ? 'Review Answer' : 'Review'}
             iconOnlyBelow="none"
             fullWidth
           />

@@ -54,11 +54,17 @@ const HomePage = () => {
               </Link>
             ) : (
               <>
+                {/* ── "Start free" signup CTA disabled ────────────────────
+                    Public signup is currently off site-wide. Restore the
+                    block below to bring the "Start free" → /register
+                    button back on the landing hero. */}
+                {/*
                 <Link to="/register" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-primary-700 font-bold text-sm shadow-lg hover:shadow-xl transition-all">
                   Start free <FiArrowRight className="w-4 h-4" />
                 </Link>
-                <Link to="/login" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/15 border border-white/35 text-white font-bold text-sm backdrop-blur hover:bg-white/25 transition-all">
-                  Sign in
+                */}
+                <Link to="/login" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-primary-700 font-bold text-sm shadow-lg hover:shadow-xl transition-all">
+                  Sign in <FiArrowRight className="w-4 h-4" />
                 </Link>
               </>
             )}

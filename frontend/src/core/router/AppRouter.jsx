@@ -13,9 +13,15 @@ import FeatureGate from '../components/FeatureGate';
 import HomePage from '../../modules/home/pages/HomePage';
 
 // Auth module
-import GoogleOneTap from '../../modules/auth/components/GoogleOneTap';
+// ── SIGNUP / GOOGLE ONE-TAP DISABLED ────────────────────────────────────
+// Signup is currently turned off site-wide. To restore: uncomment the
+// imports below and the matching `<Route path="/register" ...>` further
+// down. Google One-Tap is also disabled — it would prompt users to
+// create an account, which we don't currently offer. Uncomment its
+// import + the `<GoogleOneTap />` mount below to bring it back.
+// import GoogleOneTap from '../../modules/auth/components/GoogleOneTap';
 import LoginPage from '../../modules/auth/pages/LoginPage';
-import RegisterPage from '../../modules/auth/pages/RegisterPage';
+// import RegisterPage from '../../modules/auth/pages/RegisterPage';
 import ForgotPasswordPage from '../../modules/auth/pages/ForgotPasswordPage';
 import ResetPasswordPage from '../../modules/auth/pages/ResetPasswordPage';
 
@@ -112,12 +118,14 @@ const AppRouter = () => {
 
   return (
     <Router>
-      <GoogleOneTap />
+      {/* <GoogleOneTap />  ── disabled: see import comment above */}
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        {/* Signup route disabled — restore by uncommenting this Route +
+            the matching `RegisterPage` import at the top of the file. */}
+        {/* <Route path="/register" element={<RegisterPage />} /> */}
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 

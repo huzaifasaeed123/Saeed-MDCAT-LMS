@@ -1019,9 +1019,13 @@ const CourseLearnPage = () => {
               (see TestResultPage's `md:hidden` block), so showing them
               up here too would duplicate the buttons. */}
           {isOnTestResult && (
-            <div className="hidden md:flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <div className="hidden md:flex items-center gap-2 flex-shrink-0">
               {/* PDF export removed — both top-bar and standalone Result
-                  page no longer ship the Export PDF action. */}
+                  page no longer ship the Export PDF action.
+                  Review + Retake are sized as primary actions here (the
+                  "prominent" variant on the shared button + matching
+                  text-sm / px-4 py-2 on Retake) so they read as real
+                  actions at the top of the course player, not afterthoughts. */}
               {(() => {
                 // Review button — gates by the test's reviewUnlockAt (creator
                 // bypass) AND navigates to the SAME standalone Review page
@@ -1036,7 +1040,7 @@ const CourseLearnPage = () => {
                 const ru = testObj.reviewUnlockAt;
                 const reviewLocked = !isCreator && ru && Date.now() < new Date(ru).getTime();
                 const onReviewClick = () => {
-                  if (reviewLocked) return; // popup handles its own UX (see ReviewLockButton later)
+                  if (reviewLocked) return; // modal handles its own UX
                   const tid = String(activeResource.testId?._id || activeResource.testId || '');
                   const here = `/student/courses/${courseId}/learn?r=${activeResource._id}&attempt=${resultAttemptForActive}`;
                   navigate(`/student/tests/${tid}/review/${resultAttemptForActive}?returnTo=${encodeURIComponent(here)}`);
@@ -1046,8 +1050,9 @@ const CourseLearnPage = () => {
                     locked={reviewLocked}
                     reviewUnlockAt={ru}
                     onClick={onReviewClick}
-                    label="Review"
+                    label="Review Answer"
                     iconOnlyBelow="none"
+                    variant="prominent"
                   />
                 );
               })()}
@@ -1061,10 +1066,10 @@ const CourseLearnPage = () => {
                   });
                 }}
                 title="Retake test"
-                className="btn-brand text-xs px-2.5 py-1.5"
+                className="btn-brand text-sm px-4 py-2 rounded-xl"
               >
                 <FiZap className="w-4 h-4" />
-                <span className="hidden lg:inline">Retake</span>
+                <span>Retake</span>
               </button>
             </div>
           )}

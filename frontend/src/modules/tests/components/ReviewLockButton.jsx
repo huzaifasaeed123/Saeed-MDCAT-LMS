@@ -33,14 +33,19 @@ const ReviewLockButton = ({
 }) => {
   const [open, setOpen] = useState(false);
 
-  // Two visual flavors stacked on the same component:
-  //   • inline (default)   → ghost, no border, used in top bars where the
+  // Three visual flavors stacked on the same component:
+  //   • inline (default)    → ghost, no border, used in top bars where the
   //     button sits next to other compact actions.
-  //   • fullWidth (opt-in) → outlined, w-full + centered, used in mobile
+  //   • fullWidth (opt-in)  → outlined, w-full + centered, used in mobile
   //     action rows where it pairs with a btn-brand at 50/50 width.
-  const baseCls = fullWidth
-    ? 'w-full flex justify-center items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors'
-    : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors';
+  //   • variant='prominent' → larger outlined button used by the Course
+  //     Player top bar so Review reads as a real action next to Retake,
+  //     not a forgettable text link.
+  const baseCls = variant === 'prominent'
+    ? 'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-strong)] hover:bg-[var(--bg-muted)] hover:border-primary-300 dark:hover:border-primary-800 transition-colors'
+    : fullWidth
+      ? 'w-full flex justify-center items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors'
+      : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors';
 
   const labelHideCls = iconOnlyBelow === 'lg'
     ? 'hidden lg:inline'
