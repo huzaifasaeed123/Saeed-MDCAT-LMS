@@ -26,18 +26,119 @@ import {
   FiArrowLeft, FiArrowRight, FiPlay,
   FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight,
   FiBookOpen, FiVideo, FiFileText, FiCheckSquare, FiLink,
-  FiLayers, FiTag, FiCalendar, FiClock,
+  FiLayers, FiTag, FiCalendar, FiClock, FiLock,
 } from 'react-icons/fi';
 import apiClient from '../../../../core/api/axiosConfig';
 import useAuth from '../../../../core/auth/useAuth';
 import LockedFeaturePage from '../../../access/pages/LockedFeaturePage';
 import { getBackendUrl } from '../../../../shared/utils/fixImageUrls';
+import { resolveScheduleStatus, fmtPktDateTime, fmtCountdown } from '../../../../shared/utils/pktDate';
 import { usePageHeader } from '../../../../core/layouts/PageHeaderContext';
 
 const STATIC_BASE = getBackendUrl();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const sortByOrder = (arr = []) => [...arr].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+// ─── Lock helpers (Layers 2 + 3) ─────────────────────────────────────────
+// Layer 2: per-date-entry schedule (date-mode subject's unlockAt / lockAt).
+// Layer 3: per-resource schedule (resource.availability + unlockAt / lockAt).
+// A resource is "effectively locked" if EITHER its parent date entry is
+// locked/closed OR its own schedule says so. Layer 4 (test-level
+// availability) is a separate gate handled by TestStartPage itself.
+//
+// Date entries don't carry their own `availability` enum; they're modeled
+// as just `unlockAt` (optionally `lockAt`). We feed that through the
+// resolver as if it were `availability: 'window' | 'unlock_date'`.
+const getEntryStatus = (entry) => {
+  if (!entry?.unlockAt) return 'available';
+  return resolveScheduleStatus({
+    availability: entry.lockAt ? 'window' : 'unlock_date',
+    unlockAt:     entry.unlockAt,
+    lockAt:       entry.lockAt,
+  });
+};
+
+const isEntryLocked = (entry) => {
+  const s = getEntryStatus(entry);
+  return s === 'locked' || s === 'closed';
+};
+
+const getResourceStatus = (r) => resolveScheduleStatus({
+  availability: r?.availability,
+  unlockAt:     r?.unlockAt,
+  lockAt:       r?.lockAt,
+});
+
+const isResourceEffectivelyLocked = (resource, parentEntry) => {
+  if (parentEntry && isEntryLocked(parentEntry)) return true;
+  const s = getResourceStatus(resource);
+  return s === 'locked' || s === 'closed';
+};
+
+// Small reusable popover that appears on hover (desktop) / click (mobile)
+// to explain WHY something is locked and when it'll open. Pure
+// presentational — caller passes the unlockAt/lockAt + an entry/resource
+// label so the popover wording reflects the right context. Anchored to
+// `children` (typically the lock icon) via a relative wrapper.
+const LockHoverHint = ({ unlockAt, lockAt, children, label = 'Locked' }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  // Show on desktop hover; on tap (mobile) we toggle. Stays out of the
+  // way otherwise (no native browser tooltip — we want our own copy
+  // that includes the PKT countdown).
+  return (
+    <span
+      ref={ref}
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+    >
+      {children}
+      {open && (
+        <span
+          role="dialog"
+          className="absolute z-50 bottom-full mb-2 right-0 w-64 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-xl p-3 text-left"
+        >
+          <span className="block">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+              <FiLock className="w-3 h-3" /> {label}
+            </span>
+            {unlockAt && (
+              <span className="block text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                Opens{' '}
+                <span className="font-semibold text-amber-700 dark:text-amber-300">
+                  {fmtCountdown(unlockAt) || 'shortly'}
+                </span>
+                <span className="block text-[var(--text-faint)] mt-0.5">
+                  {fmtPktDateTime(unlockAt)}
+                </span>
+              </span>
+            )}
+            {lockAt && (
+              <span className="block text-[11px] text-[var(--text-muted)] mt-1.5 leading-relaxed">
+                Closes{' '}
+                <span className="block text-[var(--text-faint)] mt-0.5">
+                  {fmtPktDateTime(lockAt)}
+                </span>
+              </span>
+            )}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+};
 
 const fmtRange = (start, end) => {
   if (!start && !end) return null;
@@ -81,7 +182,13 @@ const RES_GROUPS = [
 // just type counts. The type icon is kept on the left as a quick visual
 // cue, and a small type label sits under the title on desktop (hidden on
 // mobile to save horizontal space).
-const ResourceItemRow = ({ resource, onClick }) => {
+// `parentEntry` is the date-mode subject this resource belongs to (or null
+// for structure-mode rows). If the parent entry is locked, that cascades
+// down — the resource appears locked even if its own schedule is public.
+// Locked rows are still rendered (so the student sees the curriculum)
+// and still clickable — clicking takes them to the Course Player which
+// shows a "Locked" page explaining when it opens.
+const ResourceItemRow = ({ resource, parentEntry = null, onClick }) => {
   const meta = RES_GROUPS.find((g) => g.key === resource.type) || RES_GROUPS[0];
   const Icon = meta.Icon;
   // For test resources the resource.title is often blank (the testId's title
@@ -91,20 +198,52 @@ const ResourceItemRow = ({ resource, onClick }) => {
     (resource.title && resource.title.trim()) ||
     resource.testId?.title ||
     meta.label;
+
+  // ── Lock derivation (combined Layer 2 + Layer 3) ───────────────────────
+  const parentLocked   = parentEntry ? isEntryLocked(parentEntry) : false;
+  const resourceStatus = getResourceStatus(resource);
+  const selfLocked     = resourceStatus === 'locked' || resourceStatus === 'closed';
+  const effectivelyLocked = parentLocked || selfLocked;
+
+  // When the parent date is locked, the parent's schedule is what to
+  // explain in the popover (date opens at …). Otherwise the resource's
+  // own unlock/lock window is the relevant info.
+  const popoverUnlockAt = parentLocked ? parentEntry?.unlockAt : resource.unlockAt;
+  const popoverLockAt   = parentLocked ? parentEntry?.lockAt   : resource.lockAt;
+  const popoverLabel    = parentLocked
+    ? 'Date locked'
+    : (resourceStatus === 'closed' ? 'Closed' : 'Locked');
+
   return (
     <button
       type="button"
       onClick={() => onClick(resource)}
-      className="w-full text-left flex items-center gap-2.5 sm:gap-3 px-2.5 sm:px-3 py-2 rounded-xl hover:bg-[var(--bg-muted)] transition-colors group"
+      className={`w-full text-left flex items-center gap-2.5 sm:gap-3 px-2.5 sm:px-3 py-2 rounded-xl hover:bg-[var(--bg-muted)] transition-colors group ${
+        effectivelyLocked ? 'opacity-60' : ''
+      }`}
+      title={effectivelyLocked ? popoverLabel : undefined}
     >
-      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.tint}`}>
+      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.tint} ${effectivelyLocked ? 'grayscale' : ''}`}>
         <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-xs sm:text-sm font-semibold text-[var(--text-strong)] truncate">{title}</p>
         <p className="hidden sm:block text-[10px] uppercase tracking-wider font-bold text-[var(--text-faint)] mt-0.5">{meta.label}</p>
       </div>
-      <FiArrowRight className="w-4 h-4 text-[var(--text-faint)] group-hover:text-primary-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+      {effectivelyLocked ? (
+        // Hover popover on desktop, tap-toggle on mobile. The icon itself
+        // is enough on phones; the popover only renders when the user
+        // explicitly engages (hover or tap), so mobile rows stay clean.
+        <LockHoverHint
+          unlockAt={popoverUnlockAt}
+          lockAt={popoverLockAt}
+          label={popoverLabel}
+        >
+          <FiLock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        </LockHoverHint>
+      ) : (
+        <FiArrowRight className="w-4 h-4 text-[var(--text-faint)] group-hover:text-primary-500 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+      )}
     </button>
   );
 };
@@ -267,32 +406,56 @@ const fmtDayIdx = (n) => String(n).padStart(2, '0');
 const DateTimelinePill = ({ entry, active, dayIdx, onClick }) => {
   const today = new Date();
   const isToday = entry.unlockAt && isSameDayPKT(entry.unlockAt, today);
+  // Layer 2: when the date hasn't unlocked yet OR has closed, the pill
+  // renders dimmed with a lock badge. It STAYS clickable (the student can
+  // still preview the title + see what's coming) — the course player
+  // shows the locked screen if they actually try to open content.
+  const status = getEntryStatus(entry);
+  const locked = status === 'locked' || status === 'closed';
+
+  // Color treatment per state — kept readable in dark mode too.
+  let pillCls;
+  if (active) {
+    pillCls = 'bg-primary-500 text-white border-primary-500 shadow-md';
+  } else if (locked) {
+    pillCls = 'bg-[var(--bg-muted)]/40 text-[var(--text-faint)] border-[var(--border)] hover:border-amber-300 opacity-70';
+  } else if (isToday) {
+    pillCls = 'bg-[var(--bg-surface)] text-[var(--text)] border-emerald-300 dark:border-emerald-700 hover:border-primary-300';
+  } else {
+    pillCls = 'bg-[var(--bg-surface)] text-[var(--text)] border-emerald-200/70 dark:border-emerald-900/40 hover:border-primary-300';
+  }
+
   return (
     <button
       type="button"
       onClick={onClick}
-      title={entry.title}
-      className={`relative flex-shrink-0 flex flex-col items-center justify-center rounded-xl px-2.5 py-2 min-w-[58px] sm:min-w-[64px] border-2 transition-all ${
-        active
-          ? 'bg-primary-500 text-white border-primary-500 shadow-md'
-          : isToday
-            ? 'bg-[var(--bg-surface)] text-[var(--text)] border-emerald-300 dark:border-emerald-700 hover:border-primary-300'
-            : 'bg-[var(--bg-surface)] text-[var(--text)] border-emerald-200/70 dark:border-emerald-900/40 hover:border-primary-300'
-      }`}
+      title={locked
+        ? `${entry.title} · locked${entry.unlockAt ? ' until ' + fmtPktDateTime(entry.unlockAt) : ''}`
+        : entry.title}
+      className={`relative flex-shrink-0 flex flex-col items-center justify-center rounded-xl px-2.5 py-2 min-w-[58px] sm:min-w-[64px] border-2 transition-all ${pillCls}`}
     >
       {entry.unlockAt ? (
         <>
-          <span className={`text-[10px] uppercase tracking-wider font-bold ${active ? 'text-primary-100' : 'text-emerald-700 dark:text-emerald-400'}`}>
+          <span className={`text-[10px] uppercase tracking-wider font-bold ${
+            active ? 'text-primary-100' : locked ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
+          }`}>
             {fmtPillWeekday(entry.unlockAt)}
           </span>
-          <span className={`text-lg sm:text-xl font-black leading-tight mt-0.5 ${active ? 'text-white' : 'text-[var(--text-strong)]'}`}>
+          <span className={`text-lg sm:text-xl font-black leading-tight mt-0.5 ${
+            active ? 'text-white' : locked ? 'text-[var(--text-muted)]' : 'text-[var(--text-strong)]'
+          }`}>
             {fmtPillDay(entry.unlockAt)}
           </span>
-          {/* Sequential day index ("01" / "02" / …). Matches the reference
-              screenshot's small badge below each pill's main number. */}
-          <span className={`text-[9px] font-mono font-bold mt-0.5 ${active ? 'text-primary-100' : 'text-[var(--text-faint)]'}`}>
-            {fmtDayIdx(dayIdx)}
-          </span>
+          {/* Sequential day index ("01" / "02" / …) OR a lock icon when
+              the entry is locked — same screen real estate, swapped
+              meaning. Matches the reference design. */}
+          {locked ? (
+            <FiLock className={`w-3 h-3 mt-0.5 ${active ? 'text-white' : 'text-amber-500'}`} />
+          ) : (
+            <span className={`text-[9px] font-mono font-bold mt-0.5 ${active ? 'text-primary-100' : 'text-[var(--text-faint)]'}`}>
+              {fmtDayIdx(dayIdx)}
+            </span>
+          )}
         </>
       ) : (
         <>
@@ -401,12 +564,20 @@ const DateContentPanel = ({ entry, onResourceGroupClick }) => {
       </div>
     );
   }
+
+  // Layer 2: surface the date's lock state at the top of the panel so the
+  // student understands why the resources below look locked.
+  const status      = getEntryStatus(entry);
+  const entryLocked = status === 'locked' || status === 'closed';
+
   return (
     <div className="p-4 sm:p-5 space-y-3">
-      {/* Entry heading + date chip */}
+      {/* Entry heading + date chip — date icon swapped for a lock when
+          the entry is locked, matching the reference screenshot. */}
       <div>
         {dateChip && (
-          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-faint)] mb-1">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-faint)] mb-1 inline-flex items-center gap-1.5">
+            {entryLocked && <FiLock className="w-3 h-3 text-amber-500" />}
             {dateChip}
           </p>
         )}
@@ -415,7 +586,35 @@ const DateContentPanel = ({ entry, onResourceGroupClick }) => {
         </h3>
       </div>
 
-      {/* Flat resource list */}
+      {/* Locked banner — explains when the date opens; only the desktop
+          gets the rich copy (mobile keeps it terse to save space). */}
+      {entryLocked && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-2.5 flex items-start gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
+            <FiLock className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              {status === 'closed' ? 'This date is closed' : "This date isn't open yet"}
+            </p>
+            {status === 'locked' && entry.unlockAt && (
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                Opens {fmtCountdown(entry.unlockAt) || 'shortly'} ·{' '}
+                <span className="hidden sm:inline">{fmtPktDateTime(entry.unlockAt)}</span>
+                <span className="sm:hidden">{fmtPktDateTime(entry.unlockAt)?.split(' · ')[0]}</span>
+              </p>
+            )}
+            {status === 'closed' && entry.lockAt && (
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                Closed on {fmtPktDateTime(entry.lockAt)}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Flat resource list — each row knows its parent entry so the
+          combined Layer-2 + Layer-3 lock rule applies automatically. */}
       <div className="space-y-1 pt-1">
         {resources.length === 0 ? (
           <p className="text-sm text-[var(--text-faint)] italic">No content added to this entry yet.</p>
@@ -423,6 +622,7 @@ const DateContentPanel = ({ entry, onResourceGroupClick }) => {
           <ResourceItemRow
             key={r._id}
             resource={r}
+            parentEntry={entry}
             onClick={onResourceGroupClick}
           />
         ))}

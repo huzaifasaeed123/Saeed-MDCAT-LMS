@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { FiChevronLeft, FiChevronRight, FiCheck, FiX, FiBarChart2, FiBookmark, FiAlertCircle, FiLock } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
@@ -8,31 +8,27 @@ import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
 import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 
-// Props are optional — when rendered as a standalone route, testId +
-// attemptId come from useParams. When embedded inside the Course Player,
-// the parent passes them as props (along with an `onBack` callback) so
-// "Back to result" stays in the player instead of bouncing the user out
-// to the standalone result route. The data fetch and gate are identical
-// in both modes.
-const TestAttemptReviewPage = ({
-  testId:    propTestId,
-  attemptId: propAttemptId,
-  embedded   = false,
-  onBack,
-} = {}) => {
-  const routeParams = useParams();
-  const testId    = propTestId    || routeParams.testId;
-  const attemptId = propAttemptId || routeParams.attemptId;
+// Standalone route — testId + attemptId from URL params.
+//
+// `?returnTo=<encoded url>` (optional): where to go when the student
+// exits the review. Used by the Course Player so the user lands back
+// on the exact course resource they came from instead of the standalone
+// Test Result page. No prop drilling, no embedded mode — the same page
+// works everywhere via plain navigation.
+const TestAttemptReviewPage = () => {
+  const { testId, attemptId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || '';
   // useAuth still imported for parity with the rest of the test pages,
   // even though backend-side gating now drives the lockout — the client
   // no longer needs to evaluate `meId` because the API does it for us.
   useAuth();
   const [attempt, setAttempt] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Review-locked state — set when the new gated endpoint returns 403
-  // with `reviewLocked: true`. Holds the unlock time so we can render
-  // a meaningful message without re-fetching anything.
+  // Review-locked state — set when the gated endpoint returns 403 with
+  // `reviewLocked: true`. Holds the unlock time so we can render a
+  // meaningful message without re-fetching anything.
   const [reviewLockedAt, setReviewLockedAt] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -49,18 +45,17 @@ const TestAttemptReviewPage = ({
           setReviewLockedAt(err.response.data.reviewUnlockAt || null);
         } else {
           toast.error(err.response?.data?.message || 'Failed to load attempt');
-          if (!embedded) navigate(`/student/tests/${testId}/result/${attemptId}`);
+          navigate(`/student/tests/${testId}/result/${attemptId}`);
         }
       })
       .finally(() => setLoading(false));
-  }, [attemptId, testId, navigate, embedded]);
+  }, [attemptId, testId, navigate]);
 
-  // Resolve the "Back to result" target. In embedded mode the course
-  // player passes an onBack callback (which flips its own URL state back
-  // to result view); in standalone mode we navigate to the standalone
-  // result route.
+  // "Back to results" target:
+  //   • if a returnTo URL was passed (course player flow) → go there
+  //   • otherwise → standalone Test Result page (the default exit)
   const goBackToResult = () => {
-    if (onBack) { onBack(); return; }
+    if (returnTo) { navigate(returnTo); return; }
     navigate(`/student/tests/${testId}/result/${attemptId}`);
   };
 

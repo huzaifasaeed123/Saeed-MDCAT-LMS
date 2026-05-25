@@ -27,7 +27,7 @@ import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 import useAuth from '../../../core/auth/useAuth';
 import { fixImageUrl } from '../../../shared/utils/fixImageUrls';
-import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
+import ReviewLockButton from '../components/ReviewLockButton';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const formatTime = (seconds) => {
@@ -352,46 +352,27 @@ const TestResultPage = ({
     return parts.join(' · ');
   }, [attempt]);
 
-  const handlePrint = () => {
-    // Tiny UX touch: toast first so the user knows the print dialog is opening.
-    // window.print() is synchronous on most browsers and blocks the toast
-    // animation, so we defer it with rAF.
-    toast.info('Opening print dialog…');
-    requestAnimationFrame(() => window.print());
-  };
+  // PDF export removed — students don't need it; the on-screen result is
+  // already comprehensive and printing a styled SPA is brittle anyway.
 
-  // Review-button gate — computed inside the useMemo so we don't need
-  // to declare it above the loading early-return. attempt.test holds
-  // the populated Test doc (including the new reviewUnlockAt field).
-  // Test creators (createdBy === me) always bypass the gate so they
-  // can QA their own tests without waiting on their own schedule.
+  // Review button uses the shared ReviewLockButton component — same look
+  // and lock-popover as History and the Course Player. Test creators
+  // bypass the lock so they can QA their own tests any time.
   const headerAction = useMemo(() => {
     const meId = currentUser?._id || currentUser?.id;
     const isCreator = attempt?.test?.createdBy
       && (attempt.test.createdBy === meId || attempt.test.createdBy?.toString?.() === meId);
     const ru = attempt?.test?.reviewUnlockAt;
     const reviewLockedHeader = !isCreator && ru && Date.now() < new Date(ru).getTime();
-    const onReview = () => {
-      if (reviewLockedHeader) {
-        toast.info(`Review opens ${fmtCountdown(ru) || 'soon'} · ${fmtPktDateTime(ru)}`);
-        return;
-      }
-      navigate(`/student/tests/${testId}/review/${attemptId}`);
-    };
     return (
       <div className="hidden md:flex items-center gap-2 no-print">
-        <button onClick={handlePrint} className="btn-ghost text-sm px-3 py-2">
-          <FiDownload className="w-4 h-4" /> Export PDF
-        </button>
-        <button
-          onClick={onReview}
-          className={`btn-ghost text-sm px-3 py-2 ${reviewLockedHeader ? 'opacity-50' : ''}`}
-          title={reviewLockedHeader
-            ? `Review opens ${fmtPktDateTime(ru)}`
-            : 'Review your answers'}
-        >
-          <FiEye className="w-4 h-4" /> Review answers
-        </button>
+        <ReviewLockButton
+          locked={reviewLockedHeader}
+          reviewUnlockAt={ru}
+          onClick={() => navigate(`/student/tests/${testId}/review/${attemptId}`)}
+          variant="result-header"
+          iconOnlyBelow="sm"
+        />
         <button
           onClick={() => navigate(`/student/tests/${testId}`)}
           className="btn-brand text-sm px-3 py-2"
@@ -439,13 +420,6 @@ const TestResultPage = ({
   const reviewLocked   = !createdByMe
     && reviewUnlockAt
     && Date.now() < new Date(reviewUnlockAt).getTime();
-  const handleReviewClick = () => {
-    if (reviewLocked) {
-      toast.info(`Review opens ${fmtCountdown(reviewUnlockAt) || 'soon'} · ${fmtPktDateTime(reviewUnlockAt)}`);
-      return;
-    }
-    navigate(`/student/tests/${testId}/review/${attemptId}`);
-  };
 
   // Hero-only derivations from analytics. The Leaderboard tab pulls its own
   // copy of these fields inside <LeaderboardView /> so the main component
@@ -524,19 +498,23 @@ const TestResultPage = ({
         <p className="text-sm text-[var(--text-muted)]">{headerSubtitle}</p>
       </div>
 
-      {/* Mobile action buttons */}
-      <div className="md:hidden flex items-center gap-2 mb-3 flex-wrap no-print">
-        <button onClick={handlePrint} className="btn-ghost text-sm px-3 py-2 flex-1">
-          <FiDownload className="w-4 h-4" /> PDF
-        </button>
-        <button
-          onClick={handleReviewClick}
-          className={`btn-ghost text-sm px-3 py-2 flex-1 ${reviewLocked ? 'opacity-50' : ''}`}
-          title={reviewLocked ? `Review opens ${fmtPktDateTime(reviewUnlockAt)}` : 'Review your answers'}
-        >
-          <FiEye className="w-4 h-4" /> Review
-        </button>
-        <button onClick={() => navigate(`/student/tests/${testId}`)} className="btn-brand text-sm px-3 py-2 flex-1">
+      {/* Mobile action buttons — Review + Retake at 50/50. PDF export
+          removed (see header note). `fullWidth` on Review tells the
+          shared button to stretch + outline so it visually balances the
+          btn-brand Retake next to it. */}
+      <div className="md:hidden flex items-center gap-2 mb-3 no-print">
+        <div className="flex-1">
+          <ReviewLockButton
+            locked={reviewLocked}
+            reviewUnlockAt={reviewUnlockAt}
+            onClick={() => navigate(`/student/tests/${testId}/review/${attemptId}`)}
+            variant="result-mobile"
+            label="Review"
+            iconOnlyBelow="none"
+            fullWidth
+          />
+        </div>
+        <button onClick={() => navigate(`/student/tests/${testId}`)} className="btn-brand text-sm px-3 py-2 flex-1 justify-center">
           <FiZap className="w-4 h-4" /> Retake
         </button>
       </div>

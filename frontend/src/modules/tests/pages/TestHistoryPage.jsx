@@ -22,7 +22,7 @@ import {
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 import useAuth from '../../../core/auth/useAuth';
-import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
+import ReviewLockButton from '../components/ReviewLockButton';
 
 const PAGE_SIZE = 20;
 
@@ -605,33 +605,24 @@ const TestHistoryPage = () => {
                         <FiBarChart2 className="w-3.5 h-3.5" /> Results
                       </button>
                       {(() => {
-                        // Review-unlock gate — uses the snapshot fields on
-                        // the attempt itself (testReviewUnlockAt + testCreatorId)
-                        // so there's NO extra DB hit per row. Creators bypass.
-                        // Legacy attempts (snapshot null) behave as if review
-                        // is always available, matching pre-feature UX.
+                        // Same ReviewLockButton used by Result + Course
+                        // Player → identical lock UX everywhere. Snapshot
+                        // fields on the attempt drive the gate so this
+                        // adds NO per-row DB hit.
                         const ru = attempt.testReviewUnlockAt;
                         const creator = attempt.testCreatorId;
                         const isCreator = creator
                           && (creator === meId || creator?.toString?.() === meId);
                         const reviewLocked = !isCreator && ru && Date.now() < new Date(ru).getTime();
-                        const handleReview = () => {
-                          if (reviewLocked) {
-                            toast.info(`Review opens ${fmtCountdown(ru) || 'soon'} · ${fmtPktDateTime(ru)}`);
-                            return;
-                          }
-                          navigate(`/student/tests/${testId}/review/${attempt._id}`);
-                        };
                         return (
-                          <button
-                            onClick={handleReview}
-                            className={`${btnGhost} ${reviewLocked ? 'opacity-50' : ''}`}
-                            title={reviewLocked
-                              ? `Review opens ${fmtPktDateTime(ru)}`
-                              : 'Review your answers'}
-                          >
-                            <FiEye className="w-3.5 h-3.5" /> Review
-                          </button>
+                          <ReviewLockButton
+                            locked={reviewLocked}
+                            reviewUnlockAt={ru}
+                            onClick={() => navigate(`/student/tests/${testId}/review/${attempt._id}`)}
+                            variant="history-row"
+                            label="Review"
+                            iconOnlyBelow="none"
+                          />
                         );
                       })()}
                     </>

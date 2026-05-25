@@ -33,11 +33,12 @@ import { toast } from 'react-toastify';
 import {
   FiChevronLeft, FiChevronRight, FiX, FiCheck, FiSend, FiPause, FiClock,
   FiArrowLeft, FiZap, FiFlag, FiBookmark, FiBarChart2, FiEye, FiGrid,
-  FiBookOpen, FiFileText, FiSun, FiMoon, FiLogOut,
+  FiBookOpen, FiFileText, FiSun, FiMoon, FiLogOut, FiLock,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
 import useTheme from '../../../core/theme/useTheme';
+import { fmtPktDateTime, fmtCountdown } from '../../../shared/utils/pktDate';
 
 const REPORT_REASONS = [
   'Question Statement Wrong',
@@ -422,6 +423,10 @@ const TestPlayerPage = () => {
   const [attempt, setAttempt]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Review-locked screen state — populated when the backend rejects the
+  // review fetch with `reviewLocked: true`. Holds the unlock time so we
+  // can render the lockout copy without another request.
+  const [reviewLockedAt, setReviewLockedAt] = useState(null);
 
   // Local per-question state (avoids API call per click in live mode).
   const [localAnswers, setLocalAnswers]               = useState({});
@@ -462,10 +467,15 @@ const TestPlayerPage = () => {
     const fetchAttempt = async () => {
       try {
         // Live flow may pre-load via navigation state to skip a round-trip.
+        // In REVIEW mode we always hit the backend with `?for=review` so the
+        // controller applies the review-unlock gate (same single findById +
+        // populates as the no-gate fetch — zero extra DB cost). Live-mode
+        // pre-loads skip the request entirely because they were just
+        // created in this same client tick.
         const stateAttempt = location.state?.attemptData;
-        const res = stateAttempt
+        const res = stateAttempt && !isReview
           ? { data: { data: stateAttempt } }
-          : await apiClient.get(`/user-tests/${attemptId}`);
+          : await apiClient.get(`/user-tests/${attemptId}${isReview ? '?for=review' : ''}`);
         const a = res.data.data;
 
         // Mode-vs-status sanity:
@@ -515,7 +525,14 @@ const TestPlayerPage = () => {
           playStartRef.current     = Date.now();
           baseTimeSpentRef.current = a.totalTimeSpent || 0;
         }
-      } catch {
+      } catch (err) {
+        // Review-locked path — backend returns 403 with `reviewLocked: true`
+        // and the unlock time when the test's schedule hasn't opened yet.
+        // Surface the lockout screen instead of bouncing the user off.
+        if (isReview && err.response?.status === 403 && err.response?.data?.reviewLocked) {
+          setReviewLockedAt(err.response.data.reviewUnlockAt || null);
+          return;
+        }
         toast.error('Failed to load test');
         navigate(`/student/tests/${testId}`);
       } finally {
@@ -796,11 +813,43 @@ const TestPlayerPage = () => {
     return Math.round((s.totalCorrect / s.totalAnswered) * 100);
   }, [currentMcq]);
 
-  // ── Loading / not-found ─────────────────────────────────────────────────
+  // ── Loading / not-found / review-locked ─────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[var(--bg)]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500" />
+      </div>
+    );
+  }
+  // Review-locked screen — same look-and-feel as the Result page's
+  // lock popover but full-page since this is a navigated route. "Back"
+  // honours the returnTo (so course player flows return inside the
+  // course) or falls back to the standalone Result page.
+  if (reviewLockedAt) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-2xl p-6 sm:p-8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 flex items-center justify-center mb-3">
+            <FiLock className="w-7 h-7" />
+          </div>
+          <h2 className="font-display text-xl font-extrabold text-amber-900 dark:text-amber-200">
+            Review isn't open yet
+          </h2>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-2 leading-relaxed">
+            Your answers will be reviewable{' '}
+            <span className="font-semibold">{fmtCountdown(reviewLockedAt) || 'shortly'}</span>.
+          </p>
+          <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mt-1.5">
+            {fmtPktDateTime(reviewLockedAt)}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(resolveExit(`/student/tests/${testId}/result/${attemptId}`))}
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-200 hover:underline"
+          >
+            <FiArrowLeft className="w-4 h-4" /> Back to result
+          </button>
+        </div>
       </div>
     );
   }

@@ -6,7 +6,9 @@ const Test = require('../models/TestModel');
 const MCQ = require('../models/McqModel');
 const QuestionBank = require('../models/QuestionBankModel');
 const UserTestAttempt = require('../models/UserTestAttempt');
+const Course = require('../models/CourseModel');
 const User = require('../models/User');
+const courseCache = require('../utils/courseCache');
 
 /**
  * Reads every MCQ attached to a test, resolves QB hierarchy names,
@@ -93,6 +95,10 @@ const syncTestClassification = async (testId, providedMcqs) => {
       // shouldn't break the Test write that just succeeded.
       syncAttemptSnapshotsForTest(testId, updated).catch((e) =>
         console.error('Snapshot sync after classification update failed:', e?.message || e));
+      // Course cache also holds populated subjects/chapters/topics on
+      // resource.testId — invalidate so the next course read picks up
+      // the fresh classification arrays.
+      invalidateCoursesForTest(testId);
     }
     return result;
   } catch (err) {
@@ -150,6 +156,42 @@ const syncAttemptSnapshotsForTest = async (testId, testDoc) => {
 };
 
 exports.syncAttemptSnapshotsForTest = syncAttemptSnapshotsForTest;
+
+/**
+ * Drop every cached Course that embeds a reference to this Test, so the
+ * next read repopulates the test fields from the live Test doc. Why:
+ * the course controller's `loadCourseFull` populates the embedded
+ * `resource.testId` with selected fields (title, reviewUnlockAt,
+ * createdBy, …) and caches the whole tree. When the Test mutates, that
+ * populated copy goes stale and downstream code (Course Player Review
+ * button, locked-resource preview, etc.) reads outdated values.
+ *
+ * We discover the affected courses with ONE `find().select('_id')`
+ * across the three places a test resource can live (subject /
+ * subject.chapter / subject.chapter.topic), then call `invalidate(id)`
+ * for each. The find runs once per Test edit, not per request — and
+ * scans on indexed fields, so it stays cheap. The list cache is left
+ * alone because course meta (title, image) didn't change.
+ *
+ * Fire-and-forget at the call site: a sync failure shouldn't roll back
+ * the Test write that just succeeded.
+ */
+const invalidateCoursesForTest = async (testId) => {
+  try {
+    const courses = await Course.find({
+      $or: [
+        { 'subjects.resources.testId':                testId },
+        { 'subjects.chapters.resources.testId':       testId },
+        { 'subjects.chapters.topics.resources.testId': testId },
+      ],
+    }).select('_id').lean();
+    for (const c of courses) courseCache.invalidate(String(c._id));
+  } catch (err) {
+    console.error('invalidateCoursesForTest error:', err?.message || err);
+  }
+};
+
+exports.invalidateCoursesForTest = invalidateCoursesForTest;
 
 // Create new test
 exports.createTest = async (req, res) => {
@@ -309,6 +351,11 @@ exports.updateTest = async (req, res) => {
     // script can rebuild snapshots if anything ever slips through.
     syncAttemptSnapshotsForTest(updatedTest._id, updatedTest).catch((e) =>
       console.error('Snapshot sync after Test update failed:', e?.message || e));
+    // Also bust the course cache for every course that embeds this test
+    // (course-resource → testId). Without this, Course Player code reads
+    // STALE populated test fields (e.g. reviewUnlockAt) and the Review
+    // button's lock state drifts away from the live Test doc.
+    invalidateCoursesForTest(updatedTest._id);
 
     res.status(200).json({
       success: true,
@@ -347,7 +394,12 @@ exports.deleteTest = async (req, res) => {
     await UserTestAttempt.deleteMany({ test: test._id });
 
     await test.deleteOne();
-    
+
+    // Bust course caches that referenced this test — populated copies
+    // now point at a deleted doc; let the next course read repopulate
+    // (the missing test will surface as `testId === null` in the tree).
+    invalidateCoursesForTest(test._id);
+
     res.status(200).json({
       success: true,
       data: {}

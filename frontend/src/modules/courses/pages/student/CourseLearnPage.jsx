@@ -37,9 +37,10 @@ import useTheme from '../../../../core/theme/useTheme';
 import LockedFeaturePage from '../../../access/pages/LockedFeaturePage';
 import DrivePdfViewer   from '../../../../shared/components/DrivePdfViewer';
 import DriveVideoPlayer from '../../../../shared/components/DriveVideoPlayer';
-import TestStartPage         from '../../../tests/pages/TestStartPage';
-import TestResultPage        from '../../../tests/pages/TestResultPage';
-import TestAttemptReviewPage from '../../../tests/pages/TestAttemptReviewPage';
+import TestStartPage    from '../../../tests/pages/TestStartPage';
+import TestResultPage   from '../../../tests/pages/TestResultPage';
+import ReviewLockButton from '../../../tests/components/ReviewLockButton';
+import { resolveScheduleStatus, fmtPktDateTime, fmtCountdown } from '../../../../shared/utils/pktDate';
 import {
   markResourceComplete, unmarkResourceComplete, updateLastViewed,
 } from '../../services/courseProgressService';
@@ -54,17 +55,37 @@ const RES_META = {
   external: { Icon: FiLink,        label: 'External', tint: 'text-violet-500',   bg: 'bg-violet-50 dark:bg-violet-950/40' },
 };
 
-const getResourceStatus = (r) => {
-  const { availability: av, unlockAt, lockAt } = r || {};
-  if (!av || av === 'public') return 'available';
-  const now = new Date();
-  if (av === 'unlock_date') return unlockAt && now < new Date(unlockAt) ? 'locked' : 'available';
-  if (av === 'window') {
-    if (unlockAt && now < new Date(unlockAt)) return 'locked';
-    if (lockAt   && now > new Date(lockAt))   return 'closed';
-    return 'available';
-  }
-  return 'available';
+// Layer 3 — per-resource schedule. Delegates to the shared resolver so
+// the rules don't drift between detail page and player.
+const getResourceStatus = (r) => resolveScheduleStatus({
+  availability: r?.availability,
+  unlockAt:     r?.unlockAt,
+  lockAt:       r?.lockAt,
+});
+
+// Layer 2 — per-date-entry schedule (date-mode subjects). Date entries
+// don't carry their own `availability` enum; we synthesize one from the
+// shape of (unlockAt, lockAt).
+const getEntryStatus = (entry) => {
+  if (!entry?.unlockAt) return 'available';
+  return resolveScheduleStatus({
+    availability: entry.lockAt ? 'window' : 'unlock_date',
+    unlockAt:     entry.unlockAt,
+    lockAt:       entry.lockAt,
+  });
+};
+const isEntryLocked = (e) => {
+  const s = getEntryStatus(e);
+  return s === 'locked' || s === 'closed';
+};
+
+// Combined effective lock: a resource appears locked iff EITHER the
+// parent date entry (Layer 2) OR the resource's own schedule (Layer 3)
+// says so. Layer 4 (test-level) is enforced inside TestStartPage.
+const isResourceEffectivelyLocked = (resource, parentEntry) => {
+  if (parentEntry && isEntryLocked(parentEntry)) return true;
+  const s = getResourceStatus(resource);
+  return s === 'locked' || s === 'closed';
 };
 
 // Walk a course tree and produce a flat ordered playlist with breadcrumbs.
@@ -133,19 +154,22 @@ const resourceMeta = (r) => {
 };
 
 // ── Sidebar Resource Row ────────────────────────────────────────────────────
+// Locked rows stay clickable on purpose — the click lands the user on the
+// main area's "locked" preview screen so they understand WHY the resource
+// isn't accessible yet. The cursor + opacity still telegraph the locked
+// state up-front.
 const SidebarResourceRow = ({ resource, isActive, isCompleted, isLocked, onClick }) => {
   const meta = RES_META[resource.type] || RES_META.lecture;
   const Icon = meta.Icon;
   return (
     <button
       type="button"
-      onClick={() => !isLocked && onClick(resource._id)}
-      disabled={isLocked}
+      onClick={() => onClick(resource._id)}
       className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
         isActive
           ? 'bg-primary-50 dark:bg-primary-950/40 ring-1 ring-primary-300 dark:ring-primary-800'
           : isLocked
-            ? 'opacity-50 cursor-not-allowed'
+            ? 'opacity-60 hover:bg-[var(--bg-muted)] cursor-pointer'
             : 'hover:bg-[var(--bg-muted)] cursor-pointer'
       }`}
     >
@@ -205,7 +229,7 @@ const SidebarTopicGroup = ({ topic, num, activeId, completedSet, onSelect, defau
               resource={r}
               isActive={r._id === activeId}
               isCompleted={completedSet.has(String(r._id))}
-              isLocked={getResourceStatus(r) === 'locked'}
+              isLocked={isResourceEffectivelyLocked(r, null)}
               onClick={onSelect}
             />
           ))}
@@ -256,7 +280,7 @@ const SidebarChapterGroup = ({ chapter, num, activeId, completedSet, onSelect, a
                   resource={r}
                   isActive={r._id === activeId}
                   isCompleted={completedSet.has(String(r._id))}
-                  isLocked={getResourceStatus(r) === 'locked'}
+                  isLocked={isResourceEffectivelyLocked(r, null)}
                   onClick={onSelect}
                 />
               ))
@@ -342,39 +366,131 @@ const fmtSidebarDate = (v) => {
   } catch { return ''; }
 };
 
+// Format a weekday + day number for the calendar tile (e.g. "MON" + "25").
+const fmtPktWeekday = (v) => {
+  if (!v) return '';
+  try { return new Date(v).toLocaleString('en-PK', { timeZone: 'Asia/Karachi', weekday: 'short' }).toUpperCase(); }
+  catch { return ''; }
+};
+const fmtPktDay = (v) => {
+  if (!v) return '';
+  try { return new Date(v).toLocaleString('en-PK', { timeZone: 'Asia/Karachi', day: 'numeric' }); }
+  catch { return ''; }
+};
+const fmtPktMonth = (v) => {
+  if (!v) return '';
+  try { return new Date(v).toLocaleString('en-PK', { timeZone: 'Asia/Karachi', month: 'short' }).toUpperCase(); }
+  catch { return ''; }
+};
+
 const SidebarDateGroup = ({ entry, num, activeId, completedSet, onSelect, autoOpen }) => {
   const [open, setOpen] = useState(autoOpen);
   const resources = useMemo(() => collectDateEntryResources(entry), [entry]);
-  const dateChip  = fmtSidebarDate(entry.unlockAt);
+  // Layer 2 — when the entry is locked the group header dims + shows a
+  // lock badge, and every child row is forced to the locked state
+  // regardless of its own (Layer 3) schedule.
+  const parentLocked = isEntryLocked(entry);
+  const completedInEntry = resources.filter((r) => completedSet.has(String(r._id))).length;
+  const totalInEntry     = resources.length;
+
   return (
-    <div className="mb-2">
+    <div className="mb-2.5">
+      {/* Entry header — calendar tile + day-N + title + progress.
+          The calendar tile (weekday top, big day number, month) makes the
+          date instantly readable and matches the timeline pill in the
+          detail page, so students see the same chip everywhere. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors border ${
+        className={`w-full flex items-stretch gap-2.5 p-2 rounded-xl transition-colors border-2 ${
           autoOpen
-            ? 'border-primary-200 dark:border-primary-900/40 bg-primary-50/40 dark:bg-primary-950/20'
-            : 'border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-muted)]'
+            ? 'border-primary-300 dark:border-primary-800 bg-primary-50/40 dark:bg-primary-950/20'
+            : parentLocked
+              ? 'border-[var(--border)] bg-[var(--bg-muted)]/40 hover:bg-[var(--bg-muted)] opacity-80'
+              : 'border-[var(--border)] bg-[var(--bg-surface)] hover:border-primary-200 dark:hover:border-primary-900/40'
         }`}
       >
-        <span className="w-6 h-6 rounded-md bg-primary-500 text-white text-xs font-extrabold flex items-center justify-center flex-shrink-0">{num}</span>
-        <div className="min-w-0 flex-1 text-left">
-          <p className="text-sm font-extrabold text-[var(--text-strong)] truncate">{entry.title || 'Untitled entry'}</p>
-          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-faint)] mt-0.5 truncate">
-            {dateChip || `${resources.length} item${resources.length === 1 ? '' : 's'}`}
+        {/* Calendar tile — weekday / day / month. Lock badge replaces
+            the day number when the entry is locked. */}
+        <div className={`flex-shrink-0 w-12 rounded-lg overflow-hidden border text-center ${
+          parentLocked ? 'border-amber-200 dark:border-amber-900/60' : 'border-[var(--border)]'
+        }`}>
+          <div className={`text-[9px] font-bold tracking-wider py-0.5 ${
+            parentLocked
+              ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+              : autoOpen
+                ? 'bg-primary-500 text-white'
+                : 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
+          }`}>
+            {entry.unlockAt ? fmtPktWeekday(entry.unlockAt) : 'DAY'}
+          </div>
+          <div className="bg-[var(--bg-surface)] py-1">
+            {parentLocked ? (
+              <FiLock className="w-4 h-4 mx-auto text-amber-500" />
+            ) : entry.unlockAt ? (
+              <p className={`text-base font-black leading-none ${
+                autoOpen ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--text-strong)]'
+              }`}>
+                {fmtPktDay(entry.unlockAt)}
+              </p>
+            ) : (
+              <p className="text-base font-black leading-none text-[var(--text-strong)]">{num}</p>
+            )}
+            {entry.unlockAt && !parentLocked && (
+              <p className="text-[8px] font-bold tracking-wider text-[var(--text-faint)] mt-0.5">
+                {fmtPktMonth(entry.unlockAt)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Title + status line + count chip */}
+        <div className="min-w-0 flex-1 text-left flex flex-col justify-center">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-faint)] leading-tight">
+            Day {num}
+          </p>
+          <p className={`text-sm font-bold truncate leading-tight mt-0.5 ${
+            parentLocked ? 'text-[var(--text-muted)]' : 'text-[var(--text-strong)]'
+          }`}>
+            {entry.title || 'Untitled entry'}
+          </p>
+          <p className="text-[11px] text-[var(--text-muted)] mt-1 inline-flex items-center gap-1.5">
+            {parentLocked ? (
+              <>
+                <FiLock className="w-3 h-3 text-amber-500" />
+                <span>Locked</span>
+              </>
+            ) : (
+              <>
+                <span className={completedInEntry === totalInEntry && totalInEntry > 0 ? 'text-emerald-600 font-bold' : ''}>
+                  {completedInEntry}/{totalInEntry}
+                </span>
+                <span className="text-[var(--text-faint)]">complete</span>
+              </>
+            )}
           </p>
         </div>
-        {open ? <FiChevronUp className="w-4 h-4 text-[var(--text-faint)]" /> : <FiChevronDown className="w-4 h-4 text-[var(--text-faint)]" />}
+
+        <div className="flex items-center pl-1 text-[var(--text-faint)]">
+          {open ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
+        </div>
       </button>
+
+      {/* Child resources — indented with a vertical guide line so the
+          hierarchy is immediately readable. Same SidebarResourceRow used
+          by structure mode; lock state is computed once on the parent
+          and passed down so children inherit it. */}
       {open && (
-        <div className="mt-1 ml-1 space-y-0.5">
-          {resources.map((r) => (
+        <div className="mt-1 ml-3 pl-3 border-l-2 border-[var(--border-faint)] space-y-0.5">
+          {resources.length === 0 ? (
+            <p className="text-xs italic text-[var(--text-faint)] py-1.5">No content for this date.</p>
+          ) : resources.map((r) => (
             <SidebarResourceRow
               key={r._id}
               resource={r}
               isActive={r._id === activeId}
               isCompleted={completedSet.has(String(r._id))}
-              isLocked={getResourceStatus(r) === 'locked'}
+              isLocked={parentLocked || isResourceEffectivelyLocked(r, null)}
               onClick={onSelect}
             />
           ))}
@@ -491,6 +607,61 @@ const ExternalResourceView = ({ resource }) => (
   </div>
 );
 
+// Shown in the main area when the active resource is locked — clicking
+// a locked sidebar row lands here. Title is still visible (so the student
+// knows what's coming) along with the PKT unlock time + live countdown.
+const LockedResourcePreview = ({ resource, parentEntry }) => {
+  const parentLocked = parentEntry ? isEntryLocked(parentEntry) : false;
+  const status = getResourceStatus(resource);
+  const closed = parentLocked
+    ? getEntryStatus(parentEntry) === 'closed'
+    : status === 'closed';
+
+  // When the parent date is the gate, surface the date's schedule;
+  // otherwise show the resource's own window.
+  const unlockAt = parentLocked ? parentEntry?.unlockAt : resource.unlockAt;
+  const lockAt   = parentLocked ? parentEntry?.lockAt   : resource.lockAt;
+  const reason   = parentLocked
+    ? "This date isn't open yet"
+    : (closed ? 'This resource is closed' : "This resource isn't open yet");
+
+  const title = (resource.title && resource.title.trim())
+    || resource.testId?.title
+    || 'Resource';
+
+  return (
+    <div className="max-w-xl mx-auto py-12 px-4">
+      <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-6 sm:p-8 text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 flex items-center justify-center mb-3">
+          <FiLock className="w-7 h-7" />
+        </div>
+        <h2 className="font-display text-xl font-extrabold text-amber-900 dark:text-amber-200">
+          {reason}
+        </h2>
+        <p className="text-sm text-amber-800 dark:text-amber-300/90 mt-2 font-semibold">
+          {title}
+        </p>
+        {!closed && unlockAt && (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-3 leading-relaxed">
+            Opens{' '}
+            <span className="font-bold">{fmtCountdown(unlockAt) || 'shortly'}</span>
+            <br />
+            <span className="text-xs">{fmtPktDateTime(unlockAt)}</span>
+          </p>
+        )}
+        {closed && lockAt && (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-3 leading-relaxed">
+            Closed on {fmtPktDateTime(lockAt)}
+          </p>
+        )}
+        <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70 mt-5 italic">
+          Pick another item from the sidebar to keep learning.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const ResourceEmptyState = ({ message }) => (
   <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-12 text-center">
     <FiFileText className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3 opacity-40" />
@@ -595,11 +766,6 @@ const CourseLearnPage = () => {
   // button so the page re-renders the Start view even when a latest attempt
   // exists in the data.
   const showStartInsteadOfResult = showAttemptIdRaw === 'new';
-  // `?view=review` opens the embedded TestAttemptReviewPage inside the
-  // player. Set by the "Review answers" button in the top bar so the
-  // user stays inside the course context; cleared by the review page's
-  // "Back to result" button via setSearchParams.
-  const inReviewView = searchParams.get('view') === 'review';
 
   // Fetch course + progress in parallel
   const reload = useCallback(async () => {
@@ -737,7 +903,15 @@ const CourseLearnPage = () => {
 
   const isCompleted = activeResource ? completedSet.has(String(activeResource._id)) : false;
   const isTest      = activeResource?.type === 'test';
-  const isMedia     = activeResource?.type === 'lecture' || activeResource?.type === 'notes';
+  // Layer 2 (date entry) + Layer 3 (resource) combined lock. When true,
+  // the main area renders <LockedResourcePreview> instead of the resource
+  // content + the locked row in the footer hides "Mark complete".
+  const isResourceLocked = activeResource
+    ? isResourceEffectivelyLocked(activeResource, activeNode?.subject)
+    : false;
+  // Media renderers (video / notes) use a full-bleed iframe layout; the
+  // locked preview is a centered card so we force the padded layout for it.
+  const isMedia     = (activeResource?.type === 'lecture' || activeResource?.type === 'notes') && !isResourceLocked;
   const totalCount  = progress?.totalResources ?? playlist.length;
   const doneCount   = progress?.completedCount ?? 0;
   const progressPct = progress?.progressPct ?? 0;
@@ -768,10 +942,10 @@ const CourseLearnPage = () => {
     : (showStartInsteadOfResult ? null
     : (latestForActive?.status === 'completed' ? latestForActive.attemptId : null));
   // Top-bar action row appears for test resources that have a completed
-  // attempt to act on. In review-view we keep the row (so the Review chip
-  // shows as the active state) — but the actual Export/Retake buttons
-  // are dimmed/hidden inside it because those are result-view actions.
-  const isOnTestResult = activeResource?.type === 'test' && !!resultAttemptForActive;
+  // attempt to act on. Hidden when the resource is locked — Export/Review/
+  // Retake on a locked test would be misleading; the LockedResourcePreview
+  // panel below explains the lock instead.
+  const isOnTestResult = activeResource?.type === 'test' && !!resultAttemptForActive && !isResourceLocked;
 
   // Sidebar widths — referenced both by the sidebar itself AND the top bar
   // left zone so the two stay perfectly aligned at every breakpoint.
@@ -840,34 +1014,21 @@ const CourseLearnPage = () => {
           {/* Test-result actions — only when the main area is the embedded
               TestResultPage. These mirror the standalone TestResultPage's
               header actions (Export PDF / Review / Retake) one-to-one. */}
+          {/* Top-bar Review + Retake — DESKTOP ONLY. On mobile the
+              embedded TestResultPage renders its own mobile action row
+              (see TestResultPage's `md:hidden` block), so showing them
+              up here too would duplicate the buttons. */}
           {isOnTestResult && (
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              {/* Export PDF — only meaningful from the Result view. Hidden
-                  while the embedded Review screen is up. */}
-              {!inReviewView && (
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  title="Export PDF"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
-                >
-                  <FiDownload className="w-4 h-4" />
-                  <span className="hidden lg:inline">Export PDF</span>
-                </button>
-              )}
+            <div className="hidden md:flex items-center gap-1 sm:gap-2 flex-shrink-0">
+              {/* PDF export removed — both top-bar and standalone Result
+                  page no longer ship the Export PDF action. */}
               {(() => {
-                // Review button — two responsibilities:
-                //   1. Gate based on the test's `reviewUnlockAt` schedule
-                //      (creators bypass). The fields are already populated
-                //      on `activeResource.testId` via the course doc, so
-                //      no extra HTTP/DB hit. Backend re-checks on its own
-                //      regardless when the user actually requests review
-                //      data — frontend gate is just for the disabled UI.
-                //   2. Stay INSIDE the course player on click — flip
-                //      `?view=review` instead of navigating away to the
-                //      standalone /student/tests/.../review route. The
-                //      embedded TestAttemptReviewPage below reads this
-                //      flag and calls onBack() to clear it.
+                // Review button — gates by the test's reviewUnlockAt (creator
+                // bypass) AND navigates to the SAME standalone Review page
+                // used everywhere else, with `?returnTo=<course-url>` so the
+                // Review page's "Back to results" returns the user to this
+                // exact spot in the course. No embedded mode, no duplicate
+                // page logic — one Review page, one source of truth.
                 const testObj = activeResource.testId || {};
                 const meId = user?._id || user?.id;
                 const isCreator = testObj.createdBy
@@ -875,50 +1036,36 @@ const CourseLearnPage = () => {
                 const ru = testObj.reviewUnlockAt;
                 const reviewLocked = !isCreator && ru && Date.now() < new Date(ru).getTime();
                 const onReviewClick = () => {
-                  if (reviewLocked) {
-                    toast.info('Review opens later. Check the test schedule.');
-                    return;
-                  }
-                  setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.set('view', 'review');
-                    return next;
-                  });
+                  if (reviewLocked) return; // popup handles its own UX (see ReviewLockButton later)
+                  const tid = String(activeResource.testId?._id || activeResource.testId || '');
+                  const here = `/student/courses/${courseId}/learn?r=${activeResource._id}&attempt=${resultAttemptForActive}`;
+                  navigate(`/student/tests/${tid}/review/${resultAttemptForActive}?returnTo=${encodeURIComponent(here)}`);
                 };
                 return (
-                  <button
-                    type="button"
+                  <ReviewLockButton
+                    locked={reviewLocked}
+                    reviewUnlockAt={ru}
                     onClick={onReviewClick}
-                    title={reviewLocked ? 'Review is locked until the scheduled time' : 'Review answers'}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors ${reviewLocked ? 'opacity-50' : ''}`}
-                  >
-                    <FiEye className="w-4 h-4" />
-                    <span className="hidden lg:inline">Review</span>
-                  </button>
+                    label="Review"
+                    iconOnlyBelow="none"
+                  />
                 );
               })()}
-              {/* Retake — Result-view action; hidden in review-view since
-                  starting a new attempt while reviewing answers doesn't
-                  match the user's intent. */}
-              {!inReviewView && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchParams((prev) => {
-                      const next = new URLSearchParams(prev);
-                      next.set('attempt', 'new');
-                      // Also drop any lingering review flag.
-                      next.delete('view');
-                      return next;
-                    });
-                  }}
-                  title="Retake test"
-                  className="btn-brand text-xs px-2.5 py-1.5"
-                >
-                  <FiZap className="w-4 h-4" />
-                  <span className="hidden lg:inline">Retake</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('attempt', 'new');
+                    return next;
+                  });
+                }}
+                title="Retake test"
+                className="btn-brand text-xs px-2.5 py-1.5"
+              >
+                <FiZap className="w-4 h-4" />
+                <span className="hidden lg:inline">Retake</span>
+              </button>
             </div>
           )}
 
@@ -1135,14 +1282,20 @@ const CourseLearnPage = () => {
               if (!activeResource) {
                 return <ResourceEmptyState message="Pick a resource from the sidebar to start." />;
               }
+              // Layered lock check — runs BEFORE any type-specific renderer
+              // so a locked test/lecture/notes/external all land on the
+              // same explanatory screen instead of revealing content.
+              if (isResourceLocked) {
+                return <LockedResourcePreview resource={activeResource} parentEntry={activeNode?.subject} />;
+              }
               if (activeResource.type === 'lecture')  return <VideoResourceView    resource={activeResource} />;
               if (activeResource.type === 'notes')    return <NotesResourceView    resource={activeResource} />;
               if (activeResource.type === 'external') return <ExternalResourceView resource={activeResource} />;
               if (activeResource.type !== 'test') return <ResourceEmptyState message="Unsupported resource type." />;
 
-              // Test resource — decide between Review, Result, or Start.
-              //   0. ?view=review (+ attempt id resolved) → embedded
-              //                                              TestAttemptReviewPage
+              // Test resource — decide between Result and Start. Review
+              // is reached by navigating to the standalone Review route
+              // with `?returnTo=<here>`; we don't render it embedded.
               //   1. ?attempt=<id>             → result (post-submit deep link)
               //   2. ?attempt=new              → force Start (explicit Retake)
               //   3. latestAttemptByResource[r] → result (previously taken)
@@ -1153,30 +1306,6 @@ const CourseLearnPage = () => {
                 (showAttemptIdRaw && !showStartInsteadOfResult) ? showAttemptIdRaw
                 : (showStartInsteadOfResult ? null
                 : (latest?.status === 'completed' ? latest.attemptId : null));
-
-              // Embedded review — stays inside the course player. Falls
-              // back to result view if there's nothing to review (no
-              // showResultId), since review without an attempt is moot.
-              if (inReviewView && showResultId) {
-                return (
-                  <TestAttemptReviewPage
-                    key={`review-${showResultId}`}
-                    testId={testIdStr}
-                    attemptId={showResultId}
-                    embedded
-                    // Clearing `view=review` returns the user to the
-                    // embedded TestResultPage on the next render — no
-                    // navigation away from the course player.
-                    onBack={() => {
-                      setSearchParams((prev) => {
-                        const next = new URLSearchParams(prev);
-                        next.delete('view');
-                        return next;
-                      });
-                    }}
-                  />
-                );
-              }
 
               if (showResultId) {
                 return (
@@ -1248,7 +1377,12 @@ const CourseLearnPage = () => {
         </button>
 
         <div className="flex-1 flex justify-center min-w-0">
-          {isTest ? (
+          {isResourceLocked ? (
+            <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 px-2.5 py-1.5 rounded-full">
+              <FiLock className="w-3.5 h-3.5" />
+              Locked — opens later
+            </span>
+          ) : isTest ? (
             <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-[var(--text-faint)] bg-[var(--bg-muted)] px-2.5 py-1.5 rounded-full">
               <FiCheckCircle className="w-3.5 h-3.5" />
               Auto-marked when you complete the test

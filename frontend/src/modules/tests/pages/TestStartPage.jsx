@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import {
   FiClock, FiList, FiTarget, FiCheckCircle, FiAlertCircle, FiPlayCircle,
   FiBookOpen, FiRotateCcw, FiInfo, FiArrowLeft, FiAward,
-  FiZap, FiLock,
+  FiZap, FiLock, FiEye,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
@@ -383,6 +383,45 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
       <div className="grid lg:grid-cols-3 gap-5">
         {/* LEFT COLUMN */}
         <div className="lg:col-span-2 space-y-5">
+          {/* SCHEDULE — placed first so students see open / close /
+              review-unlock times BEFORE they pick a mode and start. Each
+              row is optional; the whole card only renders when the admin
+              has set at least one schedule field. All times PKT, shared
+              formatter so it matches the rest of the app. */}
+          {(test?.unlockAt || test?.lockAt || test?.reviewUnlockAt) && (
+            <SectionCard icon={<FiClock className="w-4 h-4" />} title="Test schedule" subtitle="All times are Pakistan Standard Time (PKT).">
+              <div className="grid sm:grid-cols-3 gap-3">
+                {test?.unlockAt && (
+                  <ScheduleTile
+                    Icon={FiClock}
+                    label="Test opens"
+                    value={fmtPktDateTime(test.unlockAt)}
+                    sub={fmtCountdown(test.unlockAt) || 'Open now'}
+                    tone="emerald"
+                  />
+                )}
+                {test?.lockAt && (
+                  <ScheduleTile
+                    Icon={FiLock}
+                    label="Test closes"
+                    value={fmtPktDateTime(test.lockAt)}
+                    sub={Date.now() > new Date(test.lockAt).getTime() ? 'Closed' : (fmtCountdown(test.lockAt) || '')}
+                    tone="rose"
+                  />
+                )}
+                {test?.reviewUnlockAt && (
+                  <ScheduleTile
+                    Icon={FiEye}
+                    label="Review opens"
+                    value={fmtPktDateTime(test.reviewUnlockAt)}
+                    sub={fmtCountdown(test.reviewUnlockAt) || 'Available now'}
+                    tone="violet"
+                  />
+                )}
+              </div>
+            </SectionCard>
+          )}
+
           {/* MODE SELECTOR — hidden when resuming (mode is fixed to the in-progress attempt's mode) */}
           {!existingAttempt && (
             <SectionCard
@@ -546,6 +585,7 @@ const StatTile = ({ Icon, label, value, tone = 'orange', valueClass = '' }) => {
     blue:    'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
     violet:  'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
     emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+    rose:    'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300',
   };
   return (
     <div className="bg-[var(--bg-muted)] rounded-xl border border-[var(--border)] p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -555,6 +595,29 @@ const StatTile = ({ Icon, label, value, tone = 'orange', valueClass = '' }) => {
       <div className="min-w-0 flex-1">
         <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</div>
         <div className={`text-base sm:text-lg font-bold text-[var(--text-strong)] leading-tight truncate ${valueClass}`}>{value}</div>
+      </div>
+    </div>
+  );
+};
+
+// Date/time tile used by the Schedule section. Slightly different shape
+// from StatTile — value is a full date string + a secondary countdown
+// line, so it gets its own component instead of stretching StatTile.
+const ScheduleTile = ({ Icon, label, value, sub, tone = 'emerald' }) => {
+  const TONES = {
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+    rose:    'bg-rose-50    text-rose-600    dark:bg-rose-950/40    dark:text-rose-300',
+    violet:  'bg-secondary-50 text-secondary-600 dark:bg-secondary-950/40 dark:text-secondary-300',
+  };
+  return (
+    <div className="bg-[var(--bg-muted)] rounded-xl border border-[var(--border)] p-3 flex items-start gap-3">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${TONES[tone] || TONES.emerald}`}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</div>
+        <div className="text-sm font-bold text-[var(--text-strong)] leading-tight mt-0.5 break-words">{value}</div>
+        {sub && <div className="text-[11px] text-[var(--text-muted)] mt-1">{sub}</div>}
       </div>
     </div>
   );
