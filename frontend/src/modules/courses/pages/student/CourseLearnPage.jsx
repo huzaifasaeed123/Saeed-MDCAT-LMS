@@ -634,14 +634,6 @@ const ExternalStatTile = ({ Icon, label, value, accent }) => (
   </div>
 );
 
-const ExternalInstructionPill = ({ Icon, text }) => (
-  <div className="flex items-start gap-2.5">
-    <div className="w-8 h-8 rounded-lg bg-[var(--bg-muted)] text-[var(--text-muted)] flex items-center justify-center flex-shrink-0">
-      <Icon className="w-3.5 h-3.5" />
-    </div>
-    <p className="text-xs text-[var(--text-muted)] leading-snug mt-1">{text}</p>
-  </div>
-);
 
 const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking }) => {
   const title    = resource.title || 'External Test';
@@ -741,16 +733,6 @@ const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking
           </div>
         </div>
       )}
-
-      {/* INSTRUCTIONS — static reminders matching the reference. */}
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ExternalInstructionPill Icon={FiCheckCircle} text="Attempt all questions carefully." />
-          <ExternalInstructionPill Icon={FiArrowRight} text="Do not refresh or leave the test screen." />
-          <ExternalInstructionPill Icon={FiClock}      text="Auto submit after time ends." />
-          <ExternalInstructionPill Icon={FiZap}        text="Ensure stable internet connection." />
-        </div>
-      </div>
 
       {/* FOOTER — Mark-as-taken + Start Test. The course player's own
           footer also has a Mark Complete button, but rendering one here
