@@ -19,7 +19,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import apiClient from '../../../core/api/axiosConfig';
 import {
-  FiPlus,
   FiTrash2,
   FiChevronDown,
   FiChevronUp,
@@ -34,6 +33,10 @@ import {
   FiLink,
   FiClock,
   FiCalendar,
+  FiSettings,
+  FiX,
+  FiPlus,
+  FiCheck,
 } from 'react-icons/fi';
 import { getBackendUrl } from '../../../shared/utils/fixImageUrls';
 
@@ -75,6 +78,10 @@ const emptyResource = (type = 'lecture') => ({
   testId: '', fileUrl: '', fileName: '', youtubeUrl: '',
   externalUrl: '', driveFileId: '',
   availability: 'public', unlockAt: '', lockAt: '', order: 0,
+  // External-test display metadata (only used when type === 'external').
+  externalMcqCount: 0, externalDurationMin: 0, externalTestType: '',
+  externalStartAt: '', externalEndAt: '',
+  externalSyllabus: [],
 });
 
 const emptyTopic   = () => ({ _tmpId: genId(), title: '', order: 0, resources: [] });
@@ -110,6 +117,374 @@ const SortableWrapper = ({ id, children }) => {
 };
 
 // ─── Resource type config ─────────────────────────────────────────────────────
+// ─── External-test config modal ───────────────────────────────────────────
+// Admin-side dialog that collects all the metadata for an external test
+// resource — URL, MCQ count, duration, type, schedule (display-only),
+// and a syllabus with up to 5 subjects (each with its own list of
+// chapters). Values are committed back via the `onSave(next)` callback,
+// which merges them into the parent ResourceItem's resource object.
+//
+// Everything here is INFORMATIONAL on the student side; the resource's
+// existing `availability` + `unlockAt` / `lockAt` (set further down the
+// resource card) still govern actual access.
+const MAX_SUBJECTS = 5;
+
+const dateTimeLocalToIso = (s) => (s ? new Date(s).toISOString() : '');
+const isoToDateTimeLocal = (iso) => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    // Use the local timezone — admin enters wall-clock; we round-trip
+    // through ISO for storage. This matches how the other course-resource
+    // datetime inputs in this builder behave.
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return ''; }
+};
+
+const ExternalTestModal = ({ resource, onClose, onSave }) => {
+  const [draft, setDraft] = useState(() => ({
+    title:               resource.title || '',
+    externalUrl:         resource.externalUrl || '',
+    externalMcqCount:    resource.externalMcqCount || 0,
+    externalDurationMin: resource.externalDurationMin || 0,
+    externalTestType:    resource.externalTestType || '',
+    externalStartAt:     resource.externalStartAt || '',
+    externalEndAt:       resource.externalEndAt || '',
+    externalSyllabus:    Array.isArray(resource.externalSyllabus)
+      ? resource.externalSyllabus.map((s) => ({
+          subject:  s.subject  || '',
+          chapters: Array.isArray(s.chapters) ? [...s.chapters] : [],
+        }))
+      : [],
+  }));
+
+  const update = (patch) => setDraft((d) => ({ ...d, ...patch }));
+
+  const addSubject = () => {
+    if (draft.externalSyllabus.length >= MAX_SUBJECTS) return;
+    update({ externalSyllabus: [...draft.externalSyllabus, { subject: '', chapters: [''] }] });
+  };
+  const removeSubject = (i) => {
+    update({ externalSyllabus: draft.externalSyllabus.filter((_, idx) => idx !== i) });
+  };
+  const setSubjectTitle = (i, val) => {
+    const next = [...draft.externalSyllabus];
+    next[i] = { ...next[i], subject: val };
+    update({ externalSyllabus: next });
+  };
+  const addChapter = (i) => {
+    const next = [...draft.externalSyllabus];
+    next[i] = { ...next[i], chapters: [...(next[i].chapters || []), ''] };
+    update({ externalSyllabus: next });
+  };
+  const setChapter = (i, j, val) => {
+    const next = [...draft.externalSyllabus];
+    const chs = [...(next[i].chapters || [])];
+    chs[j] = val;
+    next[i] = { ...next[i], chapters: chs };
+    update({ externalSyllabus: next });
+  };
+  const removeChapter = (i, j) => {
+    const next = [...draft.externalSyllabus];
+    next[i] = { ...next[i], chapters: (next[i].chapters || []).filter((_, idx) => idx !== j) };
+    update({ externalSyllabus: next });
+  };
+
+  const save = () => {
+    // Clean syllabus before commit — drop empty subjects + chapters so
+    // the persisted shape matches what `cleanResource` will accept.
+    const syllabus = draft.externalSyllabus
+      .map((s) => ({
+        subject:  (s.subject || '').trim(),
+        chapters: (s.chapters || []).map((c) => (c || '').trim()).filter(Boolean),
+      }))
+      .filter((s) => s.subject);
+    onSave({
+      title:               draft.title.trim(),
+      externalUrl:         draft.externalUrl.trim(),
+      externalMcqCount:    Number(draft.externalMcqCount) || 0,
+      externalDurationMin: Number(draft.externalDurationMin) || 0,
+      externalTestType:    draft.externalTestType.trim(),
+      externalStartAt:     draft.externalStartAt
+        ? dateTimeLocalToIso(draft.externalStartAt)
+        : '',
+      externalEndAt:       draft.externalEndAt
+        ? dateTimeLocalToIso(draft.externalEndAt)
+        : '',
+      externalSyllabus:    syllabus,
+    });
+  };
+
+  const inputCls =
+    'w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:ring-1 focus:ring-purple-400 focus:outline-none';
+  const labelCls = 'text-xs font-semibold text-gray-700 mb-1 block';
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-white px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+              <FiLink className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 text-base">External Test</h3>
+              <p className="text-[11px] text-gray-500">Configure how this off-platform test appears to students.</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100">
+            <FiX className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-5">
+          {/* Basics */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Test title</label>
+              <input
+                type="text" placeholder="e.g. TEST 02 — Full Length Mock"
+                value={draft.title}
+                onChange={(e) => update({ title: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelCls}>External test URL</label>
+              <input
+                type="url" placeholder="https://…"
+                value={draft.externalUrl}
+                onChange={(e) => update({ externalUrl: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>No. of MCQs</label>
+              <input
+                type="number" min={0} placeholder="180"
+                value={draft.externalMcqCount || ''}
+                onChange={(e) => update({ externalMcqCount: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Duration (minutes)</label>
+              <input
+                type="number" min={0} placeholder="180"
+                value={draft.externalDurationMin || ''}
+                onChange={(e) => update({ externalDurationMin: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Test type</label>
+              <input
+                type="text" placeholder="e.g. Full Length / Topical / Mock"
+                value={draft.externalTestType}
+                onChange={(e) => update({ externalTestType: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          {/* Timeline — informational only, not enforced. */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="text-xs font-semibold text-gray-700 mb-2 inline-flex items-center gap-1.5">
+              <FiClock className="w-3.5 h-3.5 text-purple-500" /> Test timeline
+              <span className="text-[10px] font-normal text-gray-400">(shown to students — not enforced)</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Starts at</label>
+                <input
+                  type="datetime-local"
+                  value={isoToDateTimeLocal(draft.externalStartAt)}
+                  onChange={(e) => update({ externalStartAt: e.target.value
+                    ? new Date(e.target.value).toISOString() : '' })}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Ends at</label>
+                <input
+                  type="datetime-local"
+                  value={isoToDateTimeLocal(draft.externalEndAt)}
+                  onChange={(e) => update({ externalEndAt: e.target.value
+                    ? new Date(e.target.value).toISOString() : '' })}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Syllabus — up to MAX_SUBJECTS subjects, each with chapters. */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-semibold text-gray-700 inline-flex items-center gap-1.5">
+                <FiBookOpen className="w-3.5 h-3.5 text-purple-500" /> Syllabus covered
+                <span className="text-[10px] font-normal text-gray-400">
+                  ({draft.externalSyllabus.length} / {MAX_SUBJECTS})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={addSubject}
+                disabled={draft.externalSyllabus.length >= MAX_SUBJECTS}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FiPlus className="w-3.5 h-3.5" /> Add subject
+              </button>
+            </div>
+
+            {draft.externalSyllabus.length === 0 ? (
+              <div className="text-center py-6 text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg">
+                No subjects added yet. Click "Add subject" to start.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {draft.externalSyllabus.map((sub, i) => (
+                  <div key={i} className="border border-gray-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-mono font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                        S{i + 1}
+                      </span>
+                      <input
+                        type="text" placeholder="Subject name (e.g. Biology)"
+                        value={sub.subject}
+                        onChange={(e) => setSubjectTitle(i, e.target.value)}
+                        className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-purple-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSubject(i)}
+                        className="p-1 text-gray-400 hover:text-rose-500"
+                        title="Remove subject"
+                      >
+                        <FiX className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="ml-6 space-y-1.5">
+                      {(sub.chapters || []).map((ch, j) => (
+                        <div key={j} className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-400 w-8">{i + 1}.{j + 1}</span>
+                          <input
+                            type="text" placeholder="Chapter / topic"
+                            value={ch}
+                            onChange={(e) => setChapter(i, j, e.target.value)}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-purple-300 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeChapter(i, j)}
+                            className="p-1 text-gray-300 hover:text-rose-400"
+                            title="Remove chapter"
+                          >
+                            <FiX className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addChapter(i)}
+                        className="text-[11px] text-purple-600 hover:text-purple-700 font-semibold inline-flex items-center gap-1"
+                      >
+                        <FiPlus className="w-3 h-3" /> Add chapter
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700"
+          >
+            <FiCheck className="w-4 h-4" /> Save details
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Inline summary card for an external-test resource inside the builder.
+// Shows whatever the admin has filled in so far (or an empty-state with
+// a "Configure" CTA), and toggles the rich modal above for editing.
+const ExternalTestSummary = ({ resource, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const hasUrl   = !!resource.externalUrl;
+  const subjects = Array.isArray(resource.externalSyllabus) ? resource.externalSyllabus.length : 0;
+  const mcqs     = resource.externalMcqCount || 0;
+  const minutes  = resource.externalDurationMin || 0;
+
+  return (
+    <>
+      <div className="rounded-lg border border-purple-200 bg-purple-50/40 p-2.5">
+        <div className="flex items-start gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center flex-shrink-0">
+            <FiLink className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            {hasUrl ? (
+              <>
+                <p className="text-xs font-bold text-gray-800 truncate">
+                  {resource.title || 'Untitled external test'}
+                </p>
+                <p className="text-[11px] text-purple-700 truncate">
+                  {resource.externalUrl}
+                </p>
+                <p className="text-[11px] text-gray-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                  {mcqs > 0    && <span>{mcqs} MCQs</span>}
+                  {minutes > 0 && <span>· {minutes} min</span>}
+                  {resource.externalTestType && <span>· {resource.externalTestType}</span>}
+                  {subjects > 0 && <span>· {subjects} subject{subjects > 1 ? 's' : ''}</span>}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500 italic">
+                No external test configured yet. Click "Configure" to add the URL, MCQ count, syllabus and timeline shown to students.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-1 rounded-lg hover:bg-purple-100"
+          >
+            <FiSettings className="w-3.5 h-3.5" /> Configure
+          </button>
+        </div>
+      </div>
+      {open && (
+        <ExternalTestModal
+          resource={resource}
+          onClose={() => setOpen(false)}
+          onSave={(patch) => {
+            onChange({ ...resource, ...patch });
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+};
+
 const RESOURCE_TYPES = {
   lecture:  { label: 'Lecture',       color: 'text-red-500',     bg: 'bg-red-50',     border: 'border-red-200',     Icon: FiVideo       },
   notes:    { label: 'Notes',         color: 'text-orange-500',  bg: 'bg-orange-50',  border: 'border-orange-200',  Icon: FiFileText    },
@@ -288,10 +663,9 @@ const ResourceItem = ({ resource, onChange, onDelete, availableTests, dragListen
         })()}
 
         {resource.type === 'external' && (
-          <input type="url" placeholder="External test URL  (https://…)"
-            value={resource.externalUrl}
-            onChange={(e) => onChange({ ...resource, externalUrl: e.target.value })}
-            className="w-full border border-purple-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-purple-400 focus:outline-none"
+          <ExternalTestSummary
+            resource={resource}
+            onChange={onChange}
           />
         )}
 

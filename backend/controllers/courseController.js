@@ -186,6 +186,28 @@ const cleanResource = (r) => {
     unlockAt: r.unlockAt || null,
     lockAt: r.lockAt || null,
     order: typeof r.order === 'number' ? r.order : 0,
+
+    // External-test display metadata. All optional; pass-through so
+    // admin edits on the modal persist round-trip. Syllabus is stripped
+    // to the minimal shape `{ subject, chapters }` even if the form
+    // sent extra fields, and clamped to 5 entries server-side as a
+    // belt-and-suspenders match for the admin UI's hard cap.
+    externalMcqCount:    Number(r.externalMcqCount)    > 0 ? Number(r.externalMcqCount)    : 0,
+    externalDurationMin: Number(r.externalDurationMin) > 0 ? Number(r.externalDurationMin) : 0,
+    externalTestType:    String(r.externalTestType || ''),
+    externalStartAt:     r.externalStartAt || null,
+    externalEndAt:       r.externalEndAt   || null,
+    externalSyllabus: Array.isArray(r.externalSyllabus)
+      ? r.externalSyllabus
+          .slice(0, 5)
+          .map((s) => ({
+            subject:  String(s?.subject || '').trim(),
+            chapters: Array.isArray(s?.chapters)
+              ? s.chapters.map((c) => String(c || '').trim()).filter(Boolean)
+              : [],
+          }))
+          .filter((s) => s.subject)
+      : [],
   };
   if (isRealId(r._id)) out._id = r._id;
   return out;

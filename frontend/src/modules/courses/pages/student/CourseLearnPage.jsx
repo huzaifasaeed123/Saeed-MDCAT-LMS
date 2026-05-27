@@ -591,21 +591,261 @@ const NotesResourceView = ({ resource }) => {
   return <ResourceEmptyState message="No PDF attached to this resource." />;
 };
 
-const ExternalResourceView = ({ resource }) => (
-  <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
-    <FiLink className="w-12 h-12 text-violet-500 mx-auto mb-4" />
-    <h3 className="font-display text-lg font-bold text-[var(--text-strong)] mb-1">External resource</h3>
-    <p className="text-sm text-[var(--text-muted)] mb-5">{resource.title || 'Open in a new tab'}</p>
-    <a
-      href={resource.externalUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="btn-brand text-sm inline-flex"
-    >
-      Open link <FiArrowRight className="w-4 h-4" />
-    </a>
+// ─── External-test rich view ─────────────────────────────────────────────
+// Renders the configured external-test metadata as a self-contained "test
+// detail" page. The layout matches the reference screenshot the admin
+// approved: status badge → stat tiles → syllabus grid → instructions row
+// → Start Test footer. Everything sources from the resource fields
+// `externalMcqCount / externalDurationMin / externalTestType /
+// externalStartAt / externalEndAt / externalSyllabus` populated by the
+// admin modal. No backend lookups, no separate Test doc.
+//
+// Click "Start Test" opens the external URL in a new tab; the course
+// player stays put in the original tab. Completion is handled by the
+// existing manual Mark-Complete button in the player footer (external
+// resources behave the same as notes/lectures for progress tracking).
+const EXT_SUBJECT_TONES = [
+  { tile: 'bg-rose-50 dark:bg-rose-950/30',       icon: 'text-rose-500',       chip: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' },
+  { tile: 'bg-emerald-50 dark:bg-emerald-950/30', icon: 'text-emerald-500',    chip: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' },
+  { tile: 'bg-blue-50 dark:bg-blue-950/30',       icon: 'text-blue-500',       chip: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' },
+  { tile: 'bg-violet-50 dark:bg-violet-950/30',   icon: 'text-violet-500',     chip: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300' },
+  { tile: 'bg-amber-50 dark:bg-amber-950/30',     icon: 'text-amber-500',      chip: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+];
+
+const fmtExtDate = (v) => {
+  if (!v) return '';
+  try {
+    return new Date(v).toLocaleString(undefined, {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  } catch { return ''; }
+};
+
+const ExternalStatTile = ({ Icon, label, value, accent }) => (
+  <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 min-w-0">
+    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${accent}`}>
+      <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+    </div>
+    <div className="min-w-0">
+      <div className="text-base sm:text-lg font-extrabold text-[var(--text-strong)] leading-tight truncate">{value}</div>
+      <div className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--text-faint)] truncate">{label}</div>
+    </div>
   </div>
 );
+
+const ExternalInstructionPill = ({ Icon, text }) => (
+  <div className="flex items-start gap-2.5">
+    <div className="w-8 h-8 rounded-lg bg-[var(--bg-muted)] text-[var(--text-muted)] flex items-center justify-center flex-shrink-0">
+      <Icon className="w-3.5 h-3.5" />
+    </div>
+    <p className="text-xs text-[var(--text-muted)] leading-snug mt-1">{text}</p>
+  </div>
+);
+
+const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking }) => {
+  const title    = resource.title || 'External Test';
+  const mcqs     = resource.externalMcqCount || 0;
+  const minutes  = resource.externalDurationMin || 0;
+  const testType = resource.externalTestType || 'External';
+  const syllabus = Array.isArray(resource.externalSyllabus) ? resource.externalSyllabus : [];
+  const startAt  = resource.externalStartAt;
+  const endAt    = resource.externalEndAt;
+  const hasUrl   = !!resource.externalUrl;
+
+  // Status string derived purely from the displayed timeline. This is
+  // INFORMATIONAL — no resource gating happens here; the parent course
+  // player handles real availability via `resource.availability`.
+  const now = Date.now();
+  let statusLabel = 'Available now';
+  let statusTone  = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
+  if (startAt && now < new Date(startAt).getTime()) {
+    statusLabel = `Opens ${fmtExtDate(startAt)}`;
+    statusTone  = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
+  } else if (endAt && now > new Date(endAt).getTime()) {
+    statusLabel = 'Closed';
+    statusTone  = 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300';
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-4 sm:space-y-5">
+      {/* HEADER — title + status badge. The reference screenshot put a
+          decorative illustration on the right; we keep it text-led so
+          the card scales cleanly without art assets. */}
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-5">
+        <div className="flex items-start gap-3 flex-wrap">
+          <h1 className="font-display text-xl sm:text-2xl font-extrabold text-[var(--text-strong)] flex-1 min-w-0">
+            {title}
+          </h1>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${statusTone}`}>
+            <FiCheckCircle className="w-3 h-3" /> {statusLabel}
+          </span>
+        </div>
+        {(startAt || endAt) && (
+          <p className="text-[11px] text-[var(--text-faint)] mt-1.5">
+            {startAt && <>Starts {fmtExtDate(startAt)}</>}
+            {startAt && endAt && ' · '}
+            {endAt && <>Ends {fmtExtDate(endAt)}</>}
+          </p>
+        )}
+
+        {/* Stat tiles — MCQs, Minutes, Test Type, Status. Mirrors the
+            screenshot's 4-up row; collapses to 2-up on phones. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-4">
+          <ExternalStatTile
+            Icon={FiCheckSquare}
+            value={mcqs || '—'}
+            label="MCQs"
+            accent="bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300"
+          />
+          <ExternalStatTile
+            Icon={FiClock}
+            value={minutes ? `${minutes}` : '—'}
+            label="Minutes"
+            accent="bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300"
+          />
+          <ExternalStatTile
+            Icon={FiBookOpen}
+            value={testType}
+            label="Test Type"
+            accent="bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300"
+          />
+          <ExternalStatTile
+            Icon={FiTarget}
+            value={isCompleted ? 'Done' : 'Not Attempted'}
+            label="Status"
+            accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300"
+          />
+        </div>
+      </div>
+
+      {/* SYLLABUS — only renders if admin added subjects. Subject cards
+          are 4-up on desktop, 2-up on phones. Each card shows the
+          subject name + chapter chip count + the first chapter as a
+          preview line, then a "View details" toggle that expands the
+          full chapter list inline. */}
+      {syllabus.length > 0 && (
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-faint)]">
+              Syllabus covered
+            </p>
+            <p className="text-[11px] text-[var(--text-faint)]">
+              {syllabus.length} subject{syllabus.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+            {syllabus.map((sub, i) => (
+              <ExternalSyllabusCard key={i} subject={sub} tone={EXT_SUBJECT_TONES[i % EXT_SUBJECT_TONES.length]} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* INSTRUCTIONS — static reminders matching the reference. */}
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ExternalInstructionPill Icon={FiCheckCircle} text="Attempt all questions carefully." />
+          <ExternalInstructionPill Icon={FiArrowRight} text="Do not refresh or leave the test screen." />
+          <ExternalInstructionPill Icon={FiClock}      text="Auto submit after time ends." />
+          <ExternalInstructionPill Icon={FiZap}        text="Ensure stable internet connection." />
+        </div>
+      </div>
+
+      {/* FOOTER — Mark-as-taken + Start Test. The course player's own
+          footer also has a Mark Complete button, but rendering one here
+          too keeps the action discoverable on this richer page. Both
+          write to the same progress endpoint. */}
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-3 sm:p-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onToggleComplete?.(!isCompleted)}
+          disabled={marking}
+          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 ${
+            isCompleted
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+              : 'border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)]'
+          }`}
+        >
+          {isCompleted ? <FiCheck className="w-4 h-4" /> : <FiCheckCircle className="w-4 h-4" />}
+          {isCompleted ? 'Marked as taken' : 'Mark as taken'}
+        </button>
+        <a
+          href={hasUrl ? resource.externalUrl : undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-disabled={!hasUrl}
+          className={`btn-brand text-sm sm:text-base ml-auto ${!hasUrl ? 'pointer-events-none opacity-50' : ''}`}
+          title={hasUrl ? 'Open the external test in a new tab' : 'No external URL configured'}
+        >
+          Start Test <FiArrowRight className="w-4 h-4" />
+        </a>
+      </div>
+    </div>
+  );
+};
+
+// Each subject card shows up to PREVIEW_CHAPTERS chapters by default, one
+// per line. If there are MORE, the rest collapse behind a "View Details"
+// toggle. Three was picked because it gives enough context to recognise
+// the scope of the subject without making every card the same uneven
+// height when subjects have wildly different chapter counts.
+const PREVIEW_CHAPTERS = 3;
+
+const ExternalSyllabusCard = ({ subject, tone }) => {
+  const [open, setOpen] = useState(false);
+  const chapters = Array.isArray(subject?.chapters) ? subject.chapters.filter(Boolean) : [];
+  // Always show up to 3 (or fewer, if there aren't 3); the rest live
+  // behind the toggle. Switching `open` reveals every chapter without
+  // re-rendering the visible-by-default set, so the card "grows" rather
+  // than replacing its content.
+  const visible = open ? chapters : chapters.slice(0, PREVIEW_CHAPTERS);
+  const hiddenCount = Math.max(0, chapters.length - PREVIEW_CHAPTERS);
+
+  return (
+    <div className={`rounded-2xl border border-[var(--border)] p-3 ${tone.tile}`}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className={`w-9 h-9 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center ${tone.icon}`}>
+          <FiBookOpen className="w-4 h-4" />
+        </div>
+        {chapters.length > 0 && (
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tone.chip}`}>
+            {chapters.length} ch
+          </span>
+        )}
+      </div>
+      <p className="text-sm font-extrabold text-[var(--text-strong)] truncate">
+        {subject?.subject || 'Subject'}
+      </p>
+
+      {/* Chapter list — one per line, bulleted with a small dot so each
+          item is visually distinct from the subject title. `break-words`
+          keeps very long chapter names contained within the card. */}
+      {visible.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {visible.map((ch, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs text-[var(--text-muted)] leading-snug break-words">
+              <span className={`mt-1 w-1 h-1 rounded-full flex-shrink-0 ${tone.icon.replace('text-', 'bg-')}`} />
+              <span className="min-w-0">{ch}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Toggle only renders when there's actually something hidden —
+          a subject with ≤ 3 chapters never shows the button. */}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`mt-2 inline-flex items-center gap-1 text-xs font-bold ${tone.icon}`}
+        >
+          {open ? 'Hide details' : `View Details (+${hiddenCount})`} <FiArrowRight className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 // Shown in the main area when the active resource is locked — clicking
 // a locked sidebar row lands here. Title is still visible (so the student
@@ -1295,7 +1535,14 @@ const CourseLearnPage = () => {
               }
               if (activeResource.type === 'lecture')  return <VideoResourceView    resource={activeResource} />;
               if (activeResource.type === 'notes')    return <NotesResourceView    resource={activeResource} />;
-              if (activeResource.type === 'external') return <ExternalResourceView resource={activeResource} />;
+              if (activeResource.type === 'external') return (
+                <ExternalResourceView
+                  resource={activeResource}
+                  isCompleted={isCompleted}
+                  onToggleComplete={onToggleComplete}
+                  marking={marking}
+                />
+              );
               if (activeResource.type !== 'test') return <ResourceEmptyState message="Unsupported resource type." />;
 
               // Test resource — decide between Result and Start. Review
