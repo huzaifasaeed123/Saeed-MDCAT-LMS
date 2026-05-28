@@ -276,6 +276,54 @@ exports.revokeAllCourses = async (req, res) => {
   }
 };
 
+// ─── PATCH /api/users/course-access/bulk ────────────────────────────────────
+// Body: { courseIds: [id, ...], value: true|false, role?: 'student', filters?: {...} }
+// Grant or revoke specific courses for every user matching the given role +
+// filters in one bulk write. value=true → $addToSet each courseId,
+// value=false → $pull each courseId. Does NOT touch coursesGrantAll.
+exports.bulkGrantCourseAccess = async (req, res) => {
+  try {
+    const { courseIds, value, role: roleRaw, filters: filtersRaw } = req.body || {};
+
+    if (!Array.isArray(courseIds) || courseIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'courseIds must be a non-empty array' });
+    }
+    const validIds = courseIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid courseIds provided' });
+    }
+    if (value === undefined) {
+      return res.status(400).json({ success: false, message: 'value (boolean) is required' });
+    }
+    const grant = !!value;
+    const role  = ['student', 'teacher', 'admin'].includes(roleRaw) ? roleRaw : 'student';
+
+    const filterInput = (filtersRaw && typeof filtersRaw === 'object') ? { ...filtersRaw } : {};
+    delete filterInput.role;
+    const filter = buildUserFilter({ ...filterInput, role });
+
+    // On revoke we also clear coursesGrantAll so users who had the master
+    // "all courses" flag still lose access — pulling from courseAccess alone
+    // is not enough because the flag overrides the per-course list.
+    const updateOp = grant
+      ? { $addToSet: { courseAccess: { $each: validIds } } }
+      : { $set: { coursesGrantAll: false }, $pull: { courseAccess: { $in: validIds } } };
+
+    const result = await User.updateMany(filter, updateOp);
+
+    userAccessCache.clearAll();
+    pushToAll('bulk_access_updated', { feature: 'courseAccess', value: grant, role, courseIds: validIds });
+
+    res.status(200).json({
+      success: true,
+      data: { courseIds: validIds, value: grant, role, matched: result.matchedCount, modified: result.modifiedCount },
+    });
+  } catch (err) {
+    console.error('bulkGrantCourseAccess error:', err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
 // ─── PATCH /api/users/access/bulk ────────────────────────────────────────────
 // Body: { feature: 'community', value: true, role?: 'student' }
 // Applies one feature toggle to EVERY user matching `role` (defaults to

@@ -132,6 +132,11 @@ const pushText = (target, htmlText, cur, imageDir) => {
     case "Bexp": cur.explanationB = add(cur.explanationB); break;
     case "Cexp": cur.explanationC = add(cur.explanationC); break;
     case "Dexp": cur.explanationD = add(cur.explanationD); break;
+    // Optional metadata markers — same continuation behaviour as the
+    // explanation fields above. Order-independent; admins can place them
+    // anywhere between Q:) and the next Q:), or skip them entirely.
+    case "univ": cur.university = add(cur.university); break;
+    case "year": cur.year       = add(cur.year);       break;
   }
 };
 
@@ -157,7 +162,11 @@ function parseMCQsFromLines(lines, imageDir) {
         explanationA: "",
         explanationB: "",
         explanationC: "",
-        explanationD: ""
+        explanationD: "",
+        // Optional metadata — stays as "" when the source doc omits the
+        // matching marker(s), so importing a file without these is a no-op.
+        university: "",
+        year:       ""
       };
       raw = raw.replace(prefixRE("Q"), "");
       part = "question";
@@ -177,6 +186,14 @@ function parseMCQsFromLines(lines, imageDir) {
     if (/^:ExplanationB:/i.test(raw)) { part = "Bexp"; raw = raw.replace(/^:ExplanationB:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
     if (/^:ExplanationC:/i.test(raw)) { part = "Cexp"; raw = raw.replace(/^:ExplanationC:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
     if (/^:ExplanationD:/i.test(raw)) { part = "Dexp"; raw = raw.replace(/^:ExplanationD:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+
+    // Optional MCQ metadata — same per-marker pattern as the explanation
+    // branches above. Both are independent of each other and of every
+    // other field; if a marker is missing the field stays "". Multi-line
+    // continuations work the same way (subsequent paragraphs are
+    // <br>-joined into the active field until another marker fires).
+    if (/^:University:/i.test(raw)) { part = "univ"; raw = raw.replace(/^:University:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:Year:/i.test(raw))       { part = "year"; raw = raw.replace(/^:Year:\s*/, "");       pushText(part, raw, cur, imageDir); continue; }
 
     // Otherwise: continue adding to current section
     pushText(part, raw, cur, imageDir);
@@ -256,6 +273,10 @@ function convertToBackendFormat(mcqs, testId, defaultValues = {}) {
       isPublic: defaultValues.isPublic !== undefined ? defaultValues.isPublic : true,
       revisionCount: 0,
       lastRevised: null,
+      // Optional metadata parsed from :University: / :Year: markers in
+      // the Word doc. Empty string when omitted — schema accepts both.
+      university: mcq.university || '',
+      year:       mcq.year       || '',
       // Question Bank linkage
       questionBankId: defaultValues.questionBankId || null,
       qbSubjectId:    defaultValues.qbSubjectId    || null,

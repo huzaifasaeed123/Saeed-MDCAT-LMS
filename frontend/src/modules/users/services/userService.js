@@ -95,6 +95,15 @@ export const revokeUserCourse = async (userId, courseId) => {
   return response.data;
 };
 
+// Grant or revoke specific courses for every user matching role + filters.
+// courseIds: array of course ObjectId strings, value: true=grant / false=revoke
+export const bulkGrantCourseAccess = async (courseIds, value, role = 'student', filters = {}) => {
+  const response = await apiClient.patch('/users/course-access/bulk', {
+    courseIds, value: !!value, role, filters,
+  });
+  return response.data;
+};
+
 // One-click bulk for the per-user course-access page.
 export const grantAllCoursesToUser  = async (userId) => {
   const response = await apiClient.post(`/users/${userId}/course-access/grant-all`);

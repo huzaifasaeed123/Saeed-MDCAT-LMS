@@ -12,6 +12,7 @@ const {
   grantCourse, revokeCourse,
   grantAllCourses, revokeAllCourses,
   bulkApplyAccess,
+  bulkGrantCourseAccess,
 } = require('../controllers/userAccessController');
 
 const { protect }   = require('../middleware/auth');
@@ -69,9 +70,10 @@ router.route('/')
   .post(authorize('admin'), userValidation, createUser);
 
 // ── Bulk access (admin only) — MUST be before /:id routes ──────────────────
-// PATCH /access/bulk  body: { feature, value, role? }
-//   Applies one feature toggle to every user of the given role in one update.
-router.patch('/access/bulk', authorize('admin'), bulkApplyAccess);
+// PATCH /access/bulk          body: { feature, value, role? }
+// PATCH /course-access/bulk   body: { courseIds, value, role?, filters? }
+router.patch('/access/bulk',        authorize('admin'), bulkApplyAccess);
+router.patch('/course-access/bulk', authorize('admin'), bulkGrantCourseAccess);
 
 router.route('/:id')
   .get(authorize('admin'), getUser)

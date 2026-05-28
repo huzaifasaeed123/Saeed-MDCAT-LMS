@@ -14,6 +14,7 @@ import {
   updateUserFeatureAccess, bulkApplyAccess,
   grantUserCourse, revokeUserCourse,
   setUserCoursesGrantAll,
+  bulkGrantCourseAccess,
 } from '../services/userService';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
@@ -191,6 +192,182 @@ const CoursesDropdown = ({
               );
             })}
           </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Header-level bulk course picker. Admin selects one or more courses with
+// checkboxes, then clicks "Grant to all" or "Revoke from all" to apply to
+// every student matching the active filters (same scope as the All on/off
+// buttons in the feature columns). Does NOT touch coursesGrantAll.
+const BulkCoursesDropdown = ({ courses, disabled, onApply }) => {
+  const [open,     setOpen]     = useState(false);
+  const [query,    setQuery]    = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [busy,     setBusy]     = useState(null); // 'grant' | 'revoke'
+  const popoverRef = useRef(null);
+  const buttonRef  = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onDoc = (e) => {
+      if (popoverRef.current?.contains(e.target)) return;
+      if (buttonRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [open]);
+
+  const filtered = query.trim()
+    ? courses.filter((c) => (c.title || '').toLowerCase().includes(query.trim().toLowerCase()))
+    : courses;
+
+  const toggleCourse = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === courses.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(courses.map((c) => String(c._id))));
+    }
+  };
+
+  const handleApply = async (value) => {
+    if (selected.size === 0) return;
+    const opKey = value ? 'grant' : 'revoke';
+    setBusy(opKey);
+    try {
+      await onApply([...selected], value);
+      setSelected(new Set());
+      setOpen(false);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const allChecked   = courses.length > 0 && selected.size === courses.length;
+  const someChecked  = selected.size > 0 && selected.size < courses.length;
+
+  return (
+    <div className="relative inline-block text-left">
+      <button
+        type="button"
+        ref={buttonRef}
+        disabled={disabled || courses.length === 0}
+        onClick={() => setOpen((v) => !v)}
+        title="Bulk grant / revoke specific courses for all filtered students"
+        className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          open
+            ? 'bg-primary-100 border-primary-300 text-primary-700 dark:bg-primary-950/60 dark:text-primary-300 dark:border-primary-900/50'
+            : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+        }`}
+      >
+        <FiBook className="w-2.5 h-2.5" />
+        Bulk
+        <FiChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          ref={popoverRef}
+          className="absolute z-40 mt-1 left-0 w-80 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-faint)] bg-[var(--bg-muted)]">
+            <div>
+              <p className="text-xs font-semibold text-[var(--text-strong)]">Bulk Course Access</p>
+              <p className="text-[10px] text-[var(--text-muted)]">Select courses, then grant or revoke for all filtered students.</p>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} className="text-[var(--text-faint)] hover:text-[var(--text)]">
+              <FiX className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative p-2 border-b border-[var(--border-faint)]">
+            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-faint)]" />
+            <input
+              type="text"
+              placeholder="Search courses…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full pl-8 pr-2 py-1.5 text-xs border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+            />
+          </div>
+
+          {/* Select all */}
+          <label className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-strong)] hover:bg-[var(--bg-muted)] cursor-pointer border-b border-[var(--border-faint)]">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              ref={(el) => { if (el) el.indeterminate = someChecked; }}
+              onChange={toggleAll}
+              className="w-3.5 h-3.5 accent-primary-500"
+            />
+            {allChecked ? 'Deselect all' : 'Select all'}
+            {selected.size > 0 && (
+              <span className="ml-auto text-[10px] text-primary-600 dark:text-primary-300 font-bold">
+                {selected.size} selected
+              </span>
+            )}
+          </label>
+
+          {/* Course list */}
+          <ul className="max-h-52 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <li className="text-[11px] text-[var(--text-faint)] text-center py-4">No courses match.</li>
+            ) : filtered.map((c) => {
+              const id      = String(c._id);
+              const checked = selected.has(id);
+              return (
+                <li key={id}>
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--bg-muted)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleCourse(id)}
+                      className="w-3.5 h-3.5 accent-primary-500"
+                    />
+                    <span className="truncate flex-1">{c.title}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Actions */}
+          <div className="flex gap-2 px-3 py-2.5 border-t border-[var(--border-faint)] bg-[var(--bg-muted)]">
+            <button
+              type="button"
+              disabled={selected.size === 0 || !!busy}
+              onClick={() => handleApply(true)}
+              className="flex-1 flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy === 'grant' ? '…' : <><FiCheckCircle className="w-3 h-3" /> Grant to all</>}
+            </button>
+            <button
+              type="button"
+              disabled={selected.size === 0 || !!busy}
+              onClick={() => handleApply(false)}
+              className="flex-1 flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:hover:bg-rose-950/60 dark:text-rose-300 dark:border-rose-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy === 'revoke' ? '…' : <><FiAlertCircle className="w-3 h-3" /> Revoke from all</>}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -556,6 +733,23 @@ const UsersPage = () => {
     } finally { setBulkApplying(null); }
   };
 
+  // ── Bulk grant/revoke specific courses for all filtered students ───────────
+  // Mirrors the per-row CoursesDropdown but for the entire filtered set.
+  // Does NOT touch coursesGrantAll — it only adds/removes specific courseIds.
+  const onBulkGrantCourses = async (courseIds, value) => {
+    const filtersForBulk = buildFilterParams();
+    delete filtersForBulk.role;
+    try {
+      const res = await bulkGrantCourseAccess(courseIds, value, 'student', filtersForBulk);
+      const label = value ? 'granted to' : 'revoked from';
+      toast.success(`${courseIds.length} course(s) ${label} ${res?.data?.modified ?? 0} student(s)`);
+      // Re-fetch to reflect the updated courseAccess arrays in visible rows.
+      fetchUsers();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Bulk course update failed');
+    }
+  };
+
   // ── Delete ─────────────────────────────────────────────────────────────────
   const confirmDelete = async () => {
     try {
@@ -869,15 +1063,22 @@ const UsersPage = () => {
                     {/* Single "Courses" column — opens a popover with the
                         full course catalog as checkboxes (+ Grant-all toggle
                         at the top). Scales with N courses without widening
-                        the table. */}
+                        the table. The "Bulk" button in the header lets admin
+                        grant/revoke specific courses across all filtered rows. */}
                     <th className="px-3 py-2 text-center text-xs font-semibold text-[var(--text-faint)] uppercase tracking-wider align-top">
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="flex flex-col items-center gap-1.5">
                         <span className="flex items-center gap-1">
                           <FiBook className="w-3.5 h-3.5" />
                           <span className="hidden md:inline">Courses</span>
                         </span>
-                        {loadingCourses && courses.length === 0 && (
+                        {loadingCourses && courses.length === 0 ? (
                           <span className="text-[10px] text-[var(--text-faint)] normal-case font-normal">loading…</span>
+                        ) : (
+                          <BulkCoursesDropdown
+                            courses={courses}
+                            disabled={!!bulkApplying}
+                            onApply={onBulkGrantCourses}
+                          />
                         )}
                       </div>
                     </th>
@@ -1042,6 +1243,8 @@ const UsersPage = () => {
                   The <strong>Courses</strong> cell opens a popover with a search box, a <em>Grant all</em> toggle,
                   and a checkbox per course. Selections save instantly. Grant-all unlocks every course (current &amp; future);
                   per-course ticks are ignored while it's on.
+                  The <strong>Bulk</strong> button in the Courses column header lets you grant or revoke specific courses
+                  for all filtered students at once (does not affect grant-all).
                 </p>
               </div>
             )}

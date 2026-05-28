@@ -78,6 +78,18 @@ const mcqSchema = new Schema(
     unit: String,
     topic: String,
     subTopic: String,
+
+    // ── Optional source metadata ──────────────────────────────────────
+    // Parsed from `:University:` and `:Year:` markers in the Word
+    // upload (see utils/mcqDocParser.js). Both default to '' so MCQs
+    // that don't carry these tags persist unchanged and existing
+    // queries that don't filter on them keep returning the same set.
+    // `year` is stored as a string on purpose — admins may enter
+    // values like "2024", "2024-25", or "FSc 2022", and the marker
+    // line itself carries the raw text we want to round-trip.
+    university: { type: String, default: '' },
+    year:       { type: String, default: '' },
+
     statistics: statisticsSchema,
     // Primary QB classification (MCQ always belongs to a QB first)
     questionBankId: { type: Schema.Types.ObjectId, ref: 'QuestionBank' },
