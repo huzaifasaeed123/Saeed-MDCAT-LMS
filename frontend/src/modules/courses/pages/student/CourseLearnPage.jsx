@@ -635,7 +635,7 @@ const ExternalStatTile = ({ Icon, label, value, accent }) => (
 );
 
 
-const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking }) => {
+const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking, isLocked, parentEntry }) => {
   const title    = resource.title || 'External Test';
   const mcqs     = resource.externalMcqCount || 0;
   const minutes  = resource.externalDurationMin || 0;
@@ -645,19 +645,40 @@ const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking
   const endAt    = resource.externalEndAt;
   const hasUrl   = !!resource.externalUrl;
 
-  // Status string derived purely from the displayed timeline. This is
-  // INFORMATIONAL — no resource gating happens here; the parent course
-  // player handles real availability via `resource.availability`.
+  // When the parent date entry (or the resource itself) is locked, surface
+  // the real unlock moment in the status badge and disable the Start Test
+  // button. The info page (syllabus, MCQ count, etc.) still renders so
+  // students can prepare ahead of the unlock.
+  const parentLocked = parentEntry ? isEntryLocked(parentEntry) : false;
+  const lockUnlockAt = parentLocked ? parentEntry?.unlockAt : resource.unlockAt;
+  const lockLockAt   = parentLocked ? parentEntry?.lockAt   : resource.lockAt;
+  const lockClosed   = isLocked && (parentLocked
+    ? getEntryStatus(parentEntry) === 'closed'
+    : getResourceStatus(resource) === 'closed');
+
+  // Status string derived from either the schedule lock (priority) or the
+  // displayed external timeline. The lock is the ONLY source that disables
+  // the Start Test button; the external timeline is informational only.
   const now = Date.now();
   let statusLabel = 'Available now';
   let statusTone  = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
-  if (startAt && now < new Date(startAt).getTime()) {
+  if (isLocked) {
+    if (lockClosed) {
+      statusLabel = 'Closed';
+      statusTone  = 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300';
+    } else {
+      const cd = lockUnlockAt ? fmtCountdown(lockUnlockAt) : null;
+      statusLabel = cd ? `Opens in ${cd}` : 'Locked';
+      statusTone  = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
+    }
+  } else if (startAt && now < new Date(startAt).getTime()) {
     statusLabel = `Opens ${fmtExtDate(startAt)}`;
     statusTone  = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
   } else if (endAt && now > new Date(endAt).getTime()) {
     statusLabel = 'Closed';
     statusTone  = 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300';
   }
+  const startDisabled = !hasUrl || isLocked;
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 sm:space-y-5">
@@ -670,10 +691,24 @@ const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking
             {title}
           </h1>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${statusTone}`}>
-            <FiCheckCircle className="w-3 h-3" /> {statusLabel}
+            {isLocked ? <FiLock className="w-3 h-3" /> : <FiCheckCircle className="w-3 h-3" />} {statusLabel}
           </span>
         </div>
-        {(startAt || endAt) && (
+        {/* Lock detail line takes precedence — students need the exact
+            unlock moment when the schedule gate is on. The external
+            startAt/endAt timeline only shows when the resource isn't
+            locked, so the two timestamps don't fight for attention. */}
+        {isLocked && lockUnlockAt && !lockClosed && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1.5 font-semibold">
+            Unlocks {fmtPktDateTime(lockUnlockAt)}
+          </p>
+        )}
+        {isLocked && lockClosed && lockLockAt && (
+          <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-1.5 font-semibold">
+            Closed on {fmtPktDateTime(lockLockAt)}
+          </p>
+        )}
+        {!isLocked && (startAt || endAt) && (
           <p className="text-[11px] text-[var(--text-faint)] mt-1.5">
             {startAt && <>Starts {fmtExtDate(startAt)}</>}
             {startAt && endAt && ' · '}
@@ -742,26 +777,41 @@ const ExternalResourceView = ({ resource, isCompleted, onToggleComplete, marking
         <button
           type="button"
           onClick={() => onToggleComplete?.(!isCompleted)}
-          disabled={marking}
-          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 ${
+          disabled={marking || isLocked}
+          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isCompleted
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
               : 'border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)]'
           }`}
+          title={isLocked ? 'Unlocks later — you can mark this once it opens' : undefined}
         >
           {isCompleted ? <FiCheck className="w-4 h-4" /> : <FiCheckCircle className="w-4 h-4" />}
           {isCompleted ? 'Marked as taken' : 'Mark as taken'}
         </button>
-        <a
-          href={hasUrl ? resource.externalUrl : undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-disabled={!hasUrl}
-          className={`btn-brand text-sm sm:text-base ml-auto ${!hasUrl ? 'pointer-events-none opacity-50' : ''}`}
-          title={hasUrl ? 'Open the external test in a new tab' : 'No external URL configured'}
-        >
-          Start Test <FiArrowRight className="w-4 h-4" />
-        </a>
+        {startDisabled ? (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            className="btn-brand text-sm sm:text-base ml-auto opacity-50 cursor-not-allowed"
+            title={isLocked
+              ? (lockUnlockAt ? `Unlocks ${fmtPktDateTime(lockUnlockAt)}` : 'Locked — opens later')
+              : 'No external URL configured'}
+          >
+            {isLocked ? <FiLock className="w-4 h-4" /> : null}
+            Start Test {!isLocked && <FiArrowRight className="w-4 h-4" />}
+          </button>
+        ) : (
+          <a
+            href={resource.externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-brand text-sm sm:text-base ml-auto"
+            title="Open the external test in a new tab"
+          >
+            Start Test <FiArrowRight className="w-4 h-4" />
+          </a>
+        )}
       </div>
     </div>
   );
@@ -1510,9 +1560,13 @@ const CourseLearnPage = () => {
                 return <ResourceEmptyState message="Pick a resource from the sidebar to start." />;
               }
               // Layered lock check — runs BEFORE any type-specific renderer
-              // so a locked test/lecture/notes/external all land on the
-              // same explanatory screen instead of revealing content.
-              if (isResourceLocked) {
+              // so a locked test/lecture/notes all land on the same
+              // explanatory screen instead of revealing content.
+              // EXCEPTION: external tests still render their information
+              // page (syllabus, MCQ count, etc.) even when locked — only
+              // the "Start Test" button gets disabled until the unlock
+              // time passes. Admins want students to see what's coming.
+              if (isResourceLocked && activeResource.type !== 'external') {
                 return <LockedResourcePreview resource={activeResource} parentEntry={activeNode?.subject} />;
               }
               if (activeResource.type === 'lecture')  return <VideoResourceView    resource={activeResource} />;
@@ -1523,6 +1577,8 @@ const CourseLearnPage = () => {
                   isCompleted={isCompleted}
                   onToggleComplete={onToggleComplete}
                   marking={marking}
+                  isLocked={isResourceLocked}
+                  parentEntry={activeNode?.subject}
                 />
               );
               if (activeResource.type !== 'test') return <ResourceEmptyState message="Unsupported resource type." />;
