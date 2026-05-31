@@ -42,7 +42,7 @@ const SORT_OPTIONS = [
 ];
 
 // ── Cards ─────────────────────────────────────────────────────────────────────
-const QbCard = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting }) => (
+const QbCard = ({ bank, onView, onSearchMcqs, onEdit, onImport, onAutoTest, onDelete, deleting }) => (
   <div
     onClick={onView}
     className="group text-left bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden flex flex-col cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary-300 dark:hover:border-primary-700"
@@ -83,6 +83,12 @@ const QbCard = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting
           <FiEye className="w-3.5 h-3.5" /> View MCQs
         </button>
         <button
+          onClick={onSearchMcqs}
+          className="col-span-2 inline-flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-950/60 rounded-lg transition-colors"
+        >
+          <FiSearch className="w-3.5 h-3.5" /> Search MCQs
+        </button>
+        <button
           onClick={onEdit}
           className="inline-flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-[var(--text-muted)] border border-[var(--border)] hover:bg-[var(--bg-muted)] rounded-lg transition-colors"
         >
@@ -113,7 +119,7 @@ const QbCard = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting
   </div>
 );
 
-const QbRow = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting }) => (
+const QbRow = ({ bank, onView, onSearchMcqs, onEdit, onImport, onAutoTest, onDelete, deleting }) => (
   <div
     onClick={onView}
     className="group w-full text-left bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] overflow-hidden flex items-center gap-3 sm:gap-4 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm transition-all p-2 sm:p-3 cursor-pointer"
@@ -136,6 +142,14 @@ const QbRow = ({ bank, onView, onEdit, onImport, onAutoTest, onDelete, deleting 
       className="flex items-center gap-1 flex-shrink-0"
       onClick={(e) => e.stopPropagation()}
     >
+      <button
+        onClick={onSearchMcqs}
+        className="p-2 text-sky-600 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-lg transition-colors"
+        aria-label="Search MCQs"
+        title="Search MCQs"
+      >
+        <FiSearch className="w-4 h-4" />
+      </button>
       <button
         onClick={onImport}
         className="p-2 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
@@ -403,6 +417,7 @@ const QuestionBankListPage = () => {
               bank={bank}
               deleting={deletingId === bank._id}
               onView={() => navigate(`/admin/question-banks/${bank._id}`)}
+              onSearchMcqs={() => navigate(`/admin/question-banks/${bank._id}/mcqs?focusSearch=1`)}
               onEdit={() => navigate(`/admin/question-banks/${bank._id}/edit`)}
               onImport={() => navigate(`/admin/question-banks/${bank._id}/import`)}
               onAutoTest={() => navigate(`/admin/auto-test?qbId=${bank._id}`)}
@@ -418,6 +433,7 @@ const QuestionBankListPage = () => {
               bank={bank}
               deleting={deletingId === bank._id}
               onView={() => navigate(`/admin/question-banks/${bank._id}`)}
+              onSearchMcqs={() => navigate(`/admin/question-banks/${bank._id}/mcqs?focusSearch=1`)}
               onEdit={() => navigate(`/admin/question-banks/${bank._id}/edit`)}
               onImport={() => navigate(`/admin/question-banks/${bank._id}/import`)}
               onAutoTest={() => navigate(`/admin/auto-test?qbId=${bank._id}`)}

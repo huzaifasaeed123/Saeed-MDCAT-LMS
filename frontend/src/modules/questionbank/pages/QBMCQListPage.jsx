@@ -4,10 +4,12 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { toast } from 'react-toastify';
 import {
   FiEdit, FiTrash, FiEdit3, FiInfo, FiLock, FiArrowLeft, FiFlag,
-  FiChevronLeft, FiChevronRight, FiLoader,
+  FiChevronLeft, FiChevronRight, FiLoader, FiPlus, FiSearch, FiX,
+  FiFilter, FiImage,
 } from 'react-icons/fi';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
 import apiClient from '../../../core/api/axiosConfig';
+import QBClassificationPicker from '../../../shared/components/QBClassificationPicker';
 import { usePageHeader } from '../../../core/layouts/PageHeaderContext';
 
 const PAGE_SIZE = 20;
@@ -30,20 +32,91 @@ const QBMCQListPage = () => {
   const [reportCounts, setReportCounts] = useState({});
   const [page, setPage]               = useState(1);
 
-  // Reset to page 1 when scope changes
-  useEffect(() => { setPage(1); }, [qbId, topicId, chapterId, subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Search — `search` is what the input shows; `debouncedSearch` is what we
+  // actually query with (300ms after the last keystroke) so we don't hit the
+  // API on every character. Server-side so it spans ALL pages, not just the
+  // current one. Auto-focus when arriving via the QB-wide "Search MCQs" entry.
+  const [search, setSearch]                 = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const focusSearch = searchParams.get('focusSearch') === '1';
+
+  // Advanced filters. Classification (subject/chapter/topic) starts from the
+  // URL scope but is then fully editable here via the cascading picker, so the
+  // admin can re-scope without navigating. The rest are extra server-side
+  // filters (difficulty, visibility, has-image, min revisions, min reports).
+  const [classification, setClassification] = useState({
+    subjectId: subjectId || '',
+    chapterId: chapterId || '',
+    topicId:   topicId   || '',
+  });
+  const [difficulty, setDifficulty]   = useState('');   // '' | Easy | Medium | Hard
+  const [visibility, setVisibility]   = useState('');   // '' | public | private
+  const [hasImage, setHasImage]       = useState(false);
+  // Numeric filters — typed by the admin. Debounced before querying so typing
+  // "100" doesn't fire three requests.
+  const [minRevisions, setMinRevisions] = useState(''); // '' or a number string
+  const [minReports, setMinReports]     = useState(''); // '' or a number string
+  const [wrongPct, setWrongPct]         = useState(''); // % of attempts that picked a wrong option
+  const [minAttempts, setMinAttempts]   = useState(''); // min total attempts (pairs with wrongPct)
+  const [filtersOpen, setFiltersOpen]   = useState(focusSearch);
+
+  // Debounced copy of every numeric filter — drives the actual query.
+  const [debNums, setDebNums] = useState({ minRevisions: '', minReports: '', wrongPct: '', minAttempts: '' });
+  useEffect(() => {
+    const t = setTimeout(() => setDebNums({ minRevisions, minReports, wrongPct, minAttempts }), 350);
+    return () => clearTimeout(t);
+  }, [minRevisions, minReports, wrongPct, minAttempts]);
+
+  const hasActiveFilter = !!(
+    classification.subjectId || classification.chapterId || classification.topicId ||
+    difficulty || visibility || hasImage || minRevisions || minReports || wrongPct || minAttempts
+  );
+
+  const clearFilters = () => {
+    setClassification({ subjectId: '', chapterId: '', topicId: '' });
+    setDifficulty(''); setVisibility(''); setHasImage(false);
+    setMinRevisions(''); setMinReports(''); setWrongPct(''); setMinAttempts('');
+    setSearch('');
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset to page 1 when ANY filter changes.
+  useEffect(() => { setPage(1); }, [
+    qbId, debouncedSearch,
+    classification.subjectId, classification.chapterId, classification.topicId,
+    difficulty, visibility, hasImage,
+    debNums.minRevisions, debNums.minReports, debNums.wrongPct, debNums.minAttempts,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchMcqs(page);
-  }, [page, qbId, topicId, chapterId, subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    page, qbId, debouncedSearch,
+    classification.subjectId, classification.chapterId, classification.topicId,
+    difficulty, visibility, hasImage,
+    debNums.minRevisions, debNums.minReports, debNums.wrongPct, debNums.minAttempts,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMcqs = async (pg) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: PAGE_SIZE });
-      if (topicId)        params.append('topicId',   topicId);
-      else if (chapterId) params.append('chapterId', chapterId);
-      else if (subjectId) params.append('subjectId', subjectId);
+      // Classification — most specific level wins (matches backend precedence).
+      if (classification.topicId)        params.append('topicId',   classification.topicId);
+      else if (classification.chapterId) params.append('chapterId', classification.chapterId);
+      else if (classification.subjectId) params.append('subjectId', classification.subjectId);
+      if (debouncedSearch)               params.append('search', debouncedSearch);
+      if (difficulty)                    params.append('difficulty', difficulty);
+      if (visibility)                    params.append('visibility', visibility);
+      if (hasImage)                      params.append('hasImage', '1');
+      if (debNums.minRevisions)          params.append('minRevisions', debNums.minRevisions);
+      if (debNums.minReports)            params.append('minReports', debNums.minReports);
+      if (debNums.wrongPct)              params.append('wrongPct', debNums.wrongPct);
+      if (debNums.minAttempts)           params.append('minAttempts', debNums.minAttempts);
 
       const res = await apiClient.get(`/mcqs/question-bank/${qbId}?${params}`);
       if (res.data.success) {
@@ -102,11 +175,22 @@ const QBMCQListPage = () => {
   const formatDate = (d) => d ? new Date(d).toLocaleDateString() : 'N/A';
 
   const backUrl    = `/admin/question-banks/${qbId}`;
+  // Edit-All + Add-Single follow the LIVE classification filter (which starts
+  // from the URL scope but the admin may re-scope via the picker), so the next
+  // page lands in the same scope the admin is currently viewing.
   const editAllParams = new URLSearchParams();
-  if (topicId)        editAllParams.set('topicId',   topicId);
-  else if (chapterId) editAllParams.set('chapterId', chapterId);
-  else if (subjectId) editAllParams.set('subjectId', subjectId);
+  if (classification.topicId)        editAllParams.set('topicId',   classification.topicId);
+  else if (classification.chapterId) editAllParams.set('chapterId', classification.chapterId);
+  else if (classification.subjectId) editAllParams.set('subjectId', classification.subjectId);
   const editAllUrl = `/admin/question-banks/${qbId}/mcqs/edit-all/0?${editAllParams}`;
+
+  // "Add single MCQ" reuses MCQFormPage in QB-create mode. We carry all known
+  // classification ids so the picker pre-fills; admin can still change any level.
+  const createParams = new URLSearchParams();
+  if (classification.topicId)   createParams.set('topicId',   classification.topicId);
+  if (classification.chapterId) createParams.set('chapterId', classification.chapterId);
+  if (classification.subjectId) createParams.set('subjectId', classification.subjectId);
+  const createUrl = `/admin/question-banks/${qbId}/mcqs/create?${createParams}`;
 
   // Header action — back button
   const headerAction = useMemo(() => (
@@ -156,14 +240,22 @@ const QBMCQListPage = () => {
               {topicTitle}
             </p>
           </div>
-          {total > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
             <Link
-              to={editAllUrl}
-              className="btn-brand text-sm"
+              to={createUrl}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border border-[var(--border)] text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
             >
-              <FiEdit3 className="w-4 h-4" /> Edit All MCQs
+              <FiPlus className="w-4 h-4" /> Add Single MCQ
             </Link>
-          )}
+            {total > 0 && (
+              <Link
+                to={editAllUrl}
+                className="btn-brand text-sm"
+              >
+                <FiEdit3 className="w-4 h-4" /> Edit All MCQs
+              </Link>
+            )}
+          </div>
         </div>
 
         {total > 0 && (
@@ -184,6 +276,179 @@ const QBMCQListPage = () => {
         )}
       </div>
 
+      {/* Search + Filters — all server-side, span every page in this scope. */}
+      <div className="mb-5 space-y-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4" />
+            <input
+              type="text"
+              autoFocus={focusSearch}
+              placeholder="Search MCQs by question or option text…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-9 py-2.5 text-sm bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+                aria-label="Clear search"
+              >
+                <FiX className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold rounded-xl border transition-colors ${
+              filtersOpen || hasActiveFilter
+                ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300'
+                : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]'
+            }`}
+          >
+            <FiFilter className="w-4 h-4" /> Filters
+            {hasActiveFilter && <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />}
+          </button>
+        </div>
+
+        {filtersOpen && (
+          <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
+            {/* Classification (Subject → Chapter → Topic). The picker has its
+                own card styling + fetches the QB tree by id. */}
+            <QBClassificationPicker
+              questionBankId={qbId}
+              subjectId={classification.subjectId}
+              chapterId={classification.chapterId}
+              topicId={classification.topicId}
+              onChange={setClassification}
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Difficulty */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Difficulty</label>
+                <select
+                  value={difficulty}
+                  onChange={(e) => setDifficulty(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                >
+                  <option value="">Any</option>
+                  <option value="Easy">Easy</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                </select>
+              </div>
+
+              {/* Visibility */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Visibility</label>
+                <select
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                >
+                  <option value="">Any</option>
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
+                </select>
+              </div>
+
+              {/* Min revisions — typed number, "at least N times" */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Revised at least (times)</label>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  placeholder="Any"
+                  value={minRevisions}
+                  onChange={(e) => setMinRevisions(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                />
+              </div>
+
+              {/* Min reports — typed number, "at least N open reports" */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Open reports at least</label>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  placeholder="Any"
+                  value={minReports}
+                  onChange={(e) => setMinReports(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                />
+              </div>
+            </div>
+
+            {/* "Hard for students" — wrong-option % combined with a minimum
+                attempt count. Both derived from each MCQ's answer statistics.
+                e.g. wrongPct=50 + minAttempts=100 ⇒ MCQs where ≥50% of at least
+                100 attempts picked a wrong option. */}
+            <div className="rounded-xl border border-[var(--border-faint)] bg-[var(--bg-muted)]/40 p-3">
+              <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">
+                Students answered wrong (from answer statistics)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-[var(--text-faint)] mb-1">Wrong-option % at least</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      inputMode="numeric"
+                      placeholder="e.g. 50"
+                      value={wrongPct}
+                      onChange={(e) => setWrongPct(e.target.value)}
+                      className="w-full pl-3 pr-7 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-faint)]">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[var(--text-faint)] mb-1">Attempts at least</label>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="e.g. 100"
+                    value={minAttempts}
+                    onChange={(e) => setMinAttempts(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              {/* Has image toggle */}
+              <label className="inline-flex items-center gap-2 text-sm text-[var(--text)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasImage}
+                  onChange={(e) => setHasImage(e.target.checked)}
+                  className="w-4 h-4 accent-primary-500"
+                />
+                <FiImage className="w-4 h-4 text-[var(--text-muted)]" />
+                Only MCQs with an image
+              </label>
+
+              {hasActiveFilter && (
+                <button
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1.5 text-sm text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 font-medium"
+                >
+                  <FiX className="w-4 h-4" /> Clear all filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* MCQ List */}
       <div className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] p-5 sm:p-6">
         {loading && mcqs.length > 0 && (
@@ -195,13 +460,27 @@ const QBMCQListPage = () => {
         {!loading && total === 0 ? (
           <div className="text-center py-16">
             <FiInfo className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3" />
-            <p className="text-[var(--text-muted)]">No MCQs in this scope yet.</p>
-            <button
-              onClick={() => navigate(`/admin/question-banks/${qbId}/import`)}
-              className="mt-3 text-sm text-primary-600 dark:text-primary-300 hover:underline font-medium"
-            >
-              Import MCQs
-            </button>
+            {(debouncedSearch || hasActiveFilter) ? (
+              <>
+                <p className="text-[var(--text-muted)]">No MCQs match the current search/filters.</p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 text-sm text-primary-600 dark:text-primary-300 hover:underline font-medium"
+                >
+                  Clear all filters
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-[var(--text-muted)]">No MCQs in this scope yet.</p>
+                <button
+                  onClick={() => navigate(`/admin/question-banks/${qbId}/import`)}
+                  className="mt-3 text-sm text-primary-600 dark:text-primary-300 hover:underline font-medium"
+                >
+                  Import MCQs
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <>

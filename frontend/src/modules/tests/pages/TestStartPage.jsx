@@ -38,6 +38,10 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
   const [timeMultiplier, setTimeMultiplier] = useState(1.0);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  // Which button kicked off the request — 'resume' or 'start'. Used to
+  // scope the spinner + "Starting…" label to the button the user actually
+  // tapped, so the OTHER button doesn't visually flash as if it was hit.
+  const [startingAction, setStartingAction] = useState(null);
   const [existingAttempt, setExistingAttempt] = useState(null);
   // From GET /user-tests/active — just { completedAttempts }. maxAttempts is
   // sourced from the test summary endpoint (no second DB read on the server).
@@ -200,11 +204,17 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
       return;
     }
     setStarting(true);
+    setStartingAction('start');
     try {
+      // When an in-progress attempt exists, the user clicked "Start fresh".
+      // forceNew tells the backend to abandon the existing attempt and
+      // create a brand-new one — otherwise it would silently resume,
+      // making Start Fresh indistinguishable from Resume.
       const res = await apiClient.post('/user-tests/start', {
         testId,
         mode: selectedMode,
         totalDurationSec: calculatedDurationSec || null,
+        forceNew: !!existingAttempt,
       });
       const attempt = res.data.data;
       navigate(buildPlayUrl(attempt._id), { state: { attemptData: attempt } });
@@ -215,12 +225,14 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
       toast.error(err.response?.data?.message || 'Failed to start test');
     } finally {
       setStarting(false);
+      setStartingAction(null);
     }
   };
 
   // Resume: call start which returns the existing attempt with full MCQ data
   const handleResume = async () => {
     setStarting(true);
+    setStartingAction('resume');
     try {
       const res = await apiClient.post('/user-tests/start', { testId, mode: existingAttempt.mode });
       const attempt = res.data.data;
@@ -229,6 +241,7 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
       toast.error(err.response?.data?.message || 'Failed to resume test');
     } finally {
       setStarting(false);
+      setStartingAction(null);
     }
   };
 
@@ -310,11 +323,15 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
             </div>
           </div>
           <button
+            type="button"
             onClick={handleResume}
             disabled={starting}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2"
           >
-            Resume attempt
+            {startingAction === 'resume' && (
+              <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            )}
+            {startingAction === 'resume' ? 'Resuming…' : 'Resume attempt'}
           </button>
         </div>
       )}
@@ -493,22 +510,27 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
           <div className="hidden lg:flex items-center justify-end gap-2">
             {existingAttempt && (
               <button
+                type="button"
                 onClick={handleResume}
                 disabled={starting}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-50 transition-colors"
               >
-                <FiPlayCircle className="w-5 h-5" /> Resume
+                {startingAction === 'resume'
+                  ? <span className="inline-block w-5 h-5 border-2 border-blue-300/40 border-t-blue-500 rounded-full animate-spin" />
+                  : <FiPlayCircle className="w-5 h-5" />}
+                {startingAction === 'resume' ? 'Resuming…' : 'Resume'}
               </button>
             )}
             <button
+              type="button"
               onClick={handleStart}
               disabled={startDisabled}
               className="btn-brand text-base px-6 py-2.5"
             >
-              {starting
+              {startingAction === 'start'
                 ? <span className="inline-block w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                 : <FiPlayCircle className="w-5 h-5" />}
-              {starting ? 'Starting…' : existingAttempt ? 'Start Fresh' : 'Start Test'}
+              {startingAction === 'start' ? 'Starting…' : existingAttempt ? 'Start Fresh' : 'Start Test'}
             </button>
           </div>
 
@@ -547,26 +569,33 @@ const TestStartPage = ({ testId: propTestId, returnTo, embedded = false } = {}) 
         </div>
       </div>
 
-      {/* STICKY MOBILE ACTION BAR */}
+      {/* STICKY MOBILE ACTION BAR — spinner/label is scoped to the button
+          the user actually tapped (via startingAction) so the other one
+          doesn't visually flash as if it were activated. */}
       <div className="lg:hidden sticky bottom-0 -mx-3 sm:-mx-6 px-3 sm:px-6 py-3 bg-[var(--bg-surface)]/95 backdrop-blur border-t border-[var(--border)] flex gap-2 z-10">
         {existingAttempt && (
           <button
+            type="button"
             onClick={handleResume}
             disabled={starting}
-            className="flex-1 py-3 rounded-xl border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-semibold disabled:opacity-50"
+            className="flex-1 py-3 rounded-xl border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
           >
-            Resume
+            {startingAction === 'resume' && (
+              <span className="inline-block w-5 h-5 border-2 border-blue-300/40 border-t-blue-500 rounded-full animate-spin" />
+            )}
+            {startingAction === 'resume' ? 'Resuming…' : 'Resume'}
           </button>
         )}
         <button
+          type="button"
           onClick={handleStart}
           disabled={startDisabled}
           className="btn-brand flex-1 py-3 text-base"
         >
-          {starting
+          {startingAction === 'start'
             ? <span className="inline-block w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
             : <FiPlayCircle className="w-5 h-5" />}
-          {starting ? 'Starting…' : existingAttempt ? 'Start fresh' : 'Start test'}
+          {startingAction === 'start' ? 'Starting…' : existingAttempt ? 'Start fresh' : 'Start test'}
         </button>
       </div>
 

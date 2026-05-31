@@ -1,6 +1,7 @@
 // File: controllers/mcqController.js
 const MCQ = require('../models/McqModel');
 const Test = require('../models/TestModel');
+const MCQReport = require('../models/MCQReport');
 const mongoose = require('mongoose');
 const { syncTestClassification } = require('./testController');
 const fs = require('fs');
@@ -20,26 +21,35 @@ exports.createMCQ = async (req, res) => {
 
     const mcq = await MCQ.create(mcqData);
 
-    // Update test with new MCQ
-    const test = await Test.findById(req.body.testId);
-    if (!test) {
-      return res.status(404).json({
-        success: false,
-        message: 'Test not found'
-      });
+    // Attach to a Test only when a testId was supplied. A QB-only MCQ (added
+    // straight into a Question Bank) has no testId and lives purely in the QB
+    // — exactly like a bulk-imported MCQ. Previously this path 404'd because
+    // it unconditionally looked up a test, which both errored AND left the
+    // freshly-created MCQ orphaned.
+    let test = null;
+    if (req.body.testId) {
+      test = await Test.findById(req.body.testId);
+      if (!test) {
+        // Roll back the orphaned MCQ so a bad testId can't leave junk behind.
+        await MCQ.findByIdAndDelete(mcq._id);
+        return res.status(404).json({
+          success: false,
+          message: 'Test not found'
+        });
+      }
+
+      test.mcqs.push(mcq._id);
+      test.totalQuestions = test.mcqs.length;
+      await test.save();
+
+      syncTestClassification(test._id).catch(console.error);
     }
-
-    test.mcqs.push(mcq._id);
-    test.totalQuestions = test.mcqs.length;
-    await test.save();
-
-    syncTestClassification(test._id).catch(console.error);
 
     // QB count cache: this MCQ either carries its own questionBankId or
     // inherits one from the parent test (auto-test MCQs). Either way the
     // QB total + per-topic counts just changed — invalidate so the next
     // /question-banks and /topic-counts read rebuild fresh.
-    qbCountsCache.invalidate(mcq.questionBankId || test.questionBankId);
+    qbCountsCache.invalidate(mcq.questionBankId || test?.questionBankId);
 
     res.status(201).json({
       success: true,
@@ -463,16 +473,165 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
   }
 }
 
-// GET /api/mcqs/question-bank/:qbId?page=1&limit=20&subjectId=&chapterId=&topicId=
+// GET /api/mcqs/question-bank/:qbId
+//   ?page=1&limit=20&subjectId=&chapterId=&topicId=&search=
+//   &difficulty=Easy|Medium|Hard&visibility=public|private
+//   &hasImage=1&minRevisions=N&minReports=N
+//   &wrongPct=50&minAttempts=100
+//
+// `search` does a case-insensitive substring match over the question text and
+// the option texts. Omit subjectId/chapterId/topicId to search the WHOLE bank
+// (used by the QB-wide "Search MCQs" entry point).
+//
+// Additional filters (all optional, AND-combined):
+//   • difficulty   — exact match on the difficulty enum.
+//   • visibility   — 'public' (isPublic !== false) / 'private' (isPublic === false).
+//   • hasImage=1   — MCQs that embed at least one <img> in the question, any
+//                    option, or the explanation (images live inline in the rich
+//                    text — there is no dedicated image field).
+//   • minRevisions — revisionCount >= N.
+//   • minReports   — MCQs with >= N OPEN/ACTIVE student reports. Resolved by a
+//                    pre-aggregation over the report collection, then folded
+//                    into the same query via _id: { $in }.
+//   • wrongPct + minAttempts — "hard for students" filter. Selects MCQs where
+//                    at least `wrongPct`% of attempts picked a WRONG option AND
+//                    the MCQ has at least `minAttempts` total attempts. Derived
+//                    live from statistics.optionsSelections (the correct option
+//                    is whichever option has isCorrect:true) — we do NOT rely on
+//                    the legacy statistics.correctPercentage field, which is
+//                    never written.
 exports.getMCQsForQuestionBank = async (req, res) => {
   try {
     const { qbId } = req.params;
-    const { subjectId, chapterId, topicId } = req.query;
+    const { subjectId, chapterId, topicId, search, difficulty, visibility, hasImage } = req.query;
 
     const filter = { questionBankId: new mongoose.Types.ObjectId(qbId) };
     if (topicId)        filter.qbTopicId   = new mongoose.Types.ObjectId(topicId);
     else if (chapterId) filter.qbChapterId = new mongoose.Types.ObjectId(chapterId);
     else if (subjectId) filter.qbSubjectId = new mongoose.Types.ObjectId(subjectId);
+
+    // Collect $and clauses so independent text-based conditions (search +
+    // hasImage) don't clobber each other's $or.
+    const andClauses = [];
+
+    if (search && search.trim()) {
+      // Escape regex specials so a query like "H2O (g)" is treated literally.
+      const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(safe, 'i');
+      andClauses.push({ $or: [
+        { questionText: rx },
+        { 'options.optionText': rx },
+      ]});
+    }
+
+    if (['Easy', 'Medium', 'Hard'].includes(difficulty)) {
+      filter.difficulty = difficulty;
+    }
+
+    if (visibility === 'public')  filter.isPublic = { $ne: false };
+    if (visibility === 'private') filter.isPublic = false;
+
+    if (hasImage === '1') {
+      // Images are <img> tags inside the rich text — match across all three
+      // HTML-bearing fields.
+      const imgRx = /<img\b/i;
+      andClauses.push({ $or: [
+        { questionText: imgRx },
+        { 'options.optionText': imgRx },
+        { explanationText: imgRx },
+      ]});
+    }
+
+    const minRevisions = parseInt(req.query.minRevisions);
+    if (Number.isFinite(minRevisions) && minRevisions > 0) {
+      filter.revisionCount = { $gte: minRevisions };
+    }
+
+    const minReports = parseInt(req.query.minReports);
+    if (Number.isFinite(minReports) && minReports > 0) {
+      // Find every MCQ carrying >= minReports open/active reports, then
+      // constrain the main query to that id set. We don't filter the
+      // aggregation by QB (the denormalized mcqQuestionBankId may be absent on
+      // legacy reports) — the main query's questionBankId already scopes the
+      // result to this bank, so cross-QB ids in the $in are simply never
+      // matched. One extra aggregation, still one endpoint.
+      const reported = await MCQReport.aggregate([
+        { $match: { status: { $in: ['open', 'active'] } } },
+        { $group: { _id: '$mcq', count: { $sum: 1 } } },
+        { $match: { count: { $gte: minReports } } },
+      ]);
+      // Use an $and id-clause (not filter._id =) so it intersects with the
+      // wrong-option filter below instead of overwriting it.
+      andClauses.push({ _id: { $in: reported.map((r) => r._id) } });
+    }
+
+    // "Hard for students" — % who picked a wrong option, gated by a minimum
+    // attempt count so a single unlucky attempt doesn't surface. Computed from
+    // optionsSelections: wrongPct = (total - <count of the correct letter>) / total.
+    const wrongPct     = parseFloat(req.query.wrongPct);
+    const minAttempts  = parseInt(req.query.minAttempts);
+    const wantWrong    = Number.isFinite(wrongPct) && wrongPct > 0;
+    const wantAttempts = Number.isFinite(minAttempts) && minAttempts > 0;
+    if (wantWrong || wantAttempts) {
+      const total = '$statistics.optionsSelections.total';
+      // Pick the selection count of whichever option has isCorrect:true. If an
+      // MCQ somehow has no correct option flagged, correctCount falls back to 0
+      // (so it counts as 100% wrong — surfaced, which is the safe direction for
+      // a QA filter).
+      const correctLetter = {
+        $let: {
+          vars: {
+            opt: { $arrayElemAt: [
+              { $filter: { input: '$options', as: 'o', cond: { $eq: ['$$o.isCorrect', true] } } },
+              0,
+            ]},
+          },
+          in: '$$opt.optionLetter',
+        },
+      };
+      const correctCount = {
+        $switch: {
+          branches: [
+            { case: { $eq: [correctLetter, 'A'] }, then: '$statistics.optionsSelections.A' },
+            { case: { $eq: [correctLetter, 'B'] }, then: '$statistics.optionsSelections.B' },
+            { case: { $eq: [correctLetter, 'C'] }, then: '$statistics.optionsSelections.C' },
+            { case: { $eq: [correctLetter, 'D'] }, then: '$statistics.optionsSelections.D' },
+            { case: { $eq: [correctLetter, 'E'] }, then: '$statistics.optionsSelections.E' },
+          ],
+          default: 0,
+        },
+      };
+      const match = { $expr: { $and: [] } };
+      // Always require a positive total when either sub-filter is on (avoids
+      // divide-by-zero and excludes never-attempted MCQs from this view).
+      match.$expr.$and.push({ $gt: [{ $ifNull: [total, 0] }, 0] });
+      if (wantAttempts) {
+        match.$expr.$and.push({ $gte: [{ $ifNull: [total, 0] }, minAttempts] });
+      }
+      if (wantWrong) {
+        // (total - correctCount) / total * 100 >= wrongPct
+        match.$expr.$and.push({
+          $gte: [
+            { $multiply: [
+              { $divide: [
+                { $subtract: [{ $ifNull: [total, 0] }, { $ifNull: [correctCount, 0] }] },
+                { $ifNull: [total, 1] },
+              ]},
+              100,
+            ]},
+            wrongPct,
+          ],
+        });
+      }
+      const hard = await MCQ.aggregate([
+        { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
+        { $match: match },
+        { $project: { _id: 1 } },
+      ]);
+      andClauses.push({ _id: { $in: hard.map((r) => r._id) } });
+    }
+
+    if (andClauses.length > 0) filter.$and = andClauses;
 
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);

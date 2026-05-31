@@ -7,7 +7,7 @@ exports.validateMCQ = [
   body('options').isArray({ min: 2 }).withMessage('At least 2 options are required'),
   body('options.*.optionText').notEmpty().withMessage('Option text is required'),
   body('options.*.optionLetter').isIn(['A', 'B', 'C', 'D', 'E']).withMessage('Invalid option letter'),
-  body('testId').notEmpty().withMessage('Test ID is required'),
+  body('testId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Invalid Test ID'),
   body('difficulty').optional().isIn(['Easy', 'Medium', 'Hard']).withMessage('Difficulty must be Easy, Medium, or Hard'),
   body('isPublic').optional().isBoolean().withMessage('isPublic must be a boolean value'),
   (req, res, next) => {

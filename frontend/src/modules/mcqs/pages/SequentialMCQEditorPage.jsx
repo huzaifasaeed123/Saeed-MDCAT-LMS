@@ -7,6 +7,7 @@ import { FiFlag, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import useAuth from '../../../core/auth/useAuth';
 import SequentialMCQEditor from '../../../shared/components/SequentialMCQEditor';
+import QBClassificationPicker from '../../../shared/components/QBClassificationPicker';
 
 // ── Reports panel for the current MCQ ────────────────────────────────────────
 const MCQReportsPanel = ({ mcqId }) => {
@@ -122,6 +123,12 @@ const SequentialMCQEditorPage = () => {
   const [revisionInfo, setRevisionInfo] = useState({ revisionCount: 0, lastRevised: null });
   const [statistics, setStatistics]     = useState(null);
 
+  // QB classification for the current MCQ. Each MCQ may belong to a different
+  // QB, so we track the questionBankId per-MCQ; the picker fetches that QB's
+  // tree by id and renders only when the MCQ actually has a questionBankId.
+  const [classification, setClassification] = useState({ subjectId: '', chapterId: '', topicId: '' });
+  const [questionBankId, setQuestionBankId] = useState(null);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -195,6 +202,12 @@ const SequentialMCQEditorPage = () => {
       difficulty: mcq.difficulty || 'Medium',
       isPublic: mcq.isPublic !== undefined ? mcq.isPublic : true,
     });
+    setQuestionBankId(mcq.questionBankId || null);
+    setClassification({
+      subjectId: mcq.qbSubjectId ? String(mcq.qbSubjectId) : '',
+      chapterId: mcq.qbChapterId ? String(mcq.qbChapterId) : '',
+      topicId:   mcq.qbTopicId   ? String(mcq.qbTopicId)   : '',
+    });
     setRevisionInfo({ revisionCount: mcq.revisionCount || 0, lastRevised: mcq.lastRevised || null });
     setStatistics(mcq.statistics || null);
     setFormLoaded(true);
@@ -207,11 +220,22 @@ const SequentialMCQEditorPage = () => {
     setSaving(true);
     setError('');
     try {
-      await apiClient.put(`/mcqs/${currentMcq._id}`, { ...formData, testId });
+      const submitData = {
+        ...formData,
+        testId,
+        // Preserve the MCQ's QB link + carry any classification edits made via
+        // the picker. Empty strings are omitted so Mongoose doesn't cast '' to
+        // an ObjectId.
+        ...(questionBankId && { questionBankId }),
+        ...(classification.subjectId && { qbSubjectId: classification.subjectId }),
+        ...(classification.chapterId && { qbChapterId: classification.chapterId }),
+        ...(classification.topicId   && { qbTopicId:   classification.topicId   }),
+      };
+      await apiClient.put(`/mcqs/${currentMcq._id}`, submitData);
       toast.success('Saved', { autoClose: 900 });
       return true;
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to save';
+      const msg = err.response?.data?.errors?.[0]?.msg || err.response?.data?.message || 'Failed to save';
       setError(msg);
       toast.error(msg);
       return false;
@@ -265,6 +289,16 @@ const SequentialMCQEditorPage = () => {
         <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-4 mb-6">
           <h2 className="font-semibold text-[var(--text-strong)]">Test: {test.title}</h2>
         </div>
+      )}
+      {/* QB classification — renders only when this MCQ belongs to a QB. */}
+      {currentMcq && (
+        <QBClassificationPicker
+          questionBankId={questionBankId}
+          subjectId={classification.subjectId}
+          chapterId={classification.chapterId}
+          topicId={classification.topicId}
+          onChange={setClassification}
+        />
       )}
       {currentMcq && <MCQReportsPanel mcqId={currentMcq._id} />}
     </>

@@ -244,7 +244,7 @@ const updateMcqOptionStats = async (attempt) => {
  */
 exports.startTest = async (req, res) => {
   try {
-    const { testId, mode, totalDurationSec } = req.body;
+    const { testId, mode, totalDurationSec, forceNew } = req.body;
 
     if (!testId || !mode) {
       return res.status(400).json({ success: false, message: 'Test ID and mode are required' });
@@ -285,13 +285,21 @@ exports.startTest = async (req, res) => {
     // covers tests written before the mcqs ref array existed.
     const mcqs = test.mcqs?.length > 0 ? test.mcqs : await MCQ.find({ testId });
 
-    // Resume existing in-progress attempt
+    // Resume existing in-progress attempt — UNLESS the client explicitly
+    // asked for a fresh start ("Start fresh" button on the test detail page).
+    // In that case we abandon the in-progress attempt and fall through to the
+    // new-attempt branch. Without this flag both Resume and Start Fresh end
+    // up resuming the same attempt.
     const existingAttempt = await UserTestAttempt.findOne({
       user: req.user.id,
       test: testId,
       status: 'in-progress',
     });
-    if (existingAttempt) {
+    if (existingAttempt && forceNew) {
+      existingAttempt.status = 'abandoned';
+      await existingAttempt.save();
+    }
+    if (existingAttempt && !forceNew) {
       // Reconstruct the populated response shape from in-memory data — the
       // previous code did UserTestAttempt.findById + populate('test') +
       // populate('questionAttempts.mcqId'), which was 3 round trips. We

@@ -29,6 +29,8 @@ import {
   FiCheckSquare,
   FiFlag,
   FiBarChart2,
+  FiSearch,
+  FiX,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 import { usePageHeader } from "../../../core/layouts/PageHeaderContext";
@@ -40,6 +42,20 @@ const TestDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reportCounts, setReportCounts] = useState({});
+
+  // Client-side MCQ search. Test MCQs are already loaded in memory, so we
+  // filter locally (no API round-trip). Strips HTML so a search like "skeleton"
+  // matches the visible text of a rich-text question, not its <p> tags.
+  const [mcqSearch, setMcqSearch] = useState("");
+  const stripHtml = (html) => (html || "").replace(/<[^>]*>/g, " ");
+  const filteredMcqs = useMemo(() => {
+    const q = mcqSearch.trim().toLowerCase();
+    if (!q) return mcqs;
+    return mcqs.filter((m) => {
+      if (stripHtml(m.questionText).toLowerCase().includes(q)) return true;
+      return (m.options || []).some((o) => stripHtml(o.optionText).toLowerCase().includes(q));
+    });
+  }, [mcqs, mcqSearch]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -497,6 +513,34 @@ const TestDetailPage = () => {
           </div>
         )}
 
+        {/* Search — client-side filter over question + option text. */}
+        {mcqs.length > 0 && (
+          <div className="relative mb-4">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search questions by text or options…"
+              value={mcqSearch}
+              onChange={(e) => setMcqSearch(e.target.value)}
+              className="w-full pl-9 pr-9 py-2.5 text-sm bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+            />
+            {mcqSearch && (
+              <button
+                onClick={() => setMcqSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+                aria-label="Clear search"
+              >
+                <FiX className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {mcqSearch && (
+              <p className="text-xs text-[var(--text-faint)] mt-1.5">
+                {filteredMcqs.length} of {mcqs.length} question{mcqs.length !== 1 ? "s" : ""} match
+              </p>
+            )}
+          </div>
+        )}
+
         {mcqs.length === 0 ? (
           <div className="bg-[var(--bg-muted)] text-center py-12 rounded-xl">
             <FiInfo className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3" />
@@ -505,9 +549,24 @@ const TestDetailPage = () => {
               Use the options above to import or pick MCQs from a Question Bank.
             </p>
           </div>
+        ) : filteredMcqs.length === 0 ? (
+          <div className="bg-[var(--bg-muted)] text-center py-12 rounded-xl">
+            <FiSearch className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3" />
+            <p className="text-[var(--text-muted)] text-base font-semibold">No questions match “{mcqSearch}”.</p>
+            <button
+              onClick={() => setMcqSearch("")}
+              className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline font-medium"
+            >
+              Clear search
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            {mcqs.map((mcq, index) => (
+            {filteredMcqs.map((mcq) => {
+              // Number by the MCQ's real position in the full list so the
+              // shown number stays stable while filtering.
+              const index = mcqs.findIndex((m) => m._id === mcq._id);
+              return (
               <div
                 key={mcq._id}
                 className="border border-[var(--border)] rounded-xl p-4 hover:bg-[var(--bg-muted)] transition-colors"
@@ -614,7 +673,8 @@ const TestDetailPage = () => {
                     )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -312,6 +312,18 @@ const AppRouter = () => {
               }
             />
 
+            {/* QB Single MCQ Create — reuse MCQFormPage in QB-create mode.
+                MUST be before the :mcqId/edit route so "create" isn't parsed
+                as an mcqId. */}
+            <Route
+              path="/admin/question-banks/:qbId/mcqs/create"
+              element={
+                <DashboardLayout>
+                  <MCQFormPage />
+                </DashboardLayout>
+              }
+            />
+
             {/* QB Single MCQ Edit — reuse MCQFormPage with QB context */}
             <Route
               path="/admin/question-banks/:qbId/mcqs/:mcqId/edit"

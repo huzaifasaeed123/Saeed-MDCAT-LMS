@@ -7,6 +7,7 @@ import { FiFlag, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import useAuth from '../../../core/auth/useAuth';
 import SequentialMCQEditor from '../../../shared/components/SequentialMCQEditor';
+import QBClassificationPicker from '../../../shared/components/QBClassificationPicker';
 
 // ── Reports panel for the current MCQ ────────────────────────────────────────
 const MCQReportsPanel = ({ mcqId }) => {
@@ -108,6 +109,11 @@ const QBSequentialMCQEditorPage = () => {
   const [currentMcq, setCurrentMcq] = useState(null);
   const [formLoaded, setFormLoaded] = useState(false);
 
+  // QB structure (subjects → chapters → topics) used by the classification picker
+  const [qbStructure, setQbStructure] = useState([]);
+  // Editable classification for the current MCQ
+  const [classification, setClassification] = useState({ subjectId: '', chapterId: '', topicId: '' });
+
   const [formData, setFormData] = useState({
     questionText: '',
     options: [
@@ -136,8 +142,12 @@ const QBSequentialMCQEditorPage = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await apiClient.get(`/mcqs/question-bank/${qbId}?${filterParams}`);
-        if (res.data.success) setMcqs(res.data.data);
+        const [mcqRes, qbRes] = await Promise.all([
+          apiClient.get(`/mcqs/question-bank/${qbId}?${filterParams}`),
+          apiClient.get(`/question-banks/${qbId}`),
+        ]);
+        if (mcqRes.data.success) setMcqs(mcqRes.data.data);
+        if (qbRes.data.success)  setQbStructure(qbRes.data.data?.subjects || []);
       } catch {
         toast.error('Failed to load MCQs');
       } finally {
@@ -195,6 +205,11 @@ const QBSequentialMCQEditorPage = () => {
       difficulty: mcq.difficulty || 'Medium',
       isPublic: mcq.isPublic !== undefined ? mcq.isPublic : true,
     });
+    setClassification({
+      subjectId: mcq.qbSubjectId ? String(mcq.qbSubjectId) : '',
+      chapterId: mcq.qbChapterId ? String(mcq.qbChapterId) : '',
+      topicId:   mcq.qbTopicId   ? String(mcq.qbTopicId)   : '',
+    });
     setRevisionInfo({ revisionCount: mcq.revisionCount || 0, lastRevised: mcq.lastRevised || null });
     setStatistics(mcq.statistics || null);
     setFormLoaded(true);
@@ -208,16 +223,22 @@ const QBSequentialMCQEditorPage = () => {
       const submitData = {
         ...formData,
         questionBankId: currentMcq.questionBankId,
-        qbSubjectId:    currentMcq.qbSubjectId,
-        qbChapterId:    currentMcq.qbChapterId,
-        qbTopicId:      currentMcq.qbTopicId,
-        testId:         currentMcq.testId || undefined,
+        // Use the admin's selected classification, falling back to whatever
+        // was on the MCQ originally (empty string → omit so Mongoose doesn't
+        // store an empty ObjectId).
+        ...(classification.subjectId && { qbSubjectId: classification.subjectId }),
+        ...(classification.chapterId && { qbChapterId: classification.chapterId }),
+        ...(classification.topicId   && { qbTopicId:   classification.topicId   }),
+        // testId is optional — only include it when the MCQ actually belongs
+        // to a test (QB-only MCQs have no testId and the backend now accepts
+        // its absence).
+        ...(currentMcq.testId && { testId: currentMcq.testId }),
       };
       await apiClient.put(`/mcqs/${currentMcq._id}`, submitData);
       toast.success('Saved', { autoClose: 900 });
       return true;
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to save';
+      const msg = err.response?.data?.errors?.[0]?.msg || err.response?.data?.message || 'Failed to save';
       setError(msg);
       toast.error(msg);
       return false;
@@ -287,7 +308,20 @@ const QBSequentialMCQEditorPage = () => {
       onSaveAndExit={handleSaveAndExit}
       onCancel={() => navigate(listUrl)}
       title="Edit Question Bank MCQs"
-      infoBlock={currentMcq ? <MCQReportsPanel mcqId={currentMcq._id} /> : null}
+      infoBlock={currentMcq ? (
+        <>
+          {qbStructure.length > 0 && (
+            <QBClassificationPicker
+              qbStructure={qbStructure}
+              subjectId={classification.subjectId}
+              chapterId={classification.chapterId}
+              topicId={classification.topicId}
+              onChange={setClassification}
+            />
+          )}
+          <MCQReportsPanel mcqId={currentMcq._id} />
+        </>
+      ) : null}
     />
   );
 };
