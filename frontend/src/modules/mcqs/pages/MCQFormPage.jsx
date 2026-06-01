@@ -63,6 +63,8 @@ const MCQFormPage = () => {
     unit: '',
     topic: '',
     subTopic: '',
+    university: '',
+    year: '',
     difficulty: 'Medium',
     isPublic: true,
   });
@@ -162,6 +164,8 @@ const MCQFormPage = () => {
           unit: mcqData.unit || '',
           topic: mcqData.topic || '',
           subTopic: mcqData.subTopic || '',
+          university: mcqData.university || '',
+          year: mcqData.year || '',
           difficulty: mcqData.difficulty || 'Medium',
           isPublic: mcqData.isPublic !== undefined ? mcqData.isPublic : true,
         });

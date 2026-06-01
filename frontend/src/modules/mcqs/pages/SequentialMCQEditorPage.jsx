@@ -116,6 +116,8 @@ const SequentialMCQEditorPage = () => {
     unit: '',
     topic: '',
     subTopic: '',
+    university: '',
+    year: '',
     difficulty: 'Medium',
     isPublic: true,
   });
@@ -199,6 +201,8 @@ const SequentialMCQEditorPage = () => {
       unit: mcq.unit || '',
       topic: mcq.topic || '',
       subTopic: mcq.subTopic || '',
+      university: mcq.university || '',
+      year: mcq.year || '',
       difficulty: mcq.difficulty || 'Medium',
       isPublic: mcq.isPublic !== undefined ? mcq.isPublic : true,
     });

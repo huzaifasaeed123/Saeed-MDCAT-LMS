@@ -31,6 +31,10 @@ import {
   FiBarChart2,
   FiSearch,
   FiX,
+  FiFilter,
+  FiImage,
+  FiAward,
+  FiCalendar,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 import { usePageHeader } from "../../../core/layouts/PageHeaderContext";
@@ -43,19 +47,126 @@ const TestDetailPage = () => {
   const [error, setError] = useState(null);
   const [reportCounts, setReportCounts] = useState({});
 
-  // Client-side MCQ search. Test MCQs are already loaded in memory, so we
-  // filter locally (no API round-trip). Strips HTML so a search like "skeleton"
-  // matches the visible text of a rich-text question, not its <p> tags.
+  // Client-side MCQ search + filters. Test MCQs are already loaded in memory
+  // (with difficulty, isPublic, revisionCount, statistics, and report counts),
+  // so we filter locally — no API round-trip. The filter semantics mirror the
+  // QB MCQ list endpoint exactly so both pages behave identically.
   const [mcqSearch, setMcqSearch] = useState("");
+  // Classification filters use the STRING fields (subject / unit / topic) that
+  // live on each MCQ — a test isn't tied to one QB tree, so we derive the
+  // available options from this test's own MCQs and only show values that
+  // actually exist here.
+  const [fSubject, setFSubject] = useState("");
+  const [fUnit, setFUnit]       = useState("");
+  const [fTopic, setFTopic]     = useState("");
+  const [fUniversity, setFUniversity] = useState("");
+  const [fYear, setFYear]             = useState("");
+  const [difficulty, setDifficulty]     = useState("");   // '' | Easy | Medium | Hard
+  const [visibility, setVisibility]     = useState("");   // '' | public | private
+  const [hasImage, setHasImage]         = useState(false);
+  const [minRevisions, setMinRevisions] = useState("");   // '' or number string
+  const [minReports, setMinReports]     = useState("");   // '' or number string
+  const [wrongPct, setWrongPct]         = useState("");   // % of attempts on a wrong option
+  const [minAttempts, setMinAttempts]   = useState("");   // min total attempts (pairs with wrongPct)
+  const [filtersOpen, setFiltersOpen]   = useState(false);
+
   const stripHtml = (html) => (html || "").replace(/<[^>]*>/g, " ");
+  const hasImg = (html) => /<img\b/i.test(html || "");
+
+  const hasActiveFilter = !!(
+    fSubject || fUnit || fTopic || fUniversity || fYear ||
+    difficulty || visibility || hasImage || minRevisions || minReports || wrongPct || minAttempts
+  );
+
+  const clearFilters = () => {
+    setFSubject(""); setFUnit(""); setFTopic(""); setFUniversity(""); setFYear("");
+    setDifficulty(""); setVisibility(""); setHasImage(false);
+    setMinRevisions(""); setMinReports(""); setWrongPct(""); setMinAttempts("");
+    setMcqSearch("");
+  };
+
+  // Cascading subject → unit (chapter) → topic options, built ONLY from the
+  // values present on this test's MCQs. Unit options narrow to the selected
+  // subject; topic options narrow to the selected subject + unit. Blank values
+  // are skipped so empty classifications don't show as options.
+  const sortedUniq = (arr) => [...new Set(arr.filter((v) => v && v.trim()))].sort((a, b) => a.localeCompare(b));
+  const subjectOptions = useMemo(() => sortedUniq(mcqs.map((m) => m.subject)), [mcqs]);
+  const unitOptions = useMemo(
+    () => sortedUniq(mcqs.filter((m) => !fSubject || m.subject === fSubject).map((m) => m.unit)),
+    [mcqs, fSubject],
+  );
+  const topicOptions = useMemo(
+    () => sortedUniq(
+      mcqs
+        .filter((m) => (!fSubject || m.subject === fSubject) && (!fUnit || m.unit === fUnit))
+        .map((m) => m.topic),
+    ),
+    [mcqs, fSubject, fUnit],
+  );
+  // Past-paper provenance options — independent of subject/chapter/topic, built
+  // only from values present in this test. Empty if the test has no past-paper
+  // questions, in which case the controls hide.
+  const universityOptions = useMemo(() => sortedUniq(mcqs.map((m) => m.university)), [mcqs]);
+  const yearOptions = useMemo(
+    () => [...new Set(mcqs.map((m) => m.year).filter((v) => v && v.trim()))].sort((a, b) => b.localeCompare(a)),
+    [mcqs],
+  );
+
   const filteredMcqs = useMemo(() => {
     const q = mcqSearch.trim().toLowerCase();
-    if (!q) return mcqs;
+    const minRev  = parseInt(minRevisions);
+    const minRep  = parseInt(minReports);
+    const wPct    = parseFloat(wrongPct);
+    const minAtt  = parseInt(minAttempts);
+    const wantWrong    = Number.isFinite(wPct) && wPct > 0;
+    const wantAttempts = Number.isFinite(minAtt) && minAtt > 0;
+
     return mcqs.filter((m) => {
-      if (stripHtml(m.questionText).toLowerCase().includes(q)) return true;
-      return (m.options || []).some((o) => stripHtml(o.optionText).toLowerCase().includes(q));
+      // Text search — question or any option (HTML stripped).
+      if (q) {
+        const inQuestion = stripHtml(m.questionText).toLowerCase().includes(q);
+        const inOption   = (m.options || []).some((o) => stripHtml(o.optionText).toLowerCase().includes(q));
+        if (!inQuestion && !inOption) return false;
+      }
+      // Classification (string fields present on this test's MCQs).
+      if (fSubject && m.subject !== fSubject) return false;
+      if (fUnit    && m.unit    !== fUnit)    return false;
+      if (fTopic   && m.topic   !== fTopic)   return false;
+      // Past-paper provenance.
+      if (fUniversity && m.university !== fUniversity) return false;
+      if (fYear       && m.year       !== fYear)       return false;
+      // Difficulty.
+      if (difficulty && (m.difficulty || "Medium") !== difficulty) return false;
+      // Visibility.
+      if (visibility === "public"  && m.isPublic === false) return false;
+      if (visibility === "private" && m.isPublic !== false) return false;
+      // Has image — across question, options, explanation.
+      if (hasImage) {
+        const anyImg = hasImg(m.questionText) ||
+          (m.options || []).some((o) => hasImg(o.optionText)) ||
+          hasImg(m.explanationText);
+        if (!anyImg) return false;
+      }
+      // Min revisions.
+      if (Number.isFinite(minRev) && minRev > 0 && (m.revisionCount || 0) < minRev) return false;
+      // Min open/active reports (from the counts map we already fetched).
+      if (Number.isFinite(minRep) && minRep > 0 && (reportCounts[m._id] || 0) < minRep) return false;
+      // Wrong-option % and/or minimum attempts — derived from answer stats.
+      if (wantWrong || wantAttempts) {
+        const sel = m.statistics?.optionsSelections;
+        const total = sel?.total || 0;
+        if (total <= 0) return false; // no attempts → can't satisfy these
+        if (wantAttempts && total < minAtt) return false;
+        if (wantWrong) {
+          const correctLetter = (m.options || []).find((o) => o.isCorrect)?.optionLetter;
+          const correctCount = correctLetter ? (sel?.[correctLetter] || 0) : 0;
+          const wrong = ((total - correctCount) / total) * 100;
+          if (wrong < wPct) return false;
+        }
+      }
+      return true;
     });
-  }, [mcqs, mcqSearch]);
+  }, [mcqs, mcqSearch, fSubject, fUnit, fTopic, fUniversity, fYear, difficulty, visibility, hasImage, minRevisions, minReports, wrongPct, minAttempts, reportCounts]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -513,28 +624,239 @@ const TestDetailPage = () => {
           </div>
         )}
 
-        {/* Search — client-side filter over question + option text. */}
+        {/* Search + Filters — all client-side (test MCQs are already loaded). */}
         {mcqs.length > 0 && (
-          <div className="relative mb-4">
-            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search questions by text or options…"
-              value={mcqSearch}
-              onChange={(e) => setMcqSearch(e.target.value)}
-              className="w-full pl-9 pr-9 py-2.5 text-sm bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
-            />
-            {mcqSearch && (
+          <div className="mb-4 space-y-3">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search questions by text or options…"
+                  value={mcqSearch}
+                  onChange={(e) => setMcqSearch(e.target.value)}
+                  className="w-full pl-9 pr-9 py-2.5 text-sm bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                />
+                {mcqSearch && (
+                  <button
+                    onClick={() => setMcqSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+                    aria-label="Clear search"
+                  >
+                    <FiX className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <button
-                onClick={() => setMcqSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
-                aria-label="Clear search"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold rounded-xl border transition-colors ${
+                  filtersOpen || hasActiveFilter
+                    ? "border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300"
+                    : "border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)]"
+                }`}
               >
-                <FiX className="w-3.5 h-3.5" />
+                <FiFilter className="w-4 h-4" /> Filters
+                {hasActiveFilter && <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />}
               </button>
+            </div>
+
+            {filtersOpen && (
+              <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-4 space-y-4">
+                {/* Classification — only the subject/unit/topic values that
+                    actually exist in this test, cascaded. */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Subject</label>
+                    <select
+                      value={fSubject}
+                      onChange={(e) => { setFSubject(e.target.value); setFUnit(""); setFTopic(""); }}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="">All subjects</option>
+                      {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Chapter</label>
+                    <select
+                      value={fUnit}
+                      onChange={(e) => { setFUnit(e.target.value); setFTopic(""); }}
+                      disabled={unitOptions.length === 0}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">All chapters</option>
+                      {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Topic</label>
+                    <select
+                      value={fTopic}
+                      onChange={(e) => setFTopic(e.target.value)}
+                      disabled={topicOptions.length === 0}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">All topics</option>
+                      {topicOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Past-paper source — only shown if THIS test has questions
+                    carrying a university or year. */}
+                {(universityOptions.length > 0 || yearOptions.length > 0) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {universityOptions.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">University / Board</label>
+                        <select
+                          value={fUniversity}
+                          onChange={(e) => setFUniversity(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                        >
+                          <option value="">All universities</option>
+                          {universityOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {yearOptions.length > 0 && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Year</label>
+                        <select
+                          value={fYear}
+                          onChange={(e) => setFYear(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                        >
+                          <option value="">All years</option>
+                          {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Difficulty */}
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Difficulty</label>
+                    <select
+                      value={difficulty}
+                      onChange={(e) => setDifficulty(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="">Any</option>
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                  </div>
+
+                  {/* Visibility */}
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Visibility</label>
+                    <select
+                      value={visibility}
+                      onChange={(e) => setVisibility(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    >
+                      <option value="">Any</option>
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </div>
+
+                  {/* Min revisions */}
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Revised at least (times)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      placeholder="Any"
+                      value={minRevisions}
+                      onChange={(e) => setMinRevisions(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                    />
+                  </div>
+
+                  {/* Min reports */}
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Open reports at least</label>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      placeholder="Any"
+                      value={minReports}
+                      onChange={(e) => setMinReports(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                    />
+                  </div>
+                </div>
+
+                {/* "Hard for students" — wrong-option % + minimum attempts. */}
+                <div className="rounded-xl border border-[var(--border-faint)] bg-[var(--bg-muted)]/40 p-3">
+                  <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">
+                    Students answered wrong (from answer statistics)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-[var(--text-faint)] mb-1">Wrong-option % at least</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          inputMode="numeric"
+                          placeholder="e.g. 50"
+                          value={wrongPct}
+                          onChange={(e) => setWrongPct(e.target.value)}
+                          className="w-full pl-3 pr-7 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-faint)]">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[var(--text-faint)] mb-1">Attempts at least</label>
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        placeholder="e.g. 100"
+                        value={minAttempts}
+                        onChange={(e) => setMinAttempts(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <label className="inline-flex items-center gap-2 text-sm text-[var(--text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasImage}
+                      onChange={(e) => setHasImage(e.target.checked)}
+                      className="w-4 h-4 accent-primary-500"
+                    />
+                    <FiImage className="w-4 h-4 text-[var(--text-muted)]" />
+                    Only MCQs with an image
+                  </label>
+
+                  {(hasActiveFilter || mcqSearch) && (
+                    <button
+                      onClick={clearFilters}
+                      className="inline-flex items-center gap-1.5 text-sm text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 font-medium"
+                    >
+                      <FiX className="w-4 h-4" /> Clear all filters
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
-            {mcqSearch && (
-              <p className="text-xs text-[var(--text-faint)] mt-1.5">
+
+            {(mcqSearch || hasActiveFilter) && (
+              <p className="text-xs text-[var(--text-faint)]">
                 {filteredMcqs.length} of {mcqs.length} question{mcqs.length !== 1 ? "s" : ""} match
               </p>
             )}
@@ -552,12 +874,12 @@ const TestDetailPage = () => {
         ) : filteredMcqs.length === 0 ? (
           <div className="bg-[var(--bg-muted)] text-center py-12 rounded-xl">
             <FiSearch className="w-12 h-12 text-[var(--text-faint)] mx-auto mb-3" />
-            <p className="text-[var(--text-muted)] text-base font-semibold">No questions match “{mcqSearch}”.</p>
+            <p className="text-[var(--text-muted)] text-base font-semibold">No questions match the current search/filters.</p>
             <button
-              onClick={() => setMcqSearch("")}
+              onClick={clearFilters}
               className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline font-medium"
             >
-              Clear search
+              Clear all filters
             </button>
           </div>
         ) : (
@@ -595,6 +917,18 @@ const TestDetailPage = () => {
                     {reportCounts[mcq._id] > 0 && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 px-2 py-0.5 rounded-full font-semibold">
                         <FiFlag className="w-3 h-3" /> {reportCounts[mcq._id]} report{reportCounts[mcq._id] > 1 ? 's' : ''}
+                      </span>
+                    )}
+
+                    {/* Past-paper provenance badges — only when set. */}
+                    {mcq.university && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 px-2 py-0.5 rounded-full font-medium">
+                        <FiAward className="w-3 h-3" /> {mcq.university}
+                      </span>
+                    )}
+                    {mcq.year && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full font-medium">
+                        <FiCalendar className="w-3 h-3" /> {mcq.year}
                       </span>
                     )}
                   </div>

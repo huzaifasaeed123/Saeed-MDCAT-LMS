@@ -104,29 +104,43 @@ const QuestionBankImportPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) { toast.error('Please select a .docx file'); return; }
+    // Only Subject is mandatory. Chapter and Topic are optional — a QB may have
+    // a subject with no chapters/topics defined, and an MCQ can be filed at
+    // whatever depth exists. Counts + generation handle partial classification.
     if (!selectedSubjectId) { toast.error('Please select a Subject'); return; }
-    if (!selectedChapterId) { toast.error('Please select a Chapter'); return; }
-    if (!selectedTopicId) { toast.error('Please select a Topic'); return; }
 
-    // Resolve human-readable names for MCQ string fields
+    // Resolve human-readable names for the MCQ string fields (only for the
+    // levels actually chosen).
     const subjectTitle = subjects.find((s) => s._id === selectedSubjectId)?.title || '';
-    const chapterTitle = chapters.find((c) => c._id === selectedChapterId)?.title || '';
-    const topicTitle   = topics.find((t)   => t._id === selectedTopicId)?.title   || '';
+    const chapterTitle = selectedChapterId ? (chapters.find((c) => c._id === selectedChapterId)?.title || '') : '';
+    const topicTitle   = selectedTopicId   ? (topics.find((t)   => t._id === selectedTopicId)?.title   || '') : '';
 
     setLoading(true);
     setImportStatus('uploading');
     setUploadProgress(0);
 
+    // Idempotency key — one per submit attempt. If this exact request reaches
+    // the backend more than once (network replay, proxy retry, etc.), the
+    // server processes it only the first time, preventing duplicate MCQs.
+    const importKey = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
     try {
       const uploadData = new FormData();
       uploadData.append('file', file);
+      uploadData.append('importKey', importKey);
       uploadData.append('questionBankId', qbId);
       uploadData.append('qbSubjectId', selectedSubjectId);
-      uploadData.append('qbChapterId', selectedChapterId);
-      uploadData.append('qbTopicId', selectedTopicId);
       uploadData.append('subject', subjectTitle);
-      uploadData.append('unit', chapterTitle);
-      uploadData.append('topic', topicTitle);
+      // Append chapter/topic only when selected so the backend stores null
+      // (not an empty ObjectId) for the levels left unset.
+      if (selectedChapterId) {
+        uploadData.append('qbChapterId', selectedChapterId);
+        uploadData.append('unit', chapterTitle);
+      }
+      if (selectedTopicId) {
+        uploadData.append('qbTopicId', selectedTopicId);
+        uploadData.append('topic', topicTitle);
+      }
       uploadData.append('author', formData.author);
       uploadData.append('session', formData.session);
       uploadData.append('difficulty', formData.difficulty);
@@ -213,34 +227,36 @@ const QuestionBankImportPage = () => {
                   </select>
                 </div>
 
-                {/* Chapter */}
+                {/* Chapter — optional (only if the subject has chapters) */}
                 <div>
-                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Chapter *</label>
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">
+                    Chapter <span className="font-normal text-[var(--text-faint)]">(optional)</span>
+                  </label>
                   <select
                     value={selectedChapterId}
                     onChange={handleChapterChange}
-                    disabled={!selectedSubjectId}
+                    disabled={!selectedSubjectId || chapters.length === 0}
                     className="w-full px-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm disabled:bg-[var(--bg-muted)] disabled:text-[var(--text-faint)] transition-colors"
-                    required
                   >
-                    <option value="">— Select Chapter —</option>
+                    <option value="">— None —</option>
                     {chapters.map((c) => (
                       <option key={c._id} value={c._id}>{c.title}</option>
                     ))}
                   </select>
                 </div>
 
-                {/* Topic */}
+                {/* Topic — optional (only if the chapter has topics) */}
                 <div>
-                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">Topic *</label>
+                  <label className="block text-sm font-medium text-[var(--text-strong)] mb-1.5">
+                    Topic <span className="font-normal text-[var(--text-faint)]">(optional)</span>
+                  </label>
                   <select
                     value={selectedTopicId}
                     onChange={(e) => setSelectedTopicId(e.target.value)}
-                    disabled={!selectedChapterId}
+                    disabled={!selectedChapterId || topics.length === 0}
                     className="w-full px-3 py-2.5 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 text-sm disabled:bg-[var(--bg-muted)] disabled:text-[var(--text-faint)] transition-colors"
-                    required
                   >
-                    <option value="">— Select Topic —</option>
+                    <option value="">— None —</option>
                     {topics.map((t) => (
                       <option key={t._id} value={t._id}>{t.title}</option>
                     ))}

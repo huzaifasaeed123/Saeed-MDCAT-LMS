@@ -30,20 +30,27 @@ const totalsByQB      = new Map(); // String(qbId) → { value: totalCount,     
 
 const isFresh = (entry) => entry && (Date.now() - entry.builtAt) < TTL_MS;
 
-// ── Topic counts ({ topicId: count } per QB) ────────────────────────────────
+// ── Topic counts per QB ──────────────────────────────────────────────────────
+// `value` is the object { byTopic, byChapterLoose, bySubjectLoose } built by
+// getTopicCounts. The loose buckets hold partially-classified MCQs (subject-only
+// or subject+chapter) so per-subject/chapter availability sums don't miss them.
 const getTopicCounts = (qbId) => {
   const e = topicCountsByQB.get(String(qbId));
   return isFresh(e) ? e.value : null;
 };
 
+const sumBucket = (obj) => Object.values(obj || {}).reduce((a, b) => a + b, 0);
+
 const setTopicCounts = (qbId, counts) => {
   const key = String(qbId);
   const now = Date.now();
   topicCountsByQB.set(key, { value: counts, builtAt: now });
-  // Topic counts contain everything needed to derive the total — keep both
-  // maps in sync so a /question-banks call after a topic-counts hit can
-  // skip the batch aggregation for this QB.
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // The three buckets together account for every classified MCQ in the QB, so
+  // their combined sum is the QB total — keep both maps in sync so a
+  // /question-banks call after a topic-counts hit can skip the batch aggregation.
+  const total = sumBucket(counts?.byTopic)
+    + sumBucket(counts?.byChapterLoose)
+    + sumBucket(counts?.bySubjectLoose);
   totalsByQB.set(key, { value: total, builtAt: now });
 };
 

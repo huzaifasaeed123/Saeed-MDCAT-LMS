@@ -182,9 +182,16 @@ const AutoTestGeneratorPage = () => {
   const [selectedTopicIds,   setSelectedTopicIds]   = useState(new Set());
   const [expandedChapters,   setExpandedChapters]   = useState(new Set());
 
-  const [topicCounts, setTopicCounts] = useState({});
+  // Availability counts (user-agnostic). byTopic = MCQs with a topic; the
+  // *Loose maps cover partially-classified MCQs (subject-only / subject+chapter)
+  // so subject/chapter availability sums include them too.
+  const [topicCounts,    setTopicCounts]    = useState({});  // { topicId: count }
+  const [chapterLoose,   setChapterLoose]   = useState({});  // { chapterId: count } (no topic)
+  const [subjectLoose,   setSubjectLoose]   = useState({});  // { subjectId: count } (no chapter)
   const [modeCounts,   setModeCounts]   = useState({ total: null, unused: null, incorrect: null, correct: null, omitted: null, marked: null });
-  const [byTopic,      setByTopic]      = useState({});
+  const [byTopic,      setByTopic]      = useState({});      // per-user history, keyed by topic
+  const [chapterLooseHist, setChapterLooseHist] = useState({}); // per-user history, chapter-but-no-topic
+  const [subjectLooseHist, setSubjectLooseHist] = useState({}); // per-user history, subject-but-no-chapter
   const [countLoading, setCountLoading] = useState(false);
 
   // Question-mode filter (history-based). Students only — staff don't have
@@ -255,11 +262,18 @@ const AutoTestGeneratorPage = () => {
         apiClient.get(`/question-banks/${id}/user-mcq-counts`),
       ]);
       if (bankRes.data.success)   setSelectedBank(bankRes.data.data);
-      if (countsRes.data.success) setTopicCounts(countsRes.data.data);
+      if (countsRes.data.success) {
+        const c = countsRes.data.data || {};
+        setTopicCounts(c.byTopic || {});
+        setChapterLoose(c.byChapterLoose || {});
+        setSubjectLoose(c.bySubjectLoose || {});
+      }
       if (histRes.data.success) {
         const d = histRes.data.data;
         setModeCounts(d);
         setByTopic(d.byTopic || {});
+        setChapterLooseHist(d.byChapterLoose || {});
+        setSubjectLooseHist(d.bySubjectLoose || {});
       }
     } catch { toast.error('Failed to load question bank'); }
     finally { setCountLoading(false); }
@@ -270,7 +284,11 @@ const AutoTestGeneratorPage = () => {
     setQbId(id);
     setSelectedBank(null);
     setTopicCounts({});
+    setChapterLoose({});
+    setSubjectLoose({});
     setByTopic({});
+    setChapterLooseHist({});
+    setSubjectLooseHist({});
     setModeCounts({ total: null, unused: null, incorrect: null, correct: null, omitted: null, marked: null });
     setSelectedSubjectIds(new Set());
     setSelectedChapterIds(new Set());
@@ -294,26 +312,45 @@ const AutoTestGeneratorPage = () => {
   );
 
   // ── Count math — all client-side derivations from already-fetched data ──
-  const topicModeCount = useCallback((topicId) => {
-    const total = topicCounts[topicId] || 0;
+  // Apply the student question-mode filter to a (total, history) pair. Shared
+  // by the topic counts and the "loose" (topic-less / chapter-less) buckets so
+  // partially-classified MCQs are counted with the same semantics.
+  const applyModes = useCallback((total, hist) => {
     if (!isStudent || selectedModes.size === 0) return total;
-    const h = byTopic[topicId] || {};
+    const h = hist || {};
     let count = 0;
     for (const mode of selectedModes) {
       if (mode === 'unused') count += Math.max(0, total - (h.attempted || 0));
       else count += h[mode] || 0;
     }
     return count;
-  }, [topicCounts, byTopic, selectedModes, isStudent]);
+  }, [selectedModes, isStudent]);
 
-  const chapterModeCount = useCallback(
-    (chapter) => (chapter.topics || []).reduce((sum, t) => sum + topicModeCount(t._id), 0),
-    [topicModeCount],
+  const topicModeCount = useCallback(
+    (topicId) => applyModes(topicCounts[topicId] || 0, byTopic[topicId]),
+    [applyModes, topicCounts, byTopic],
   );
 
+  // Chapter total = its topics' counts + MCQs filed directly under the chapter
+  // with NO topic (the chapter-loose bucket).
+  const chapterModeCount = useCallback(
+    (chapter) => {
+      const topicSum = (chapter.topics || []).reduce((sum, t) => sum + topicModeCount(t._id), 0);
+      const loose    = applyModes(chapterLoose[chapter._id] || 0, chapterLooseHist[chapter._id]);
+      return topicSum + loose;
+    },
+    [topicModeCount, applyModes, chapterLoose, chapterLooseHist],
+  );
+
+  // Subject total = its chapters' counts + MCQs filed directly under the subject
+  // with NO chapter (the subject-loose bucket).
   const subjectModeCount = useCallback(
-    (subject) => (subject.chapters || []).reduce((sum, c) => sum + chapterModeCount(c), 0),
-    [chapterModeCount],
+    (subject) => {
+      const chapterSum = (subject.chapters || []).reduce((sum, c) => sum + chapterModeCount(c), 0);
+      const loose      = applyModes(subjectLoose[subject._id] || 0, subjectLooseHist[subject._id]);
+      return chapterSum + loose;
+    },
+    [chapterModeCount, applyModes, subjectLoose, subjectLooseHist],
   );
 
   // The headline "available MCQs" number — drives the Create button enable
@@ -338,10 +375,14 @@ const AutoTestGeneratorPage = () => {
   }, [selectedTopicIds, selectedChapterIds, selectedSubjectIds, selectedModes,
       modeCounts, topicModeCount, chapterModeCount, subjectModeCount, subjects, isStudent]);
 
-  const totalQbMcqs = useMemo(
-    () => Object.values(topicCounts).reduce((a, b) => a + b, 0),
-    [topicCounts],
-  );
+  // Whole-QB pool size. Prefer the backend's authoritative `total` (counts
+  // every MCQ incl. partially-classified ones); fall back to summing all three
+  // availability buckets so it still works before history loads.
+  const totalQbMcqs = useMemo(() => {
+    if (modeCounts.total != null) return modeCounts.total;
+    const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+    return sum(topicCounts) + sum(chapterLoose) + sum(subjectLoose);
+  }, [modeCounts.total, topicCounts, chapterLoose, subjectLoose]);
 
   // ── Toggle helpers — identical semantics to the legacy page ──────────────
   const toggleSubject = (id) => {

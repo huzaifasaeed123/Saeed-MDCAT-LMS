@@ -174,8 +174,12 @@ const MCQFormFields = ({
         />
       </div>
 
-      {/* Difficulty and Public/Private setting */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Difficulty and Public/Private setting.
+          The legacy Category / Sub-Topic (and Session) string fields were
+          removed from this form — nothing in the app reads them (classification
+          is driven by the QB subject/chapter/topic). The DB columns remain so
+          old data round-trips untouched. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <label className="block text-gray-700 text-sm font-bold mb-2">
             Difficulty Level
@@ -221,31 +225,33 @@ const MCQFormFields = ({
             </label>
           </div>
         </div>
+      </div>
 
+      {/* Past-paper source — optional. Only fill these for questions taken
+          from a real past paper; they surface as chips in the MCQ player. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <label className="block text-gray-700 text-sm font-bold mb-2">
-            Category
+            University / Board <span className="font-normal text-gray-400">(optional)</span>
           </label>
           <input
             type="text"
-            value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            value={formData.university || ''}
+            onChange={(e) => setFormData({ ...formData, university: e.target.value })}
+            placeholder="e.g. UHS, NUMS, FBISE"
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             disabled={readOnly}
           />
         </div>
-      </div>
-
-      {/* Sub-Topic field */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <label className="block text-gray-700 text-sm font-bold mb-2">
-            Sub-Topic
+            Year <span className="font-normal text-gray-400">(optional)</span>
           </label>
           <input
             type="text"
-            value={formData.subTopic}
-            onChange={(e) => setFormData({ ...formData, subTopic: e.target.value })}
+            value={formData.year || ''}
+            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+            placeholder="e.g. 2024 or 2024-25"
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             disabled={readOnly}
           />

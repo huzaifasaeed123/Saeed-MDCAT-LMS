@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import {
   FiEdit, FiTrash, FiEdit3, FiInfo, FiLock, FiArrowLeft, FiFlag,
   FiChevronLeft, FiChevronRight, FiLoader, FiPlus, FiSearch, FiX,
-  FiFilter, FiImage,
+  FiFilter, FiImage, FiAward, FiCalendar,
 } from 'react-icons/fi';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
 import apiClient from '../../../core/api/axiosConfig';
@@ -52,30 +52,37 @@ const QBMCQListPage = () => {
   const [difficulty, setDifficulty]   = useState('');   // '' | Easy | Medium | Hard
   const [visibility, setVisibility]   = useState('');   // '' | public | private
   const [hasImage, setHasImage]       = useState(false);
-  // Numeric filters — typed by the admin. Debounced before querying so typing
-  // "100" doesn't fire three requests.
+  // Numeric + free-text filters — typed by the admin. Debounced before querying
+  // so typing "100" or "UHS" doesn't fire a request per keystroke.
   const [minRevisions, setMinRevisions] = useState(''); // '' or a number string
   const [minReports, setMinReports]     = useState(''); // '' or a number string
   const [wrongPct, setWrongPct]         = useState(''); // % of attempts that picked a wrong option
   const [minAttempts, setMinAttempts]   = useState(''); // min total attempts (pairs with wrongPct)
+  const [university, setUniversity]     = useState(''); // past-paper university/board (substring)
+  const [year, setYear]                 = useState(''); // past-paper year (substring)
   const [filtersOpen, setFiltersOpen]   = useState(focusSearch);
 
-  // Debounced copy of every numeric filter — drives the actual query.
-  const [debNums, setDebNums] = useState({ minRevisions: '', minReports: '', wrongPct: '', minAttempts: '' });
+  // Debounced copy of every debounced filter — drives the actual query.
+  const [debNums, setDebNums] = useState({ minRevisions: '', minReports: '', wrongPct: '', minAttempts: '', university: '', year: '' });
   useEffect(() => {
-    const t = setTimeout(() => setDebNums({ minRevisions, minReports, wrongPct, minAttempts }), 350);
+    const t = setTimeout(
+      () => setDebNums({ minRevisions, minReports, wrongPct, minAttempts, university: university.trim(), year: year.trim() }),
+      350,
+    );
     return () => clearTimeout(t);
-  }, [minRevisions, minReports, wrongPct, minAttempts]);
+  }, [minRevisions, minReports, wrongPct, minAttempts, university, year]);
 
   const hasActiveFilter = !!(
     classification.subjectId || classification.chapterId || classification.topicId ||
-    difficulty || visibility || hasImage || minRevisions || minReports || wrongPct || minAttempts
+    difficulty || visibility || hasImage || minRevisions || minReports || wrongPct || minAttempts ||
+    university || year
   );
 
   const clearFilters = () => {
     setClassification({ subjectId: '', chapterId: '', topicId: '' });
     setDifficulty(''); setVisibility(''); setHasImage(false);
     setMinRevisions(''); setMinReports(''); setWrongPct(''); setMinAttempts('');
+    setUniversity(''); setYear('');
     setSearch('');
   };
 
@@ -90,6 +97,7 @@ const QBMCQListPage = () => {
     classification.subjectId, classification.chapterId, classification.topicId,
     difficulty, visibility, hasImage,
     debNums.minRevisions, debNums.minReports, debNums.wrongPct, debNums.minAttempts,
+    debNums.university, debNums.year,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -99,6 +107,7 @@ const QBMCQListPage = () => {
     classification.subjectId, classification.chapterId, classification.topicId,
     difficulty, visibility, hasImage,
     debNums.minRevisions, debNums.minReports, debNums.wrongPct, debNums.minAttempts,
+    debNums.university, debNums.year,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMcqs = async (pg) => {
@@ -117,6 +126,8 @@ const QBMCQListPage = () => {
       if (debNums.minReports)            params.append('minReports', debNums.minReports);
       if (debNums.wrongPct)              params.append('wrongPct', debNums.wrongPct);
       if (debNums.minAttempts)           params.append('minAttempts', debNums.minAttempts);
+      if (debNums.university)            params.append('university', debNums.university);
+      if (debNums.year)                  params.append('year', debNums.year);
 
       const res = await apiClient.get(`/mcqs/question-bank/${qbId}?${params}`);
       if (res.data.success) {
@@ -423,6 +434,36 @@ const QBMCQListPage = () => {
               </div>
             </div>
 
+            {/* Past-paper source — university/board + year. Substring match, so
+                "2024" also catches "2024-25". */}
+            <div className="rounded-xl border border-[var(--border-faint)] bg-[var(--bg-muted)]/40 p-3">
+              <p className="text-xs font-semibold text-[var(--text-muted)] mb-2">
+                Past-paper source
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-[var(--text-faint)] mb-1">University / Board</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. UHS, NUMS"
+                    value={university}
+                    onChange={(e) => setUniversity(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[var(--text-faint)] mb-1">Year</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2024"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 placeholder:text-[var(--text-faint)]"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between flex-wrap gap-3">
               {/* Has image toggle */}
               <label className="inline-flex items-center gap-2 text-sm text-[var(--text)] cursor-pointer">
@@ -511,6 +552,17 @@ const QBMCQListPage = () => {
                         {reportCounts[mcq._id] > 0 && (
                           <span className="flex items-center text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 px-2 py-1 rounded-full font-semibold">
                             <FiFlag className="mr-1 w-3 h-3" /> {reportCounts[mcq._id]} report{reportCounts[mcq._id] > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {/* Past-paper provenance badges — only when set. */}
+                        {mcq.university && (
+                          <span className="flex items-center text-xs text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 px-2 py-1 rounded-full">
+                            <FiAward className="mr-1 w-3 h-3" /> {mcq.university}
+                          </span>
+                        )}
+                        {mcq.year && (
+                          <span className="flex items-center text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-full">
+                            <FiCalendar className="mr-1 w-3 h-3" /> {mcq.year}
                           </span>
                         )}
                       </div>

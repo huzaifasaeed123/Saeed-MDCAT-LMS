@@ -265,9 +265,13 @@ const MCQDocumentUploadPage = () => {
     if (!file) { toast.error("Please select a file"); return; }
 
     setLoading(true); setImportStatus("uploading"); setUploadProgress(0);
+    // Idempotency key — one per submit; backend ignores a key it already saw,
+    // so a replayed request can't double-insert the MCQs.
+    const importKey = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     try {
       const data = new FormData();
       data.append("file", file);
+      data.append("importKey", importKey);
       if (testId) data.append("testId", testId);
       data.append("difficulty", difficulty);
       data.append("isPublic",   isPublic);

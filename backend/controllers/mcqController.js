@@ -2,6 +2,7 @@
 const MCQ = require('../models/McqModel');
 const Test = require('../models/TestModel');
 const MCQReport = require('../models/MCQReport');
+const QuestionBank = require('../models/QuestionBankModel');
 const mongoose = require('mongoose');
 const { syncTestClassification } = require('./testController');
 const fs = require('fs');
@@ -11,6 +12,52 @@ const { v4: uuidv4 } = require('uuid');
 const { extractMCQsFromDoc, convertToBackendFormat } = require('../utils/mcqDocParser');
 const qbCountsCache = require('../utils/qbCountsCache');
 
+// ── Denormalised classification backfill ────────────────────────────────────
+// The user side (Test Player chips, Test Result per-topic analytics) reads the
+// MCQ's STRING fields subject/unit/topic directly — no qb-id → title resolution
+// happens there, by design (keeps those hot reads join-free). So whenever an
+// MCQ carries QB classification ids, its string fields MUST mirror the QB's
+// titles. Bulk import already sends the titles; this helper guarantees the
+// single-MCQ create/update path does too, and self-heals any caller that sends
+// ids without titles.
+//
+// Mutates `data` in place. Only fills a string when it's missing/empty so an
+// admin who deliberately typed a custom value isn't overwritten. Best-effort:
+// a failed QB lookup leaves the data untouched (never blocks the save).
+// `force` (used on UPDATE): re-resolve the strings even when present, because
+// the admin may have RECLASSIFIED the MCQ (picked new ids) and the form often
+// still carries the old title strings. On CREATE we pass force=false so an
+// admin-typed custom string isn't overwritten.
+const fillClassificationStrings = async (data, { force = false } = {}) => {
+  try {
+    if (!data || !data.questionBankId) return;
+    const needsSubject = data.qbSubjectId && (force || !data.subject);
+    const needsChapter = data.qbChapterId && (force || !data.unit);
+    const needsTopic   = data.qbTopicId   && (force || !data.topic);
+    if (!needsSubject && !needsChapter && !needsTopic) return;
+
+    const qb = await QuestionBank.findById(data.questionBankId).lean();
+    if (!qb) return;
+
+    const subj = (qb.subjects || []).find((s) => String(s._id) === String(data.qbSubjectId));
+    if (!subj) return;
+    if (needsSubject) data.subject = subj.title;
+
+    const chap = data.qbChapterId
+      ? (subj.chapters || []).find((c) => String(c._id) === String(data.qbChapterId))
+      : null;
+    if (chap && needsChapter) data.unit = chap.title;
+
+    const top = (chap && data.qbTopicId)
+      ? (chap.topics || []).find((t) => String(t._id) === String(data.qbTopicId))
+      : null;
+    if (top && needsTopic) data.topic = top.title;
+  } catch (err) {
+    // Non-fatal — leave strings as-is; the save still proceeds.
+    console.error('fillClassificationStrings error:', err?.message || err);
+  }
+};
+
 // Create new MCQ
 exports.createMCQ = async (req, res) => {
   try {
@@ -18,6 +65,10 @@ exports.createMCQ = async (req, res) => {
       ...req.body,
       author: req.user.fullName,
     };
+
+    // Mirror QB titles into the denormalised subject/unit/topic strings the
+    // user side reads. No-op if they were already sent (e.g. bulk import).
+    await fillClassificationStrings(mcqData);
 
     const mcq = await MCQ.create(mcqData);
 
@@ -69,8 +120,9 @@ exports.getMCQsForTest = async (req, res) => {
   try {
     const { testId } = req.params;
 
-    // Primary: find MCQs that have testId pointing to this test
-    let mcqs = await MCQ.find({ testId }).sort({ createdAt: 1 });
+    // Primary: find MCQs that have testId pointing to this test.
+    // Secondary _id sort keeps order stable when many share a createdAt.
+    let mcqs = await MCQ.find({ testId }).sort({ createdAt: 1, _id: 1 });
 
     // Fallback: auto-generated tests store MCQ refs in test.mcqs but MCQs don't
     // have the testId set. Populate from the test's mcqs array instead.
@@ -141,7 +193,12 @@ exports.updateMCQ = async (req, res) => {
       revisionCount: (mcq.revisionCount || 0) + 1,
       lastRevised: new Date()
     };
-    
+
+    // Keep the denormalised subject/unit/topic strings in sync with the QB
+    // ids. force=true so a reclassification (new ids, stale title strings from
+    // the form) refreshes the strings to the new titles.
+    await fillClassificationStrings(updatedData, { force: true });
+
     // Using findByIdAndUpdate to update the MCQ
     const updatedMCQ = await MCQ.findByIdAndUpdate(
       req.params.id,
@@ -256,6 +313,20 @@ const upload = multer({
 // Store ongoing import operations
 const importOperations = {};
 
+// Idempotency guard: maps a client-supplied importKey → the importId we created
+// for it. A duplicate request (axios replay after token refresh, proxy/network
+// retry, double-submit) carries the SAME key, so we return the original importId
+// instead of starting a second extraction — preventing duplicate MCQs.
+// Entries are pruned after a TTL so the map can't grow unbounded.
+const seenImportKeys = new Map(); // importKey → { importId, at }
+const IMPORT_KEY_TTL_MS = 30 * 60 * 1000; // 30 min — well past any retry window
+const pruneImportKeys = () => {
+  const now = Date.now();
+  for (const [k, v] of seenImportKeys) {
+    if (now - v.at > IMPORT_KEY_TTL_MS) seenImportKeys.delete(k);
+  }
+};
+
 /**
  * Handle document upload and start MCQ extraction
  * @param {Object} req - Express request object
@@ -276,7 +347,25 @@ exports.uploadDocument = (req, res) => {
         message: 'No file uploaded'
       });
     }
-    
+
+    // Idempotency: if this exact submit was already accepted, don't process the
+    // re-uploaded copy again — discard its temp file and return the original
+    // importId so the client keeps polling the SAME operation.
+    const importKey = req.body.importKey;
+    if (importKey) {
+      pruneImportKeys();
+      const prior = seenImportKeys.get(importKey);
+      if (prior) {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(200).json({
+          success: true,
+          message: 'Duplicate upload ignored; original import is in progress.',
+          importId: prior.importId,
+          duplicate: true,
+        });
+      }
+    }
+
     const { testId, questionBankId, qbSubjectId, qbChapterId, qbTopicId } = req.body;
 
     // Parse multi-classification list (optional, sent as JSON string)
@@ -342,6 +431,10 @@ exports.uploadDocument = (req, res) => {
         startTime: new Date(),
         importedCount: 0,
       };
+
+      // Register the idempotency key BEFORE kicking off processing so a
+      // near-simultaneous replay (which is the realistic race) is caught.
+      if (importKey) seenImportKeys.set(importKey, { importId, at: Date.now() });
 
       // Start extraction process in the background
       processDocument(importId, req.file.path, testId || null, test, mcqInfo);
@@ -500,10 +593,14 @@ async function processDocument(importId, filePath, testId, test, mcqInfo) {
 //                    is whichever option has isCorrect:true) — we do NOT rely on
 //                    the legacy statistics.correctPercentage field, which is
 //                    never written.
+//   • university   — case-insensitive substring match on the (past-paper)
+//                    university/board string field.
+//   • year         — case-insensitive substring match on the year string field
+//                    (stored as text, e.g. "2024" or "2024-25").
 exports.getMCQsForQuestionBank = async (req, res) => {
   try {
     const { qbId } = req.params;
-    const { subjectId, chapterId, topicId, search, difficulty, visibility, hasImage } = req.query;
+    const { subjectId, chapterId, topicId, search, difficulty, visibility, hasImage, university, year } = req.query;
 
     const filter = { questionBankId: new mongoose.Types.ObjectId(qbId) };
     if (topicId)        filter.qbTopicId   = new mongoose.Types.ObjectId(topicId);
@@ -530,6 +627,17 @@ exports.getMCQsForQuestionBank = async (req, res) => {
 
     if (visibility === 'public')  filter.isPublic = { $ne: false };
     if (visibility === 'private') filter.isPublic = false;
+
+    // Past-paper provenance — case-insensitive substring match so "2024" also
+    // matches "2024-25" and "UHS" matches "UHS Lahore".
+    if (university && university.trim()) {
+      const safe = university.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.university = new RegExp(safe, 'i');
+    }
+    if (year && year.trim()) {
+      const safe = year.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.year = new RegExp(safe, 'i');
+    }
 
     if (hasImage === '1') {
       // Images are <img> tags inside the rich text — match across all three
@@ -638,7 +746,11 @@ exports.getMCQsForQuestionBank = async (req, res) => {
     const skip  = (page - 1) * limit;
 
     const [mcqs, total, statsAgg] = await Promise.all([
-      MCQ.find(filter).sort({ createdAt: 1 }).skip(skip).limit(limit),
+      // Secondary sort on _id makes pagination STABLE: many MCQs share the same
+      // createdAt (e.g. one bulk import batch), and sorting on createdAt alone
+      // is non-deterministic across skip/limit windows — pages would overlap or
+      // repeat. _id is unique + monotonic, so it guarantees disjoint pages.
+      MCQ.find(filter).sort({ createdAt: 1, _id: 1 }).skip(skip).limit(limit),
       MCQ.countDocuments(filter),
       MCQ.aggregate([
         { $match: filter },
@@ -674,11 +786,21 @@ exports.getMCQsForQuestionBank = async (req, res) => {
 };
 
 // GET /api/mcqs/question-bank/:qbId/topic-counts
-// Returns { [topicId]: count } for every topic in the QB.
+// Returns counts so the generator can derive subject/chapter/topic availability
+// client-side. Shape:
+//   {
+//     byTopic:        { [topicId]:   count },  // MCQs that HAVE a topic
+//     byChapterLoose: { [chapterId]: count },  // MCQs with a chapter but NO topic
+//     bySubjectLoose: { [subjectId]: count },  // MCQs with a subject but NO chapter
+//   }
+// The "loose" buckets capture partially-classified MCQs (subject-only or
+// subject+chapter). Without them, an MCQ filed under a subject with no topic
+// would belong to no topic bucket and be invisible to the subject/chapter
+// availability sums, making the generator show 0 even though MCQs exist.
 //
-// Served from qbCountsCache. Same response for every user, so one cached
-// entry serves the whole site. Invalidated on any MCQ create/update/delete
-// that touches this QB (see CRUD handlers above).
+// Backward-compat note: this used to return a flat { topicId: count }. The
+// `byTopic` sub-object preserves that exact data; the cache stores the full
+// object now. Same single aggregation, same qbId key, same invalidation.
 exports.getTopicCounts = async (req, res) => {
   try {
     const { qbId } = req.params;
@@ -688,14 +810,36 @@ exports.getTopicCounts = async (req, res) => {
       return res.json({ success: true, data: cached, cached: true });
     }
 
+    // One pass, grouped by the full (subject, chapter, topic) triple so we can
+    // bucket each MCQ at the MOST SPECIFIC level it actually carries.
     const agg = await MCQ.aggregate([
       { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
-      { $group: { _id: '$qbTopicId', count: { $sum: 1 } } },
+      { $group: {
+        _id: { subject: '$qbSubjectId', chapter: '$qbChapterId', topic: '$qbTopicId' },
+        count: { $sum: 1 },
+      }},
     ]);
-    const counts = {};
-    agg.forEach((r) => { if (r._id) counts[r._id.toString()] = r.count; });
-    qbCountsCache.setTopicCounts(qbId, counts);
-    res.json({ success: true, data: counts });
+
+    const byTopic        = {};
+    const byChapterLoose = {};
+    const bySubjectLoose = {};
+    for (const r of agg) {
+      const { subject, chapter, topic } = r._id || {};
+      if (topic) {
+        byTopic[topic.toString()] = (byTopic[topic.toString()] || 0) + r.count;
+      } else if (chapter) {
+        // Has a chapter but no topic → loose at the chapter level.
+        byChapterLoose[chapter.toString()] = (byChapterLoose[chapter.toString()] || 0) + r.count;
+      } else if (subject) {
+        // Has a subject but no chapter → loose at the subject level.
+        bySubjectLoose[subject.toString()] = (bySubjectLoose[subject.toString()] || 0) + r.count;
+      }
+      // (No subject/chapter/topic at all → not attributable to any node; omitted.)
+    }
+
+    const data = { byTopic, byChapterLoose, bySubjectLoose };
+    qbCountsCache.setTopicCounts(qbId, data);
+    res.json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

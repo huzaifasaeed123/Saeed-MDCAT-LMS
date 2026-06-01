@@ -266,11 +266,15 @@ exports.getUserMcqCounts = async (req, res) => {
           markedCount:    { $sum: { $cond: ['$markedForReview', 1, 0] } },
         }},
       ]),
-      // Per-topic breakdown — always QB-level (no scope), used by frontend for client-side subject/chapter counts
+      // Per-NODE breakdown — always QB-level (no scope), used by the frontend
+      // for client-side subject/chapter counting. Grouped by the full
+      // (subject, chapter, topic) triple so partially-classified history
+      // (subject-only / subject+chapter, i.e. topic null) is bucketed at the
+      // most specific level it carries instead of being dropped.
       UserMcqHistory.aggregate([
         { $match: { user: userId, questionBankId: qbOid } },
         { $group: {
-          _id:       '$qbTopicId',
+          _id:       { subject: '$qbSubjectId', chapter: '$qbChapterId', topic: '$qbTopicId' },
           attempted: { $sum: 1 },
           incorrect: { $sum: { $cond: [{ $eq: ['$lastResult', 'incorrect'] }, 1, 0] } },
           correct:   { $sum: { $cond: [{ $eq: ['$lastResult', 'correct']   }, 1, 0] } },
@@ -310,16 +314,35 @@ exports.getUserMcqCounts = async (req, res) => {
       backfillCheckedUsers.add(userIdStr);
     }
 
-    // Build byTopic map — frontend uses this for client-side subject/chapter counting
+    // Build the per-node history maps. byTopic keeps the existing shape (history
+    // for MCQs that HAVE a topic). The loose maps carry history for
+    // partially-classified MCQs so subject/chapter mode-count sums don't miss
+    // them — mirrors byChapterLoose/bySubjectLoose in getTopicCounts.
+    const stat = (t) => ({
+      attempted: t.attempted,
+      incorrect: t.incorrect,
+      correct:   t.correct,
+      omitted:   t.omitted,
+      marked:    t.marked,
+    });
+    const addInto = (map, key, t) => {
+      const k = key.toString();
+      if (!map[k]) { map[k] = stat(t); return; }
+      // Same node can appear once per row only (group key is the full triple),
+      // but guard accumulation anyway in case of future grouping changes.
+      const cur = map[k];
+      cur.attempted += t.attempted; cur.incorrect += t.incorrect;
+      cur.correct   += t.correct;   cur.omitted   += t.omitted;
+      cur.marked    += t.marked;
+    };
     const byTopic = {};
+    const byChapterLooseHist = {};
+    const bySubjectLooseHist = {};
     for (const t of rawTopicAgg) {
-      if (t._id) byTopic[t._id.toString()] = {
-        attempted: t.attempted,
-        incorrect: t.incorrect,
-        correct:   t.correct,
-        omitted:   t.omitted,
-        marked:    t.marked,
-      };
+      const { subject, chapter, topic } = t._id || {};
+      if (topic)        addInto(byTopic, topic, t);
+      else if (chapter) addInto(byChapterLooseHist, chapter, t);
+      else if (subject) addInto(bySubjectLooseHist, subject, t);
     }
 
     res.json({
@@ -331,7 +354,9 @@ exports.getUserMcqCounts = async (req, res) => {
         correct:   h.correctCount,
         omitted:   h.omittedCount,
         marked:    h.markedCount,
-        byTopic,   // { topicId: { attempted, incorrect, correct, omitted, marked } }
+        byTopic,             // { topicId:   { attempted, incorrect, correct, omitted, marked } }
+        byChapterLoose: byChapterLooseHist, // history for chapter-but-no-topic MCQs
+        bySubjectLoose: bySubjectLooseHist, // history for subject-but-no-chapter MCQs
       },
     });
   } catch (err) {

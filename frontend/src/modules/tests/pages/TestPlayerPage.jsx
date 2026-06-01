@@ -34,6 +34,7 @@ import {
   FiChevronLeft, FiChevronRight, FiX, FiCheck, FiSend, FiPause, FiClock,
   FiArrowLeft, FiZap, FiFlag, FiBookmark, FiBarChart2, FiEye, FiGrid,
   FiBookOpen, FiFileText, FiSun, FiMoon, FiLogOut, FiLock,
+  FiAward, FiCalendar,
 } from 'react-icons/fi';
 import apiClient from '../../../core/api/axiosConfig';
 import { fixImageUrls } from '../../../shared/utils/fixImageUrls';
@@ -866,6 +867,9 @@ const TestPlayerPage = () => {
   const subjectChip      = currentMcq?.subject;
   const chapterChip      = currentMcq?.unit;
   const topicChip        = currentMcq?.topic;
+  // Past-paper provenance — only set on questions sourced from past papers.
+  const universityChip   = currentMcq?.university;
+  const yearChip         = currentMcq?.year;
   const userAnswer       = isReview ? currentQA?.selectedOption : localAnswers[currentIndex];
 
   return (
@@ -1015,6 +1019,19 @@ const TestPlayerPage = () => {
               {topicChip && (
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--bg-muted)] text-[var(--text-muted)]">
                   {topicChip}
+                </span>
+              )}
+              {/* Past-paper provenance — university + year, only when present. */}
+              {universityChip && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                  <FiAward className="w-3 h-3" />
+                  {universityChip}
+                </span>
+              )}
+              {yearChip && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <FiCalendar className="w-3 h-3" />
+                  {yearChip}
                 </span>
               )}
             </div>

@@ -123,6 +123,8 @@ const QBSequentialMCQEditorPage = () => {
       { optionLetter: 'D', optionText: '', isCorrect: false },
     ],
     explanationText: '',
+    university: '',
+    year: '',
     difficulty: 'Medium',
     isPublic: true,
   });
@@ -202,6 +204,8 @@ const QBSequentialMCQEditorPage = () => {
       questionText: mcq.questionText || '',
       options: formattedOptions,
       explanationText: mcq.explanationText || '',
+      university: mcq.university || '',
+      year: mcq.year || '',
       difficulty: mcq.difficulty || 'Medium',
       isPublic: mcq.isPublic !== undefined ? mcq.isPublic : true,
     });
