@@ -786,21 +786,11 @@ exports.getMCQsForQuestionBank = async (req, res) => {
 };
 
 // GET /api/mcqs/question-bank/:qbId/topic-counts
-// Returns counts so the generator can derive subject/chapter/topic availability
-// client-side. Shape:
-//   {
-//     byTopic:        { [topicId]:   count },  // MCQs that HAVE a topic
-//     byChapterLoose: { [chapterId]: count },  // MCQs with a chapter but NO topic
-//     bySubjectLoose: { [subjectId]: count },  // MCQs with a subject but NO chapter
-//   }
-// The "loose" buckets capture partially-classified MCQs (subject-only or
-// subject+chapter). Without them, an MCQ filed under a subject with no topic
-// would belong to no topic bucket and be invisible to the subject/chapter
-// availability sums, making the generator show 0 even though MCQs exist.
+// Returns { [topicId]: count } for every topic in the QB.
 //
-// Backward-compat note: this used to return a flat { topicId: count }. The
-// `byTopic` sub-object preserves that exact data; the cache stores the full
-// object now. Same single aggregation, same qbId key, same invalidation.
+// Served from qbCountsCache. Same response for every user, so one cached
+// entry serves the whole site. Invalidated on any MCQ create/update/delete
+// that touches this QB (see CRUD handlers above).
 exports.getTopicCounts = async (req, res) => {
   try {
     const { qbId } = req.params;
@@ -810,36 +800,14 @@ exports.getTopicCounts = async (req, res) => {
       return res.json({ success: true, data: cached, cached: true });
     }
 
-    // One pass, grouped by the full (subject, chapter, topic) triple so we can
-    // bucket each MCQ at the MOST SPECIFIC level it actually carries.
     const agg = await MCQ.aggregate([
       { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
-      { $group: {
-        _id: { subject: '$qbSubjectId', chapter: '$qbChapterId', topic: '$qbTopicId' },
-        count: { $sum: 1 },
-      }},
+      { $group: { _id: '$qbTopicId', count: { $sum: 1 } } },
     ]);
-
-    const byTopic        = {};
-    const byChapterLoose = {};
-    const bySubjectLoose = {};
-    for (const r of agg) {
-      const { subject, chapter, topic } = r._id || {};
-      if (topic) {
-        byTopic[topic.toString()] = (byTopic[topic.toString()] || 0) + r.count;
-      } else if (chapter) {
-        // Has a chapter but no topic → loose at the chapter level.
-        byChapterLoose[chapter.toString()] = (byChapterLoose[chapter.toString()] || 0) + r.count;
-      } else if (subject) {
-        // Has a subject but no chapter → loose at the subject level.
-        bySubjectLoose[subject.toString()] = (bySubjectLoose[subject.toString()] || 0) + r.count;
-      }
-      // (No subject/chapter/topic at all → not attributable to any node; omitted.)
-    }
-
-    const data = { byTopic, byChapterLoose, bySubjectLoose };
-    qbCountsCache.setTopicCounts(qbId, data);
-    res.json({ success: true, data });
+    const counts = {};
+    agg.forEach((r) => { if (r._id) counts[r._id.toString()] = r.count; });
+    qbCountsCache.setTopicCounts(qbId, counts);
+    res.json({ success: true, data: counts });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
