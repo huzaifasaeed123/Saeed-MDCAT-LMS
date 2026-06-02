@@ -9,6 +9,10 @@
 //   AWS_SECRET_ACCESS_KEY
 //   AWS_PUBLIC_BASE_URL        → optional CDN/custom domain; if unset we derive
 //                                https://<bucket>.s3.<region>.amazonaws.com
+//   AWS_KEY_PREFIX             → optional base prefix prepended to every S3 key,
+//                                so objects land under a known folder. Defaults
+//                                to 'public/skn-academy' to match the legacy
+//                                upload layout (public/skn-academy/<type>/<file>).
 //
 // If AWS_ENABLE is not exactly "TRUE" (case-insensitive) OR any required cred is
 // missing, S3 is treated as DISABLED and everything falls back to local disk —
@@ -20,6 +24,12 @@ const region          = process.env.AWS_REGION;
 const bucket          = process.env.AWS_BUCKET_NAME;
 const accessKeyId     = process.env.AWS_ACCESS_KEY_ID;
 const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+// Base prefix for every S3 object key. Trim slashes so we control joining.
+// Default matches the legacy path layout `public/skn-academy/...`.
+const keyPrefix = String(
+  process.env.AWS_KEY_PREFIX != null ? process.env.AWS_KEY_PREFIX : 'public/skn-academy'
+).replace(/^\/+|\/+$/g, '');
 
 // S3 is only "really" enabled when the flag is on AND every credential exists.
 const s3Enabled = enabledFlag && !!(region && bucket && accessKeyId && secretAccessKey);
@@ -45,5 +55,6 @@ module.exports = {
   accessKeyId,
   secretAccessKey,
   publicBaseUrl,
+  keyPrefix,
   isS3Enabled: () => s3Enabled,
 };

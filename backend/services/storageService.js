@@ -54,7 +54,9 @@ const saveImageBuffer = async (buffer, opts = {}) => {
   if (storageConfig.s3Enabled) {
     try {
       const { PutObjectCommand } = require('@aws-sdk/client-s3');
-      const key = `${folder}/${filename}`;
+      // Final S3 key = <keyPrefix>/<folder>/<filename>, e.g.
+      // public/skn-academy/images/<uuid>.png — matching the legacy layout.
+      const key = [storageConfig.keyPrefix, folder, filename].filter(Boolean).join('/');
       await getS3Client().send(new PutObjectCommand({
         Bucket: storageConfig.bucket,
         Key: key,
