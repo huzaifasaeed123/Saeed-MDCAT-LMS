@@ -170,6 +170,7 @@ const QuestionBankImportPage = () => {
   // Memoise back link so PageHeaderContext doesn't re-fire on every render.
   const headerAction = useMemo(() => (
     <button
+      type="button"
       onClick={() => navigate('/admin/question-banks')}
       className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)] group"
     >
@@ -189,6 +190,7 @@ const QuestionBankImportPage = () => {
       {/* Mobile back */}
       <div className="md:hidden mb-4">
         <button
+          type="button"
           onClick={() => navigate('/admin/question-banks')}
           className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
         >
@@ -417,6 +419,7 @@ const QuestionBankImportPage = () => {
               <p className="font-medium text-emerald-800 dark:text-emerald-200">Import Successful!</p>
               <p className="text-sm text-emerald-700 dark:text-emerald-300">{importedCount} MCQs imported into the question bank.</p>
               <button
+                type="button"
                 onClick={() => navigate('/admin/question-banks')}
                 className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline"
               >
@@ -435,6 +438,7 @@ const QuestionBankImportPage = () => {
               <p className="font-medium text-rose-800 dark:text-rose-200">Import Failed</p>
               <p className="text-sm text-rose-700 dark:text-rose-300">Please check the file format and try again.</p>
               <button
+                type="button"
                 onClick={() => { setFile(null); setImportStatus('idle'); }}
                 className="mt-2 text-sm text-primary-600 dark:text-primary-300 hover:underline"
               >

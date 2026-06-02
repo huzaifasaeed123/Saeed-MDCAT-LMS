@@ -5,6 +5,7 @@ const mammoth = require('mammoth');
 const cheerio = require('cheerio');
 const { v4: uuidv4 } = require('uuid');
 const JSZip = require('jszip');
+const { saveImageBuffer } = require('../services/storageService');
 
 /**
  * Extract and parse MCQs from a Word document
@@ -44,9 +45,15 @@ async function extractMCQsFromDoc(docxPath, imageDir = 'uploads/images') {
       .get()
       .filter(Boolean);
       
-    // Parse MCQs from lines
-    const mcqs = parseMCQsFromLines(lines, imageDir);
-    
+    // Parse MCQs from lines. Pass 1 collects embedded image buffers into
+    // `imageCollector` and leaves placeholder markers in the HTML.
+    const imageCollector = [];
+    const mcqs = parseMCQsFromLines(lines, imageCollector);
+
+    // Pass 2: upload every collected image (to S3 or local via storageService)
+    // and swap the markers for the real public URLs across all MCQ fields.
+    await finalizeImages(mcqs, imageCollector);
+
     console.log(`Successfully extracted ${mcqs.length} MCQs from document.`);
     return mcqs;
   } catch (error) {
@@ -69,39 +76,51 @@ const cleanEdgeBr = (s) =>
      .trim();
   
 /**
- * Process embedded images in HTML content
- * ✅ Generates exactly ONE UUID per <img>, 
- * uses it both for saving and for DB path
+ * Process embedded images in an HTML fragment.
+ *
+ * Two-pass design so images can go to S3 (async) without making the whole sync
+ * parser async: here (pass 1, sync) we extract each <img>'s bytes into the
+ * shared `collector` and replace its src with a unique placeholder marker. After
+ * all parsing, finalizeImages() (pass 2, async) uploads every collected buffer
+ * via the storage service and swaps the markers for the real URLs across all MCQ
+ * HTML. `imageDir` is kept for signature compatibility but no longer used to
+ * write inline (storageService owns where bytes land).
+ *
+ * @param {string} htmlFragment
+ * @param {Array}  collector  shared array: { marker, buffer, filename, contentType }
  */
-const processImages = (htmlFragment, imageDir) => {
+const processImages = (htmlFragment, collector) => {
   if (!htmlFragment) return htmlFragment;
   const $ = cheerio.load(htmlFragment, null, false);
 
   $("img").each((_, img) => {
     const $img = $(img);
     const src = $img.attr("src") || '';
-    const uuidFile = `${uuidv4()}.png`; // ✅ generate ONCE
-    const outPath = path.join(imageDir, uuidFile);
-
     try {
+      let buffer = null;
+      let ext = '.png';
       if (src.startsWith('data:image/')) {
-        // ✅ Base64 image
         const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(src);
         if (match) {
-          fs.writeFileSync(outPath, Buffer.from(match[2], "base64"));
-          $img.attr("src", `/uploads/images/${uuidFile}`);
+          buffer = Buffer.from(match[2], 'base64');
+          const sub = match[1].split('/')[1];
+          if (sub) ext = `.${sub.replace('+xml', '')}`;
         }
-      } 
-      else if (src.includes('word/media/')) {
-        // ✅ Word document embedded image
-        // Try to read original image file from disk
+      } else if (src.includes('word/media/')) {
         if (fs.existsSync(src)) {
-          const imageData = fs.readFileSync(src);
-          fs.writeFileSync(outPath, imageData);
-          $img.attr("src", `/uploads/images/${uuidFile}`);
+          buffer = fs.readFileSync(src);
+          const e = path.extname(src);
+          if (e) ext = e;
         } else {
           console.warn(`⚠️ Original image not found: ${src}`);
         }
+      }
+
+      if (buffer) {
+        const filename = `${uuidv4()}${ext}`;
+        const marker = `__MCQIMG_${collector.length}_${uuidv4()}__`;
+        collector.push({ marker, buffer, filename, contentType: undefined });
+        $img.attr('src', marker);
       }
     } catch (err) {
       console.error(`⚠️ Failed to process image: ${src}`, err);
@@ -111,13 +130,59 @@ const processImages = (htmlFragment, imageDir) => {
   return $.html();
 };
 
+/**
+ * Pass 2: upload all collected image buffers and replace their placeholder
+ * markers with the real public URLs across every MCQ's HTML fields. Mutates the
+ * mcqs array in place. Safe to call with an empty collector (no-op).
+ */
+const finalizeImages = async (mcqs, collector) => {
+  if (!collector || collector.length === 0) return mcqs;
+
+  // Upload each buffer; map marker → final URL.
+  const markerToUrl = {};
+  for (const item of collector) {
+    const url = await saveImageBuffer(item.buffer, {
+      folder: 'images',
+      filename: item.filename,
+      contentType: item.contentType,
+    });
+    markerToUrl[item.marker] = url;
+  }
+
+  const swapStr = (s) => {
+    if (typeof s !== 'string') return s;
+    let out = s;
+    for (const [marker, url] of Object.entries(markerToUrl)) {
+      if (out.includes(marker)) out = out.split(marker).join(url);
+    }
+    return out;
+  };
+
+  // Shape-agnostic: walk every value of each MCQ object (the parser's
+  // intermediate shape has options as a nested {A,B,C,D} object plus several
+  // explanation/metadata string fields) and swap any placeholder markers in
+  // string values. Handles strings, arrays, and nested objects.
+  const deepSwap = (val) => {
+    if (typeof val === 'string') return swapStr(val);
+    if (Array.isArray(val)) return val.map(deepSwap);
+    if (val && typeof val === 'object') {
+      for (const k of Object.keys(val)) val[k] = deepSwap(val[k]);
+      return val;
+    }
+    return val;
+  };
+
+  for (const mcq of mcqs) deepSwap(mcq);
+  return mcqs;
+};
+
 
 /**
  * Smart field appender
  */
-const pushText = (target, htmlText, cur, imageDir) => {
+const pushText = (target, htmlText, cur, collector) => {
   if (!cur || !target) return;
-  const cleaned = cleanEdgeBr(processImages(htmlText, imageDir));
+  const cleaned = cleanEdgeBr(processImages(htmlText, collector));
   if (!cleaned) return;
   const add = (prev) => (prev ? prev + "<br>" + cleaned : cleaned);
 
@@ -143,10 +208,10 @@ const pushText = (target, htmlText, cur, imageDir) => {
 /**
  * Parse MCQs from HTML lines
  * @param {Array} lines - Array of HTML lines
- * @param {string} imageDir - Directory for images
+ * @param {Array} collector - shared array for extracted image buffers (pass 2)
  * @returns {Array} - Array of MCQ objects
  */
-function parseMCQsFromLines(lines, imageDir) {
+function parseMCQsFromLines(lines, collector) {
   const mcqs = [];
   let cur = null;
   let part = null;
@@ -170,33 +235,33 @@ function parseMCQsFromLines(lines, imageDir) {
       };
       raw = raw.replace(prefixRE("Q"), "");
       part = "question";
-      pushText(part, raw, cur, imageDir);
+      pushText(part, raw, cur, collector);
       continue;
     }
 
-    if (/^A(?:\)|:\))\s*/.test(raw)) { part = "A"; raw = raw.replace(prefixRE("A"), ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^B(?:\)|:\))\s*/.test(raw)) { part = "B"; raw = raw.replace(prefixRE("B"), ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^C(?:\)|:\))\s*/.test(raw)) { part = "C"; raw = raw.replace(prefixRE("C"), ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^D(?:\)|:\))\s*/.test(raw)) { part = "D"; raw = raw.replace(prefixRE("D"), ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^A(?:\)|:\))\s*/.test(raw)) { part = "A"; raw = raw.replace(prefixRE("A"), ""); pushText(part, raw, cur, collector); continue; }
+    if (/^B(?:\)|:\))\s*/.test(raw)) { part = "B"; raw = raw.replace(prefixRE("B"), ""); pushText(part, raw, cur, collector); continue; }
+    if (/^C(?:\)|:\))\s*/.test(raw)) { part = "C"; raw = raw.replace(prefixRE("C"), ""); pushText(part, raw, cur, collector); continue; }
+    if (/^D(?:\)|:\))\s*/.test(raw)) { part = "D"; raw = raw.replace(prefixRE("D"), ""); pushText(part, raw, cur, collector); continue; }
 
     if (/^:Correct:/i.test(raw)) { cur.correctAnswer = raw.replace(/^:Correct:\s*/, "").trim(); part = null; continue; }
     if (/^:MsgCorrect:/i.test(raw)) { part = null; continue; } // Just marking end of correct answer section
-    if (/^:Explanation:/i.test(raw)) { part = "gen"; raw = raw.replace(/^:Explanation:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^:ExplanationA:/i.test(raw)) { part = "Aexp"; raw = raw.replace(/^:ExplanationA:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^:ExplanationB:/i.test(raw)) { part = "Bexp"; raw = raw.replace(/^:ExplanationB:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^:ExplanationC:/i.test(raw)) { part = "Cexp"; raw = raw.replace(/^:ExplanationC:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^:ExplanationD:/i.test(raw)) { part = "Dexp"; raw = raw.replace(/^:ExplanationD:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
+    if (/^:Explanation:/i.test(raw)) { part = "gen"; raw = raw.replace(/^:Explanation:\s*/, ""); pushText(part, raw, cur, collector); continue; }
+    if (/^:ExplanationA:/i.test(raw)) { part = "Aexp"; raw = raw.replace(/^:ExplanationA:\s*/, ""); pushText(part, raw, cur, collector); continue; }
+    if (/^:ExplanationB:/i.test(raw)) { part = "Bexp"; raw = raw.replace(/^:ExplanationB:\s*/, ""); pushText(part, raw, cur, collector); continue; }
+    if (/^:ExplanationC:/i.test(raw)) { part = "Cexp"; raw = raw.replace(/^:ExplanationC:\s*/, ""); pushText(part, raw, cur, collector); continue; }
+    if (/^:ExplanationD:/i.test(raw)) { part = "Dexp"; raw = raw.replace(/^:ExplanationD:\s*/, ""); pushText(part, raw, cur, collector); continue; }
 
     // Optional MCQ metadata — same per-marker pattern as the explanation
     // branches above. Both are independent of each other and of every
     // other field; if a marker is missing the field stays "". Multi-line
     // continuations work the same way (subsequent paragraphs are
     // <br>-joined into the active field until another marker fires).
-    if (/^:University:/i.test(raw)) { part = "univ"; raw = raw.replace(/^:University:\s*/, ""); pushText(part, raw, cur, imageDir); continue; }
-    if (/^:Year:/i.test(raw))       { part = "year"; raw = raw.replace(/^:Year:\s*/, "");       pushText(part, raw, cur, imageDir); continue; }
+    if (/^:University:/i.test(raw)) { part = "univ"; raw = raw.replace(/^:University:\s*/, ""); pushText(part, raw, cur, collector); continue; }
+    if (/^:Year:/i.test(raw))       { part = "year"; raw = raw.replace(/^:Year:\s*/, "");       pushText(part, raw, cur, collector); continue; }
 
     // Otherwise: continue adding to current section
-    pushText(part, raw, cur, imageDir);
+    pushText(part, raw, cur, collector);
   }
   
   if (cur) mcqs.push(cur);

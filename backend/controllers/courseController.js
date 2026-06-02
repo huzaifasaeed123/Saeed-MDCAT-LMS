@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const courseCache = require('../utils/courseCache');
+const { saveImageBuffer } = require('../services/storageService');
 
 // Walks a populated course doc and returns the full set of resource ids
 // (and the subset that are test resources). Used by progress endpoints to
@@ -85,20 +86,11 @@ const collectCourseTestIds = (course) => {
 };
 
 // ─── Multer: Feature Image ────────────────────────────────────────────────────
-
-const imageStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/courses');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${uuidv4()}${path.extname(file.originalname)}`);
-  },
-});
+// Buffered in memory; storageService routes it to S3 (when enabled) or local
+// uploads/courses. PDFs below stay on local disk (documents are not moved).
 
 const imageUpload = multer({
-  storage: imageStorage,
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (allowed.includes(file.mimetype)) {
@@ -138,7 +130,7 @@ const pdfUpload = multer({
 // ─── Upload handlers ──────────────────────────────────────────────────────────
 
 exports.uploadFeatureImage = (req, res) => {
-  imageUpload(req, res, (err) => {
+  imageUpload(req, res, async (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({ success: false, message: err.message });
     } else if (err) {
@@ -147,8 +139,17 @@ exports.uploadFeatureImage = (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
-    const url = `/uploads/courses/${req.file.filename}`;
-    res.json({ success: true, url });
+    try {
+      const filename = `${uuidv4()}${path.extname(req.file.originalname)}`;
+      const url = await saveImageBuffer(req.file.buffer, {
+        folder: 'courses',
+        filename,
+        contentType: req.file.mimetype,
+      });
+      res.json({ success: true, url });
+    } catch (e) {
+      res.status(500).json({ success: false, message: 'Failed to store image' });
+    }
   });
 };
 

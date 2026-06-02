@@ -266,11 +266,14 @@ exports.getUserMcqCounts = async (req, res) => {
           markedCount:    { $sum: { $cond: ['$markedForReview', 1, 0] } },
         }},
       ]),
-      // Per-topic breakdown — always QB-level (no scope), used by frontend for client-side subject/chapter counts
+      // Per-NODE history breakdown — always QB-level (no scope). Grouped by the
+      // (subject, chapter, topic) triple so the frontend can read per-level
+      // history (matching the top-down per-level availability counts) without a
+      // bottom-up topic sum that would drop topic-less history.
       UserMcqHistory.aggregate([
         { $match: { user: userId, questionBankId: qbOid } },
         { $group: {
-          _id:       '$qbTopicId',
+          _id:       { subject: '$qbSubjectId', chapter: '$qbChapterId', topic: '$qbTopicId' },
           attempted: { $sum: 1 },
           incorrect: { $sum: { $cond: [{ $eq: ['$lastResult', 'incorrect'] }, 1, 0] } },
           correct:   { $sum: { $cond: [{ $eq: ['$lastResult', 'correct']   }, 1, 0] } },
@@ -310,16 +313,28 @@ exports.getUserMcqCounts = async (req, res) => {
       backfillCheckedUsers.add(userIdStr);
     }
 
-    // Build byTopic map — frontend uses this for client-side subject/chapter counting
-    const byTopic = {};
+    // Build per-level history maps (top-down). Each grouped row carries the
+    // subject/chapter/topic ids it has; we accumulate the row's history into
+    // whichever level ids are present. So a subject's history includes MCQs
+    // that stop at subject/chapter (no topic) — matching the top-down
+    // availability counts. The frontend reads the map for the selected level.
+    const bySubject = {};
+    const byChapter = {};
+    const byTopic   = {};
+    const addHist = (map, key, t) => {
+      const k = key.toString();
+      if (!map[k]) map[k] = { attempted: 0, incorrect: 0, correct: 0, omitted: 0, marked: 0 };
+      map[k].attempted += t.attempted;
+      map[k].incorrect += t.incorrect;
+      map[k].correct   += t.correct;
+      map[k].omitted   += t.omitted;
+      map[k].marked    += t.marked;
+    };
     for (const t of rawTopicAgg) {
-      if (t._id) byTopic[t._id.toString()] = {
-        attempted: t.attempted,
-        incorrect: t.incorrect,
-        correct:   t.correct,
-        omitted:   t.omitted,
-        marked:    t.marked,
-      };
+      const { subject, chapter, topic } = t._id || {};
+      if (subject) addHist(bySubject, subject, t);
+      if (chapter) addHist(byChapter, chapter, t);
+      if (topic)   addHist(byTopic,   topic,   t);
     }
 
     res.json({
@@ -331,7 +346,10 @@ exports.getUserMcqCounts = async (req, res) => {
         correct:   h.correctCount,
         omitted:   h.omittedCount,
         marked:    h.markedCount,
-        byTopic,   // { topicId: { attempted, incorrect, correct, omitted, marked } }
+        // Per-level history maps. Each: { id: { attempted, incorrect, correct, omitted, marked } }
+        bySubject,
+        byChapter,
+        byTopic,
       },
     });
   } catch (err) {

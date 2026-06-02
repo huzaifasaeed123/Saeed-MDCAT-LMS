@@ -2,23 +2,11 @@
 
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const { saveImageBuffer } = require('../services/storageService');
 
-// Configure multer storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads/images');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueFilename = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, uniqueFilename);
-  }
-});
+// Buffer the file in memory; storageService decides where it lands (S3 or disk).
+const storage = multer.memoryStorage();
 
 // File filter to accept only images
 const fileFilter = (req, file, cb) => {
@@ -41,7 +29,7 @@ const upload = multer({
 
 // Image upload handler
 exports.uploadImage = (req, res) => {
-  upload(req, res, (err) => {
+  upload(req, res, async (err) => {
     if (err instanceof multer.MulterError) {
       // Multer error (file too large, etc.)
       return res.status(400).json({
@@ -55,7 +43,7 @@ exports.uploadImage = (req, res) => {
         message: err.message
       });
     }
-    
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -63,12 +51,22 @@ exports.uploadImage = (req, res) => {
       });
     }
 
-    // Return file info
-    const fileUrl = `/uploads/images/${req.file.filename}`;
-    res.status(200).json({
-      success: true,
-      url: fileUrl,
-      id: req.file.filename
-    });
+    try {
+      // Routed to S3 when enabled, else local uploads/images. Returns the
+      // public URL (absolute S3 URL or relative /uploads/images/... path).
+      const filename = `${uuidv4()}${path.extname(req.file.originalname)}`;
+      const fileUrl = await saveImageBuffer(req.file.buffer, {
+        folder: 'images',
+        filename,
+        contentType: req.file.mimetype,
+      });
+      res.status(200).json({
+        success: true,
+        url: fileUrl,
+        id: filename,
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, message: 'Failed to store image' });
+    }
   });
 };

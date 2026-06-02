@@ -22,7 +22,7 @@
 //     POST /question-banks/generate-test → POST /user-tests/start.
 //   • Staff (admin/teacher) picks ONE OR MORE allowed modes (multi-select);
 //     these become test.allowedModes so the student can pick at start time.
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -182,9 +182,15 @@ const AutoTestGeneratorPage = () => {
   const [selectedTopicIds,   setSelectedTopicIds]   = useState(new Set());
   const [expandedChapters,   setExpandedChapters]   = useState(new Set());
 
-  const [topicCounts, setTopicCounts] = useState({});
+  // Top-down availability counts: each level counted directly by its own id.
+  // { bySubject:{id:count}, byChapter:{id:count}, byTopic:{id:count} }.
+  // Read the map for the SELECTED level — never sum across levels.
+  const [levelCounts, setLevelCounts] = useState({ bySubject: {}, byChapter: {}, byTopic: {} });
   const [modeCounts,   setModeCounts]   = useState({ total: null, unused: null, incorrect: null, correct: null, omitted: null, marked: null });
-  const [byTopic,      setByTopic]      = useState({});
+  // Per-level per-user history (same shape), used to derive question-mode counts.
+  const [histBySubject, setHistBySubject] = useState({});
+  const [histByChapter, setHistByChapter] = useState({});
+  const [histByTopic,   setHistByTopic]   = useState({});
   const [countLoading, setCountLoading] = useState(false);
 
   // Question-mode filter (history-based). Students only — staff don't have
@@ -231,18 +237,28 @@ const AutoTestGeneratorPage = () => {
             setExistingTest(t);
             if (!isStudent) setTestTitle(t.title);
             const bid = t.questionBankId?._id || t.questionBankId;
-            if (bid && !qbId) { setQbId(bid); fetchFullBank(bid); }
+            // Only set qbId; the qbId/banks effect performs the fetch once
+            // banks have loaded (single source of truth — no double fetch).
+            if (bid && !qbId) setQbId(bid);
           }
         })
         .catch(() => {});
     }
   }, [initTestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Single source of truth for "when the selected QB changes, fetch its data".
+  // A ref tracks which QB we've already fetched so this effect fires the 3 APIs
+  // exactly ONCE per QB — even though both the QB picker and the deep-link/
+  // default-QB effects set qbId. (Previously handleBankPick ALSO called
+  // fetchFullBank directly, and this effect fired again on the qbId change
+  // before selectedBank had updated → every API was hit twice.)
+  const fetchedQbRef = useRef(null);
   useEffect(() => {
-    if (qbId && banks.length > 0) {
-      const b = banks.find((b) => b._id === qbId);
-      if (b && !selectedBank) fetchFullBank(qbId);
-    }
+    if (!qbId || banks.length === 0) return;
+    if (!banks.find((b) => b._id === qbId)) return;
+    if (fetchedQbRef.current === qbId) return; // already fetched this QB
+    fetchedQbRef.current = qbId;
+    fetchFullBank(qbId);
   }, [qbId, banks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch QB structure + user history — ONE call each per QB ─────────────
@@ -255,11 +271,20 @@ const AutoTestGeneratorPage = () => {
         apiClient.get(`/question-banks/${id}/user-mcq-counts`),
       ]);
       if (bankRes.data.success)   setSelectedBank(bankRes.data.data);
-      if (countsRes.data.success) setTopicCounts(countsRes.data.data);
+      if (countsRes.data.success) {
+        const c = countsRes.data.data || {};
+        setLevelCounts({
+          bySubject: c.bySubject || {},
+          byChapter: c.byChapter || {},
+          byTopic:   c.byTopic   || {},
+        });
+      }
       if (histRes.data.success) {
         const d = histRes.data.data;
         setModeCounts(d);
-        setByTopic(d.byTopic || {});
+        setHistBySubject(d.bySubject || {});
+        setHistByChapter(d.byChapter || {});
+        setHistByTopic(d.byTopic   || {});
       }
     } catch { toast.error('Failed to load question bank'); }
     finally { setCountLoading(false); }
@@ -267,16 +292,17 @@ const AutoTestGeneratorPage = () => {
 
   const handleBankPick = (id) => {
     if (id === qbId) return;
+    // Only reset state + set the new qbId. The effect above performs the fetch
+    // (once), so we never double-call the 3 APIs.
     setQbId(id);
     setSelectedBank(null);
-    setTopicCounts({});
-    setByTopic({});
+    setLevelCounts({ bySubject: {}, byChapter: {}, byTopic: {} });
+    setHistBySubject({}); setHistByChapter({}); setHistByTopic({});
     setModeCounts({ total: null, unused: null, incorrect: null, correct: null, omitted: null, marked: null });
     setSelectedSubjectIds(new Set());
     setSelectedChapterIds(new Set());
     setSelectedTopicIds(new Set());
     setExpandedChapters(new Set());
-    if (id) fetchFullBank(id);
   };
 
   // ── Derived: subjects/chapters hierarchy ─────────────────────────────────
@@ -293,54 +319,63 @@ const AutoTestGeneratorPage = () => {
     [subjects, selectedSubjectIds],
   );
 
-  // ── Count math — all client-side derivations from already-fetched data ──
-  const topicModeCount = useCallback((topicId) => {
-    const total = topicCounts[topicId] || 0;
+  // ── Count math — TOP-DOWN, all client-side from already-fetched data ──────
+  // Each level is counted DIRECTLY from its own id's bucket (no bottom-up topic
+  // sum). So a subject's count includes MCQs that stop at subject/chapter and
+  // have no topic — matching the pool generateTest actually draws from.
+  //
+  // applyModes turns a (total, history) pair into the mode-filtered count for a
+  // student; staff (or no mode selected) just see the raw total.
+  const applyModes = useCallback((total, hist) => {
     if (!isStudent || selectedModes.size === 0) return total;
-    const h = byTopic[topicId] || {};
+    const h = hist || {};
     let count = 0;
     for (const mode of selectedModes) {
       if (mode === 'unused') count += Math.max(0, total - (h.attempted || 0));
       else count += h[mode] || 0;
     }
     return count;
-  }, [topicCounts, byTopic, selectedModes, isStudent]);
+  }, [selectedModes, isStudent]);
 
-  const chapterModeCount = useCallback(
-    (chapter) => (chapter.topics || []).reduce((sum, t) => sum + topicModeCount(t._id), 0),
-    [topicModeCount],
-  );
-
+  // Per-level counts: read the id's bucket from the matching availability map +
+  // history map. Never sum across levels.
   const subjectModeCount = useCallback(
-    (subject) => (subject.chapters || []).reduce((sum, c) => sum + chapterModeCount(c), 0),
-    [chapterModeCount],
+    (subjectId) => applyModes(levelCounts.bySubject[subjectId] || 0, histBySubject[subjectId]),
+    [applyModes, levelCounts, histBySubject],
+  );
+  const chapterModeCount = useCallback(
+    (chapterId) => applyModes(levelCounts.byChapter[chapterId] || 0, histByChapter[chapterId]),
+    [applyModes, levelCounts, histByChapter],
+  );
+  const topicModeCount = useCallback(
+    (topicId) => applyModes(levelCounts.byTopic[topicId] || 0, histByTopic[topicId]),
+    [applyModes, levelCounts, histByTopic],
   );
 
   // The headline "available MCQs" number — drives the Create button enable
   // state, the validation toast on click, and the sidebar summary.
+  // Most-specific selected level wins; sum the SELECTED ids at THAT level only.
   const selectedAvailable = useMemo(() => {
     if (modeCounts.total === null) return null;
     if (selectedTopicIds.size > 0) {
       return [...selectedTopicIds].reduce((sum, tid) => sum + topicModeCount(tid), 0);
     }
     if (selectedChapterIds.size > 0) {
-      const chapMap = {};
-      subjects.forEach((s) => (s.chapters || []).forEach((c) => { chapMap[c._id] = c; }));
-      return [...selectedChapterIds].reduce((sum, cid) => sum + chapterModeCount(chapMap[cid] || { topics: [] }), 0);
+      return [...selectedChapterIds].reduce((sum, cid) => sum + chapterModeCount(cid), 0);
     }
     if (selectedSubjectIds.size > 0) {
-      return subjects
-        .filter((s) => selectedSubjectIds.has(s._id))
-        .reduce((sum, s) => sum + subjectModeCount(s), 0);
+      return [...selectedSubjectIds].reduce((sum, sid) => sum + subjectModeCount(sid), 0);
     }
     if (!isStudent || selectedModes.size === 0) return modeCounts.total;
     return [...selectedModes].reduce((sum, m) => sum + (modeCounts[m] || 0), 0);
   }, [selectedTopicIds, selectedChapterIds, selectedSubjectIds, selectedModes,
-      modeCounts, topicModeCount, chapterModeCount, subjectModeCount, subjects, isStudent]);
+      modeCounts, topicModeCount, chapterModeCount, subjectModeCount, isStudent]);
 
   const totalQbMcqs = useMemo(
-    () => Object.values(topicCounts).reduce((a, b) => a + b, 0),
-    [topicCounts],
+    () => (modeCounts.total != null
+      ? modeCounts.total
+      : Object.values(levelCounts.bySubject).reduce((a, b) => a + b, 0)),
+    [modeCounts.total, levelCounts],
   );
 
   // ── Toggle helpers — identical semantics to the legacy page ──────────────
@@ -444,10 +479,10 @@ const AutoTestGeneratorPage = () => {
     if (!isStudent) return null;
     const inScope = [...selectedTopicIds];
     const counts = inScope.length > 0
-      ? inScope.reduce((s, tid) => s + ((byTopic[tid]?.incorrect || 0) + (byTopic[tid]?.omitted || 0)), 0)
+      ? inScope.reduce((s, tid) => s + ((histByTopic[tid]?.incorrect || 0) + (histByTopic[tid]?.omitted || 0)), 0)
       : (modeCounts.incorrect || 0) + (modeCounts.omitted || 0);
     return Math.min(counts, finalCount || counts);
-  }, [byTopic, selectedTopicIds, modeCounts, finalCount, isStudent]);
+  }, [histByTopic, selectedTopicIds, modeCounts, finalCount, isStudent]);
 
   // Sidebar tag-line — QB · Mode · Subjects, eg. "MDCAT 2025 · Unused · Bio + Chem"
   const summaryTagline = useMemo(() => {
@@ -662,7 +697,7 @@ const AutoTestGeneratorPage = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {subjects.map((s) => {
                   const checked = selectedSubjectIds.has(s._id);
-                  const cnt = countLoading ? null : subjectModeCount(s);
+                  const cnt = countLoading ? null : subjectModeCount(s._id);
                   return (
                     <div
                       key={s._id}
@@ -699,7 +734,7 @@ const AutoTestGeneratorPage = () => {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
                     {visibleChapters.map((chap) => {
-                      const cnt        = countLoading ? null : chapterModeCount(chap);
+                      const cnt        = countLoading ? null : chapterModeCount(chap._id);
                       const isExpanded = expandedChapters.has(chap._id);
                       return (
                         <div key={chap._id}>

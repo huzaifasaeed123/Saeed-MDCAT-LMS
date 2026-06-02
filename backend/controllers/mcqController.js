@@ -786,11 +786,22 @@ exports.getMCQsForQuestionBank = async (req, res) => {
 };
 
 // GET /api/mcqs/question-bank/:qbId/topic-counts
-// Returns { [topicId]: count } for every topic in the QB.
+// Returns per-level MCQ counts so the generator can show availability for a
+// selected subject / chapter / topic WITHOUT a bottom-up topic sum (which used
+// to drop MCQs that stop at subject/chapter and have no topic):
+//   {
+//     bySubject: { [subjectId]: count },   // every MCQ with that qbSubjectId
+//     byChapter: { [chapterId]: count },   // every MCQ with that qbChapterId
+//     byTopic:   { [topicId]:   count },   // every MCQ with that qbTopicId
+//   }
+// Each level is counted DIRECTLY by its own id (top-down), so the number shown
+// for a subject equals the pool generateTest actually draws from (it also
+// filters by qbSubjectId/qbChapterId/qbTopicId). The frontend reads the map for
+// the selected level — it must NOT sum across levels.
 //
-// Served from qbCountsCache. Same response for every user, so one cached
-// entry serves the whole site. Invalidated on any MCQ create/update/delete
-// that touches this QB (see CRUD handlers above).
+// Served from qbCountsCache. Same response for every user, so one cached entry
+// serves the whole site. Invalidated on any MCQ create/update/delete that
+// touches this QB (see CRUD handlers above).
 exports.getTopicCounts = async (req, res) => {
   try {
     const { qbId } = req.params;
@@ -800,14 +811,30 @@ exports.getTopicCounts = async (req, res) => {
       return res.json({ success: true, data: cached, cached: true });
     }
 
+    // ONE aggregation, grouped by the (subject, chapter, topic) triple. From
+    // these rows we build all three per-level maps in JS — still a single
+    // collection scan, single cache entry per qbId, same invalidation.
     const agg = await MCQ.aggregate([
       { $match: { questionBankId: new mongoose.Types.ObjectId(qbId) } },
-      { $group: { _id: '$qbTopicId', count: { $sum: 1 } } },
+      { $group: {
+        _id: { subject: '$qbSubjectId', chapter: '$qbChapterId', topic: '$qbTopicId' },
+        count: { $sum: 1 },
+      }},
     ]);
-    const counts = {};
-    agg.forEach((r) => { if (r._id) counts[r._id.toString()] = r.count; });
-    qbCountsCache.setTopicCounts(qbId, counts);
-    res.json({ success: true, data: counts });
+
+    const bySubject = {};
+    const byChapter = {};
+    const byTopic   = {};
+    for (const r of agg) {
+      const { subject, chapter, topic } = r._id || {};
+      if (subject) bySubject[subject.toString()] = (bySubject[subject.toString()] || 0) + r.count;
+      if (chapter) byChapter[chapter.toString()] = (byChapter[chapter.toString()] || 0) + r.count;
+      if (topic)   byTopic[topic.toString()]     = (byTopic[topic.toString()]     || 0) + r.count;
+    }
+
+    const data = { bySubject, byChapter, byTopic };
+    qbCountsCache.setTopicCounts(qbId, data);
+    res.json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

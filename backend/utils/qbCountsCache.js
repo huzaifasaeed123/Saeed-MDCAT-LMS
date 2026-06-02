@@ -1,6 +1,13 @@
 // ── Question-bank counts cache ───────────────────────────────────────────────
 // Holds two pieces of QB-wide data that don't depend on the requesting user:
-//   • topicCountsByQB:  Map<qbId, { topicId: count }>
+//   • topicCountsByQB:  Map<qbId, { bySubject, byChapter, byTopic }>
+//       bySubject: { subjectId: count }  — MCQs counted DIRECTLY by qbSubjectId
+//       byChapter: { chapterId: count }  — MCQs counted DIRECTLY by qbChapterId
+//       byTopic:   { topicId:   count }  — MCQs counted DIRECTLY by qbTopicId
+//     (top-down: each level is counted by its own id, so an MCQ that stops at
+//      subject/chapter is still counted at that level. The app enforces the
+//      full subject→chapter→topic chain, so a deeper id always implies its
+//      ancestors are present.)
 //   • totalsByQB:       Map<qbId, totalMcqCount>
 //
 // Both are derived purely from MCQ documents. They serve every student from
@@ -40,10 +47,15 @@ const setTopicCounts = (qbId, counts) => {
   const key = String(qbId);
   const now = Date.now();
   topicCountsByQB.set(key, { value: counts, builtAt: now });
-  // Topic counts contain everything needed to derive the total — keep both
-  // maps in sync so a /question-banks call after a topic-counts hit can
-  // skip the batch aggregation for this QB.
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // Keep the QB total in sync so a /question-banks call after a topic-counts
+  // hit can skip its batch aggregation. Derive it from bySubject: every MCQ
+  // carries a qbSubjectId (the app enforces subject-first classification), so
+  // summing the per-subject counts equals the true total — INCLUDING MCQs that
+  // stop at subject/chapter and have no topic. (The old code summed topic
+  // buckets, which silently dropped topic-less MCQs — that's the undercount bug
+  // this replaces.)
+  const bySubject = counts?.bySubject || {};
+  const total = Object.values(bySubject).reduce((a, b) => a + b, 0);
   totalsByQB.set(key, { value: total, builtAt: now });
 };
 
